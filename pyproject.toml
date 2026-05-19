@@ -74,6 +74,7 @@ py-modules = [
     "online_client",
     "online_ws_server",
     "phase_states",
+    "stats_manager",
     "settings_manager",
 ]
 
@@ -135,6 +136,7 @@ ignore_missing_imports = true
 minversion = "7.0"
 addopts = "-ra -q --strict-markers"
 testpaths = ["tests"]
+python_files = ["test_*.py"]
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning",

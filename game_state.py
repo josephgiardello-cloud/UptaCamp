@@ -28,3 +28,14 @@ class GameState:
     player_name: str = ""
     ai_name: str = "Dad"
     history: list[Any] = field(default_factory=list)
+    current_phase: Any | None = None
+    phase_name: str = "intro"
+
+    def transition_to(self, new_phase_class: type[Any], ctx: Any = None) -> None:
+        if self.current_phase is not None and hasattr(self.current_phase, "exit"):
+            self.current_phase.exit(self, ctx)
+        self.current_phase = new_phase_class()
+        self.phase_name = new_phase_class.__name__
+        self.phase = getattr(self.current_phase, "phase_name", self.phase_name.lower())
+        if hasattr(self.current_phase, "enter"):
+            self.current_phase.enter(self, ctx)

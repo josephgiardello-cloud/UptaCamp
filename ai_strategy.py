@@ -1,7 +1,17 @@
 import random
 from collections import Counter
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from itertools import combinations
+
+
+@dataclass(frozen=True)
+class DiscardOption:
+    discard_indices: tuple[int, int]
+    discard_labels: tuple[str, str]
+    keep_labels: tuple[str, str, str, str]
+    expected_points: float
+    percentile: float
 
 
 def _parse_label(label: str) -> tuple[str, str]:
@@ -151,7 +161,7 @@ def choose_discard_indices(
             score = total / len(unseen_pool)
             score += 0.35 * _intrinsic_keep_score(kept)
             score += (0.22 if dealer_is_dad else -0.18) * _discard_crib_score(discards)
-        else:
+        elif dad_ai_level == 3:
             trials = min(220, len(unseen_pool) * 4)
             total = 0.0
             for _ in range(trials):
@@ -167,12 +177,93 @@ def choose_discard_indices(
             score = total / max(1, trials)
             score += 0.55 * _intrinsic_keep_score(kept)
             score += (0.5 if dealer_is_dad else -0.32) * _discard_crib_score(discards)
+        else:
+            # Brutal mode: deeper simulation with heavier intrinsic weighting.
+            trials = min(560, len(unseen_pool) * 10)
+            total = 0.0
+            for _ in range(trials):
+                opp_discards = random.sample(unseen_pool, 2)
+                rem = [lbl for lbl in unseen_pool if lbl not in opp_discards]
+                if not rem:
+                    continue
+                starter = random.choice(rem)
+                own_score = score_labels_hand(kept, starter, False)
+                crib_labels = discards + opp_discards
+                crib_score = score_labels_hand(crib_labels, starter, True)
+                total += own_score + (crib_score if dealer_is_dad else -crib_score)
+            score = total / max(1, trials)
+            score += 0.8 * _intrinsic_keep_score(kept)
+            score += (0.65 if dealer_is_dad else -0.45) * _discard_crib_score(discards)
 
         if score > best_score:
             best_score = score
             best_idxs = list(discard_idxs)
 
     return best_idxs
+
+
+def analyze_discard_options(
+    hand_labels: Sequence[str],
+    dealer_is_player: bool,
+    canonical_deck_labels: Sequence[str],
+    score_labels_hand: Callable[[list[str], str, bool], int],
+) -> list[DiscardOption]:
+    if len(hand_labels) != 6:
+        return []
+
+    unseen_pool = [lbl for lbl in canonical_deck_labels if lbl not in set(hand_labels)]
+    if not unseen_pool:
+        return []
+
+    scored: list[tuple[tuple[int, int], tuple[str, str], tuple[str, str, str, str], float]] = []
+    for discard_idxs in combinations(range(6), 2):
+        discard_set = set(discard_idxs)
+        kept = [hand_labels[i] for i in range(6) if i not in discard_set]
+        discards = [hand_labels[i] for i in discard_idxs]
+
+        total = 0.0
+        for starter in unseen_pool:
+            own_score = score_labels_hand(kept, starter, False)
+            # Approximate crib influence by expected random opponent discard value.
+            # This keeps analysis deterministic and fast for learning feedback.
+            total += own_score + (
+                (0.45 if dealer_is_player else -0.35) * _discard_crib_score(discards)
+            )
+        expected = total / len(unseen_pool)
+        scored.append(
+            (
+                (discard_idxs[0], discard_idxs[1]),
+                (discards[0], discards[1]),
+                (kept[0], kept[1], kept[2], kept[3]),
+                expected,
+            )
+        )
+
+    scored.sort(key=lambda row: row[3], reverse=True)
+    if not scored:
+        return []
+
+    lo = scored[-1][3]
+    hi = scored[0][3]
+    span = hi - lo
+
+    analyzed: list[DiscardOption] = []
+    for discard_idxs, discard_labels, keep_labels, expected in scored:
+        if span <= 1e-9:
+            percentile = 100.0
+        else:
+            percentile = max(0.0, min(100.0, ((expected - lo) / span) * 100.0))
+        analyzed.append(
+            DiscardOption(
+                discard_indices=discard_idxs,
+                discard_labels=discard_labels,
+                keep_labels=keep_labels,
+                expected_points=expected,
+                percentile=percentile,
+            )
+        )
+
+    return analyzed
 
 
 def choose_pegging_index(
@@ -185,6 +276,9 @@ def choose_pegging_index(
     label_card_factory: Callable[[str], object],
     current_pegging_labels: Sequence[str],
     estimate_opponent_reply_risk: Callable[[Sequence], float] | None = None,
+    own_score: int | None = None,
+    opp_score: int | None = None,
+    own_cards_remaining: int | None = None,
 ) -> int | None:
     legal = [
         i
@@ -213,8 +307,21 @@ def choose_pegging_index(
         shape_bonus = _pegging_shape_adjustment(trial_total, immediate, hand_labels, label)
 
         score = immediate + shape_bonus
-        if dad_ai_level == 3 and estimate_opponent_reply_risk is not None:
+        if dad_ai_level >= 3 and estimate_opponent_reply_risk is not None:
             score -= 0.85 * estimate_opponent_reply_risk(trial_pile)
+
+        if dad_ai_level >= 4:
+            # Endgame awareness: when close to 121, prioritize immediate points.
+            if own_score is not None and own_score >= 112:
+                score += 0.7 * immediate
+            if opp_score is not None and opp_score >= 112 and immediate == 0:
+                score -= 0.4
+
+            # Early-round discipline in brutal mode.
+            if own_cards_remaining is not None and own_cards_remaining >= 3 and immediate == 0:
+                val = value_for_15(parse_label(label)[0])
+                if val >= 10:
+                    score -= 0.25
 
         if score > best_score:
             best_score = score

@@ -109,7 +109,12 @@ def pegging_total(pile) -> int:
     return sum(value_for_fifteen(parse_card_label(card_label(item))[0]) for item in pile)
 
 
-def score_pegging_play(pile) -> int:
+def score_pegging_play(pile, new_card=None) -> int:
+    working_pile = list(pile)
+    if new_card is not None:
+        working_pile.append(new_card)
+
+    pile = working_pile
     if not pile:
         return 0
 
@@ -169,8 +174,7 @@ def score_pairs(cards):
     return breakdown
 
 
-# Score runs
-def score_runs(cards):
+def find_all_runs(cards):
     ranks_map = {
         "A": 1,
         "2": 2,
@@ -186,25 +190,37 @@ def score_runs(cards):
         "Q": 12,
         "K": 13,
     }
-
     rank_values = [ranks_map[_normalize_rank(card.rank)] for card in cards]
     counts = Counter(rank_values)
     unique = sorted(counts.keys())
 
-    # Cribbage counts only the longest run(s); duplicates multiply run count.
     for run_len in range(len(unique), 2, -1):
+        runs = []
         for start in range(1, 15 - run_len):
             seq = list(range(start, start + run_len))
             if all(v in counts for v in seq):
                 multiplicity = 1
                 for v in seq:
                     multiplicity *= counts[v]
-                points = run_len * multiplicity
-                return [
-                    (f"Run of {run_len} x{multiplicity}", [str(card) for card in cards], points)
-                ]
-
+                runs.append((run_len, multiplicity, seq))
+        if runs:
+            return runs
     return []
+
+
+# Score runs
+def score_runs(cards):
+    runs = find_all_runs(cards)
+    if not runs:
+        return []
+
+    breakdown = []
+    for run_len, multiplicity, _ in runs:
+        points = run_len * multiplicity
+        breakdown.append(
+            (f"Run of {run_len} x{multiplicity}", [str(card) for card in cards], points)
+        )
+    return breakdown
 
 
 # Score flush

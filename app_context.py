@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from game_state import GameState
 from online_client import MatchEventStream, OnlineClient
 
 
@@ -19,6 +20,7 @@ class AppContext:
     current_match_id: str | None = None
     last_error: str = ""
     status_message: str = ""
+    game_state: GameState = field(default_factory=GameState)
 
     def __post_init__(self) -> None:
         self.client = OnlineClient(self.server_url)

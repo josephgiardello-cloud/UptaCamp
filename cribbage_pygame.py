@@ -18,9 +18,10 @@ import ai_strategy
 import cards as cribbage_cards
 from adapter import EngineAdapter
 from animations import EffectsManager
+from app_context import AppContext
 from audio_manager import AudioManager
 from engine import CribbageEngine
-from game_state import GameState as ClassicSessionState
+from game_state import GameState
 from phase_states import PhaseStateMachine
 from settings_manager import GameSettings, load_settings, save_settings
 
@@ -30,7 +31,7 @@ CARD_HEIGHT = 180
 FPS = 60
 TABLE_COLOR = (34, 139, 34)
 MAX_SCORE = 121
-AI_LEVELS = {1: "Easy", 2: "Medium", 3: "Hard"}
+AI_LEVELS = {1: "Easy", 2: "Medium", 3: "Hard", 4: "Brutal"}
 
 THEME = {
     "outer_bg": (50, 30, 14),
@@ -92,6 +93,7 @@ round_breakdown: dict[str, tuple[int, list[tuple[str, list[Any], int]]]] = (
         "crib": (0, []),
     }
 )
+discard_analysis_message = ""
 
 # Engine migration bridge (incremental refactor path)
 _ENGINE = None
@@ -102,21 +104,29 @@ _LAST_SCREEN_SIZE = (1280, 900)
 _MAINE_BACK_SURFACE = None
 _AUDIO = None
 _SETTINGS = GameSettings()
-_CLASSIC_SESSION = ClassicSessionState()
+ctx = AppContext()
+state: GameState = ctx.game_state
+_CLASSIC_SESSION = state
 
 
 def _check_for_winner():
     global winner_index
-    if player_scores[0] >= MAX_SCORE and player_scores[1] >= MAX_SCORE:
+    scores = list(player_scores)
+    _CLASSIC_SESSION.scores = list(player_scores)
+    if scores[0] >= MAX_SCORE and scores[1] >= MAX_SCORE:
         winner_index = -1  # tie
+        _CLASSIC_SESSION.winner = winner_index
         return winner_index
-    if player_scores[0] >= MAX_SCORE:
+    if scores[0] >= MAX_SCORE:
         winner_index = 0
+        _CLASSIC_SESSION.winner = winner_index
         return winner_index
-    if player_scores[1] >= MAX_SCORE:
+    if scores[1] >= MAX_SCORE:
         winner_index = 1
+        _CLASSIC_SESSION.winner = winner_index
         return winner_index
     winner_index = None
+    _CLASSIC_SESSION.winner = winner_index
     return winner_index
 
 
@@ -129,7 +139,10 @@ _label_to_model_card = cribbage_cards.label_to_card
 
 def _transition_phase(target_phase: str, *, force: bool = False) -> None:
     global game_phase
+    _CLASSIC_SESSION.phase = target_phase
     if _PHASE_SM is not None:
+        if _ENGINE is not None:
+            _ENGINE.state.phase = target_phase
         transitioned = _PHASE_SM.transition(target_phase, force=force)
         if not transitioned and not force:
             _PHASE_SM.transition(target_phase, force=True)
@@ -138,7 +151,6 @@ def _transition_phase(target_phase: str, *, force: bool = False) -> None:
             _CLASSIC_SESSION.phase = game_phase
             return
     game_phase = target_phase
-    _CLASSIC_SESSION.phase = target_phase
     if _ENGINE is not None:
         _ENGINE.state.phase = target_phase
 
@@ -158,6 +170,26 @@ def _sync_classic_session_from_runtime() -> None:
     _CLASSIC_SESSION.last_pegging_player = last_pegging_player
     _CLASSIC_SESSION.player_kept = list(player1_kept)
     _CLASSIC_SESSION.ai_kept = list(player2_kept)
+
+
+def _sync_runtime_from_classic_session() -> None:
+    global game_phase, dealer, player_turn, message, starter_card, last_pegging_player, dad_ai_level
+    game_phase = _CLASSIC_SESSION.phase
+    dealer = _CLASSIC_SESSION.dealer
+    dad_ai_level = _CLASSIC_SESSION.dad_ai_level
+    player_scores[:] = list(_CLASSIC_SESSION.scores)
+    player1_hand[:] = list(_CLASSIC_SESSION.player_hand)
+    player2_hand[:] = list(_CLASSIC_SESSION.ai_hand)
+    crib[:] = list(_CLASSIC_SESSION.crib)
+    pegging_pile[:] = list(_CLASSIC_SESSION.pegging_pile)
+    selected_cards[:] = list(_CLASSIC_SESSION.selected_cards)
+    player1_kept[:] = list(_CLASSIC_SESSION.player_kept)
+    player2_kept[:] = list(_CLASSIC_SESSION.ai_kept)
+    starter_card = _CLASSIC_SESSION.starter_card
+    player_turn = _CLASSIC_SESSION.player_turn
+    pegging_passes[:] = list(_CLASSIC_SESSION.pegging_passes)
+    last_pegging_player = _CLASSIC_SESSION.last_pegging_player
+    message = _CLASSIC_SESSION.message
 
 
 def _canonical_deck_labels():
@@ -494,7 +526,7 @@ def _queue_score_popup(player_idx, points):
 
 
 def get_pegging_total():
-    return cribbage_cards.pegging_total(pegging_pile)
+    return cribbage_cards.pegging_total(_CLASSIC_SESSION.pegging_pile)
 
 
 def _score_pegging_play(pile):
@@ -509,40 +541,87 @@ def _score_labels_hand(hand_labels, starter_label, is_crib=False):
 
 
 def _choose_dad_discards():
-    dad_labels = [c.label for c in player2_hand]
+    dad_labels = [c.label for c in _CLASSIC_SESSION.ai_hand]
     return ai_strategy.choose_discard_indices(
         dad_labels=dad_labels,
-        dad_ai_level=dad_ai_level,
-        dealer_is_dad=(dealer == 1),
+        dad_ai_level=_CLASSIC_SESSION.dad_ai_level,
+        dealer_is_dad=(_CLASSIC_SESSION.dealer == 1),
         canonical_deck_labels=_canonical_deck_labels(),
         score_labels_hand=_score_labels_hand,
     )
 
 
 def _choose_dad_pegging_index(current_total):
-    hand_labels = [c.label for c in player2_hand]
-    pegging_labels = [c.label for c in pegging_pile]
+    hand_labels = [c.label for c in _CLASSIC_SESSION.ai_hand]
+    pegging_labels = [c.label for c in _CLASSIC_SESSION.pegging_pile]
     return ai_strategy.choose_pegging_index(
         hand_labels=hand_labels,
         current_total=current_total,
-        dad_ai_level=dad_ai_level,
+        dad_ai_level=_CLASSIC_SESSION.dad_ai_level,
         value_for_15=_value_for_15,
         parse_label=_parse_label,
         score_pegging_play=_score_pegging_play,
         label_card_factory=_LabelCard,
         current_pegging_labels=pegging_labels,
         estimate_opponent_reply_risk=_estimate_opponent_reply_risk,
+        own_score=_CLASSIC_SESSION.scores[1],
+        opp_score=_CLASSIC_SESSION.scores[0],
+        own_cards_remaining=len(_CLASSIC_SESSION.ai_hand),
     )
 
 
 def _choose_auto_player_discard_indices():
-    player_labels = [c.label for c in player1_hand]
+    player_labels = [c.label for c in _CLASSIC_SESSION.player_hand]
     return ai_strategy.choose_discard_indices(
         dad_labels=player_labels,
-        dad_ai_level=dad_ai_level,
-        dealer_is_dad=(dealer == 0),
+        dad_ai_level=_CLASSIC_SESSION.dad_ai_level,
+        dealer_is_dad=(_CLASSIC_SESSION.dealer == 0),
         canonical_deck_labels=_canonical_deck_labels(),
         score_labels_hand=_score_labels_hand,
+    )
+
+
+def _grade_from_percentile(percentile: float) -> str:
+    if percentile >= 97:
+        return "A+"
+    if percentile >= 90:
+        return "A"
+    if percentile >= 80:
+        return "B"
+    if percentile >= 65:
+        return "C"
+    return "D"
+
+
+def _build_discard_feedback(pre_discard_labels: list[str], chosen_indices: list[int]) -> str:
+    analysis = ai_strategy.analyze_discard_options(
+        hand_labels=pre_discard_labels,
+        dealer_is_player=(_CLASSIC_SESSION.dealer == 0),
+        canonical_deck_labels=_canonical_deck_labels(),
+        score_labels_hand=_score_labels_hand,
+    )
+    if not analysis:
+        return ""
+
+    chosen_key = tuple(sorted(chosen_indices))
+    chosen = next((opt for opt in analysis if opt.discard_indices == chosen_key), None)
+    best = analysis[0]
+    if chosen is None:
+        return ""
+
+    grade = _grade_from_percentile(chosen.percentile)
+    delta = best.expected_points - chosen.expected_points
+    best_cards = f"{best.discard_labels[0]}, {best.discard_labels[1]}"
+    chosen_cards = f"{chosen.discard_labels[0]}, {chosen.discard_labels[1]}"
+    if delta <= 0.05:
+        return (
+            f"Hand Analyzer: {grade} ({chosen.percentile:.0f}th pct). "
+            f"Your discard {chosen_cards} is near-optimal ({chosen.expected_points:.2f} EV)."
+        )
+    return (
+        f"Hand Analyzer: {grade} ({chosen.percentile:.0f}th pct). "
+        f"Better discard was {best_cards} for +{delta:.2f} EV "
+        f"({best.expected_points:.2f} vs {chosen.expected_points:.2f})."
     )
 
 
@@ -550,11 +629,11 @@ def _choose_auto_player_pegging_index(current_total):
     best_idx = None
     best_score = -1
     best_value = 99
-    for idx, card in enumerate(player1_hand):
+    for idx, card in enumerate(_CLASSIC_SESSION.player_hand):
         value = _value_for_15(_parse_label(card.label)[0])
         if current_total + value > 31:
             continue
-        trial = pegging_pile + [_LabelCard(card.label)]
+        trial = _CLASSIC_SESSION.pegging_pile + [_LabelCard(card.label)]
         immediate = _score_pegging_play(trial)
         if immediate > best_score or (immediate == best_score and value < best_value):
             best_idx = idx
@@ -565,14 +644,14 @@ def _choose_auto_player_pegging_index(current_total):
 
 def _estimate_opponent_reply_risk(trial_pile):
     trial_total = sum(_value_for_15(_parse_label(c.label)[0]) for c in trial_pile)
-    opponent_hand_size = len(player1_hand)
+    opponent_hand_size = len(_CLASSIC_SESSION.player_hand)
     if opponent_hand_size <= 0:
         return 0.0
 
-    known_labels = {c.label for c in player2_hand}
+    known_labels = {c.label for c in _CLASSIC_SESSION.ai_hand}
     known_labels.update(c.label for c in trial_pile)
-    if starter_card is not None:
-        known_labels.add(starter_card)
+    if _CLASSIC_SESSION.starter_card is not None:
+        known_labels.add(_CLASSIC_SESSION.starter_card)
 
     unseen_pool = [lbl for lbl in _canonical_deck_labels() if lbl not in known_labels]
     if not unseen_pool:
@@ -597,145 +676,162 @@ def _estimate_opponent_reply_risk(trial_pile):
 
 
 def _finalize_pegging_if_complete():
-    global game_phase, message, pegging_points
-    if player1_hand or player2_hand:
+    _sync_classic_session_from_runtime()
+    s = _CLASSIC_SESSION
+    if s.player_hand or s.ai_hand:
         return False
 
     # Last card point if sequence did not already end at 31.
-    if pegging_pile and get_pegging_total() != 31 and last_pegging_player is not None:
-        player_scores[last_pegging_player] += 1
-        pegging_points[last_pegging_player] += 1
-        if last_pegging_player == 0:
-            message = "Last card for 1 point. Counting hands."
+    if s.pegging_pile and get_pegging_total() != 31 and s.last_pegging_player is not None:
+        s.scores[s.last_pegging_player] += 1
+        pegging_points[s.last_pegging_player] += 1
+        if s.last_pegging_player == 0:
+            s.message = "Last card for 1 point. Counting hands."
         else:
-            message = "Dad gets last card for 1 point. Counting hands."
+            s.message = "Dad gets last card for 1 point. Counting hands."
     else:
-        message = "Counting hands."
+        s.message = "Counting hands."
 
     _transition_phase("counting")
+    _sync_runtime_from_classic_session()
     return True
 
 
 def _handle_go(player_idx):
-    global player_turn, message, pegging_points
-    pegging_passes[player_idx] = True
+    _sync_classic_session_from_runtime()
+    s = _CLASSIC_SESSION
+    s.pegging_passes[player_idx] = True
     other = 1 - player_idx
 
-    if pegging_passes[other]:
-        if pegging_pile and get_pegging_total() < 31 and last_pegging_player is not None:
-            player_scores[last_pegging_player] += 1
-            pegging_points[last_pegging_player] += 1
-            _queue_score_popup(last_pegging_player, 1)
-            if last_pegging_player == 0:
-                message = "Go for you (+1). New count."
+    if s.pegging_passes[other]:
+        if s.pegging_pile and get_pegging_total() < 31 and s.last_pegging_player is not None:
+            s.scores[s.last_pegging_player] += 1
+            pegging_points[s.last_pegging_player] += 1
+            _queue_score_popup(s.last_pegging_player, 1)
+            if s.last_pegging_player == 0:
+                s.message = "Go for you (+1). New count."
             else:
-                message = "Go for Dad (+1). New count."
+                s.message = "Go for Dad (+1). New count."
         else:
-            message = "No plays. New count."
-        pegging_pile.clear()
-        pegging_passes[0] = False
-        pegging_passes[1] = False
-        if last_pegging_player is not None:
-            player_turn = 1 - last_pegging_player
+            s.message = "No plays. New count."
+        s.pegging_pile.clear()
+        s.pegging_passes[0] = False
+        s.pegging_passes[1] = False
+        if s.last_pegging_player is not None:
+            s.player_turn = 1 - s.last_pegging_player
     else:
-        player_turn = other
-        message = "Go. " + ("Dad's turn." if other == 1 else "Your turn.")
+        s.player_turn = other
+        s.message = "Go. " + ("Dad's turn." if other == 1 else "Your turn.")
+
+    _sync_runtime_from_classic_session()
 
 
 def _play_pegging_card(player_idx, idx):
-    global player_turn, message, pegging_points
+    _sync_classic_session_from_runtime()
+    s = _CLASSIC_SESSION
     if player_idx == 0:
-        card = player1_hand.pop(idx)
+        card = s.player_hand.pop(idx)
     else:
-        card = player2_hand.pop(idx)
+        card = s.ai_hand.pop(idx)
 
     if _AUDIO is not None:
         _AUDIO.play("card")
 
     if _EFFECTS is not None and _SETTINGS.animations_enabled:
         start = card.rect.center
-        end = _pegging_target_center(len(pegging_pile))
+        end = _pegging_target_center(len(s.pegging_pile))
         _EFFECTS.add_card_flight(card.image, start, end)
 
-    pegging_pile.append(card)
-    pegging_passes[0] = False
-    pegging_passes[1] = False
+    s.pegging_pile.append(card)
+    s.pegging_passes[0] = False
+    s.pegging_passes[1] = False
 
-    points = _score_pegging_play(pegging_pile)
-    player_scores[player_idx] += points
+    points = _score_pegging_play(s.pegging_pile)
+    s.scores[player_idx] += points
     pegging_points[player_idx] += points
     _queue_score_popup(player_idx, points)
     if points > 0 and _AUDIO is not None:
         _AUDIO.play("score")
 
-    name = player_name if player_idx == 0 else "Dad"
+    name = (s.player_name or player_name) if player_idx == 0 else "Dad"
     point_note = f" (+{points})" if points else ""
 
     if get_pegging_total() == 31:
-        message = f"{name} played 31{point_note}. New count."
+        s.message = f"{name} played 31{point_note}. New count."
         if _EFFECTS is not None and _SETTINGS.animations_enabled:
             _EFFECTS.trigger_shake(intensity=7, duration_ms=220)
-        pegging_pile.clear()
-        player_turn = 1 - player_idx
+        s.pegging_pile.clear()
+        s.player_turn = 1 - player_idx
     else:
-        message = f"{name} pegs{point_note}. " + (
+        s.message = f"{name} pegs{point_note}. " + (
             "Dad's turn." if player_idx == 0 else "Your turn."
         )
-        player_turn = 1 - player_idx
+        s.player_turn = 1 - player_idx
 
-    global last_pegging_player
-    last_pegging_player = player_idx
+    s.last_pegging_player = player_idx
+    _sync_runtime_from_classic_session()
 
 
 # --- Event Handlers ---
 def handle_discard(event):
-    global selected_cards, player1_hand, player2_hand, crib, message, player_turn, starter_card, _stock_labels, player1_kept, player2_kept, last_pegging_player
+    global discard_analysis_message
+    _sync_classic_session_from_runtime()
+    s = _CLASSIC_SESSION
     if event.type == pygame.MOUSEBUTTONDOWN:
-        for idx, card in enumerate(player1_hand):
-            if card.rect.collidepoint(event.pos) and idx not in selected_cards:
-                selected_cards.append(idx)
+        for idx, card in enumerate(s.player_hand):
+            if card.rect.collidepoint(event.pos) and idx not in s.selected_cards:
+                s.selected_cards.append(idx)
+                _sync_runtime_from_classic_session()
                 if _AUDIO is not None:
                     _AUDIO.play("card")
-                if len(selected_cards) == 2:
+                if len(s.selected_cards) == 2:
+                    pre_discard_labels = [c.label for c in s.player_hand]
+                    chosen = sorted(s.selected_cards)
+                    discard_analysis_message = _build_discard_feedback(pre_discard_labels, chosen)
+                    s.history.append(discard_analysis_message)
                     if _ADAPTER is not None and _ENGINE is not None:
                         # Route discard transition through engine adapter.
+                        _sync_runtime_from_classic_session()
                         _ADAPTER.update_engine_from_globals()
-                        _ENGINE.handle_discard(selected_cards)
+                        _ENGINE.handle_discard(s.selected_cards)
                         _ADAPTER.update_globals_from_engine()
+                        _sync_classic_session_from_runtime()
                     else:
                         # Fallback legacy path
-                        for i in sorted(selected_cards, reverse=True):
-                            crib.append(player1_hand.pop(i))
+                        for i in sorted(s.selected_cards, reverse=True):
+                            s.crib.append(s.player_hand.pop(i))
                         dad_discards = _choose_dad_discards()
                         for i in sorted(dad_discards, reverse=True):
-                            crib.append(player2_hand.pop(i))
-                        player1_kept = player1_hand.copy()
-                        player2_kept = player2_hand.copy()
-                        starter_card = None
+                            s.crib.append(s.ai_hand.pop(i))
+                        s.player_kept = s.player_hand.copy()
+                        s.ai_kept = s.ai_hand.copy()
+                        s.starter_card = None
                         if _stock_labels:
-                            starter_card = _stock_labels.pop(0)
+                            s.starter_card = _stock_labels.pop(0)
                         _transition_phase("pegging")
-                        player_turn = 1 - dealer
-                        pegging_passes[0] = False
-                        pegging_passes[1] = False
-                        last_pegging_player = None
-                        message = "Pegging phase begins!"
+                        s.player_turn = 1 - s.dealer
+                        s.pegging_passes[0] = False
+                        s.pegging_passes[1] = False
+                        s.last_pegging_player = None
+                        s.message = "Pegging phase begins!"
 
-                    selected_cards = []
+                    s.selected_cards = []
+                    _sync_runtime_from_classic_session()
                 break
 
 
 def handle_pegging(event, auto_player=False):
-    global player_turn
+    _sync_classic_session_from_runtime()
+    s = _CLASSIC_SESSION
 
     if _finalize_pegging_if_complete():
         return
 
     current_total = get_pegging_total()
 
-    if player_turn == 0:  # Player Turn
+    if s.player_turn == 0:  # Player Turn
         player_can_move = any(
-            current_total + _value_for_15(_parse_label(c.label)[0]) <= 31 for c in player1_hand
+            current_total + _value_for_15(_parse_label(c.label)[0]) <= 31 for c in s.player_hand
         )
         if not player_can_move:
             _handle_go(0)
@@ -748,7 +844,7 @@ def handle_pegging(event, auto_player=False):
             _finalize_pegging_if_complete()
             return
         if event and event.type == pygame.MOUSEBUTTONDOWN:
-            for idx, card in enumerate(player1_hand):
+            for idx, card in enumerate(s.player_hand):
                 val = _value_for_15(_parse_label(card.label)[0])
                 if card.rect.collidepoint(event.pos) and current_total + val <= 31:
                     _play_pegging_card(0, idx)
@@ -756,7 +852,7 @@ def handle_pegging(event, auto_player=False):
                     break
     else:  # Dad Turn (AI)
         dad_can_move = any(
-            current_total + _value_for_15(_parse_label(c.label)[0]) <= 31 for c in player2_hand
+            current_total + _value_for_15(_parse_label(c.label)[0]) <= 31 for c in s.ai_hand
         )
         if not dad_can_move:
             _handle_go(1)
@@ -770,12 +866,16 @@ def handle_pegging(event, auto_player=False):
 
 
 def handle_counting():
-    global game_phase, message, player_scores, player1_kept, player2_kept, round_breakdown
+    global round_breakdown
+    _sync_classic_session_from_runtime()
+    s = _CLASSIC_SESSION
 
     if _ADAPTER is not None and _ENGINE is not None:
+        _sync_runtime_from_classic_session()
         _ADAPTER.update_engine_from_globals()
         results = _ENGINE.count_hands(_label_to_model_card)
         _ADAPTER.update_globals_from_engine()
+        _sync_classic_session_from_runtime()
         p1_points = results["player"]
         p2_points = results["ai"]
         crib_points = results["crib"]
@@ -786,15 +886,16 @@ def handle_counting():
             "crib": (crib_points, []),
         }
     else:
-        if starter_card is None:
-            message = "No starter card available. Press R to reset."
+        if s.starter_card is None:
+            s.message = "No starter card available. Press R to reset."
             _transition_phase("end")
+            _sync_runtime_from_classic_session()
             return
 
-        starter = _label_to_model_card(starter_card)
-        p1_hand_model = [_label_to_model_card(c.label) for c in player1_kept]
-        p2_hand_model = [_label_to_model_card(c.label) for c in player2_kept]
-        crib_model = [_label_to_model_card(c.label) for c in crib]
+        starter = _label_to_model_card(s.starter_card)
+        p1_hand_model = [_label_to_model_card(c.label) for c in s.player_kept]
+        p2_hand_model = [_label_to_model_card(c.label) for c in s.ai_kept]
+        crib_model = [_label_to_model_card(c.label) for c in s.crib]
 
         p1_total, p1_breakdown = cribbage_cards.score_hand(p1_hand_model, starter, is_crib=False)
         p2_total, p2_breakdown = cribbage_cards.score_hand(p2_hand_model, starter, is_crib=False)
@@ -813,32 +914,43 @@ def handle_counting():
             "crib": (crib_points, crib_breakdown),
         }
 
-        player_scores[0] += p1_points
-        player_scores[1] += p2_points
-        player_scores[dealer] += crib_points
+        s.scores[0] += p1_points
+        s.scores[1] += p2_points
+        s.scores[s.dealer] += crib_points
 
     if (p1_points + p2_points + crib_points) > 0 and _AUDIO is not None:
         _AUDIO.play("score")
 
     w = _check_for_winner()
     if w is None:
-        message = f"Counted: You +{p1_points}, Dad +{p2_points}, Crib +{crib_points} (dealer). Press R for next round."
+        analyzer_line = f" {discard_analysis_message}" if discard_analysis_message else ""
+        s.message = (
+            f"Counted: You +{p1_points}, Dad +{p2_points}, Crib +{crib_points} (dealer). "
+            f"Press R for next round.{analyzer_line}"
+        )
         _transition_phase("end")
     else:
         if _AUDIO is not None:
             _AUDIO.play("win")
         if w == -1:
-            message = f"Game Over at {MAX_SCORE}! It's a tie. Press R to return to the intro."
+            s.message = f"Game Over at {MAX_SCORE}! It's a tie. Press R to return to the intro."
         elif w == 0:
-            message = f"Game Over! {player_name} wins with {player_scores[0]} points. Press R to return to the intro."
+            s.message = (
+                f"Game Over! {player_name} wins with {s.scores[0]} points. "
+                "Press R to return to the intro."
+            )
         else:
-            message = f"Game Over! Dad wins with {player_scores[1]} points. Press R to return to the intro."
+            s.message = (
+                f"Game Over! Dad wins with {s.scores[1]} points. " "Press R to return to the intro."
+            )
         _transition_phase("game_over")
+
+    _sync_runtime_from_classic_session()
 
 
 # --- Main Entry ---
 def main():
-    global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, winner_index, dad_ai_level, last_pegging_player
+    global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, winner_index, dad_ai_level, last_pegging_player, discard_analysis_message
     global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE, _AUDIO, _SETTINGS
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--online-url", dest="online_url", default="http://127.0.0.1:8787")
@@ -994,10 +1106,11 @@ def main():
     def _start_fresh_game():
         global winner_index
         nonlocal card_images
-        global pegging_points, round_breakdown
+        global pegging_points, round_breakdown, discard_analysis_message
         # Fresh game from intro
         pegging_points[:] = [0, 0]
         round_breakdown = {"player": (0, []), "ai": (0, []), "crib": (0, [])}
+        discard_analysis_message = ""
         player_scores[:] = [0, 0]
         winner_index = None
         pegging_pile.clear()
@@ -1034,9 +1147,10 @@ def main():
         """Start the next hand while keeping the running score."""
         global last_pegging_player
         nonlocal card_images
-        global pegging_points, round_breakdown
+        global pegging_points, round_breakdown, discard_analysis_message
         pegging_points[:] = [0, 0]
         round_breakdown = {"player": (0, []), "ai": (0, []), "crib": (0, [])}
+        discard_analysis_message = ""
         pegging_pile.clear()
         crib.clear()
         selected_cards.clear()
@@ -1124,6 +1238,7 @@ def main():
         1: "Random play\nEasy wins",
         2: "Monte Carlo\nMixed strategy",
         3: "Risk simulation\nHard opponent",
+        4: "Deep simulation\nBrutal table",
     }
 
     def _launch_online_client() -> None:
@@ -1268,11 +1383,10 @@ def main():
 
     running = True
     while running:
-        _sync_classic_session_from_runtime()
         if _EFFECTS is not None and _SETTINGS.animations_enabled:
             _EFFECTS.update(clock.get_time())
 
-        if game_phase == "intro":
+        if _CLASSIC_SESSION.phase == "intro":
             sw, sh = screen.get_width(), screen.get_height()
             if intro_background is not None:
                 bg = pygame.transform.smoothscale(intro_background, (sw, sh))
@@ -1332,7 +1446,9 @@ def main():
             button_y = panel_rect.y + 58
             difficulty_buttons = {}
 
-            for i, (level, name) in enumerate([(1, "Easy"), (2, "Medium"), (3, "Hard")]):
+            for i, (level, name) in enumerate(
+                [(1, "Easy"), (2, "Medium"), (3, "Hard"), (4, "Brutal")]
+            ):
                 btn_x = start_x + i * (button_width + button_spacing)
                 btn_rect = pygame.Rect(btn_x, button_y, button_width, button_height)
                 difficulty_buttons[level] = btn_rect
@@ -1461,6 +1577,7 @@ def main():
                     pygame.K_1,
                     pygame.K_2,
                     pygame.K_3,
+                    pygame.K_4,
                 ):
                     if not settings_open:
                         dad_ai_level = int(event.unicode)
@@ -1543,14 +1660,14 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
-                dad_ai_level = 1 if dad_ai_level == 3 else dad_ai_level + 1
+                dad_ai_level = 1 if dad_ai_level == 4 else dad_ai_level + 1
                 message = f"Dad AI level set to {AI_LEVELS[dad_ai_level]}."
 
-            if game_phase == "discard":
+            if _CLASSIC_SESSION.phase == "discard":
                 handle_discard(event)
-            elif game_phase == "pegging" and event.type == pygame.MOUSEBUTTONDOWN:
+            elif _CLASSIC_SESSION.phase == "pegging" and event.type == pygame.MOUSEBUTTONDOWN:
                 handle_pegging(event)
-            elif game_phase == "end":
+            elif _CLASSIC_SESSION.phase == "end":
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                     d, sc, msg = _start_next_round()
                     dealer = d
@@ -1565,7 +1682,7 @@ def main():
                         starter_card = sc
                         message = msg
                         _transition_phase("discard")
-            elif game_phase == "game_over":
+            elif _CLASSIC_SESSION.phase == "game_over":
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                     # Return to intro; starting a new game resets scores.
                     _transition_phase("intro")
@@ -1576,32 +1693,37 @@ def main():
 
         # Let the game logic advance even when there are no input events.
         if not capture_gameplay_pending:
-            if capture_video_pending and game_phase == "discard":
+            if capture_video_pending and _CLASSIC_SESSION.phase == "discard":
                 _auto_discard_player_hand()
-            if game_phase == "pegging":
+            if _CLASSIC_SESSION.phase == "pegging":
                 handle_pegging(None, auto_player=capture_video_pending)
-            elif game_phase == "counting":
+            elif _CLASSIC_SESSION.phase == "counting":
                 handle_counting()
 
-        # Keep phase machine synchronized during transition period.
-        if _ADAPTER is not None and _PHASE_SM is not None:
-            _ADAPTER.update_engine_from_globals()
-            _PHASE_SM.update()
-            _ADAPTER.update_globals_from_engine()
-
-        _draw_game_header(screen, message)
-        _draw_score_panel(screen, dealer, player_scores, dad_ai_level, player_name)
-        _draw_crib_area(screen, len(crib), starter_card, card_images)
+        _draw_game_header(screen, _CLASSIC_SESSION.message)
+        _draw_score_panel(
+            screen,
+            _CLASSIC_SESSION.dealer,
+            _CLASSIC_SESSION.scores,
+            _CLASSIC_SESSION.dad_ai_level,
+            player_name,
+        )
+        _draw_crib_area(
+            screen,
+            len(_CLASSIC_SESSION.crib),
+            _CLASSIC_SESSION.starter_card,
+            card_images,
+        )
 
         # Update Card Positions for rendering
-        p1_pos = fixed_hand_positions(1, len(player1_hand), sw, sh)
+        p1_pos = fixed_hand_positions(1, len(_CLASSIC_SESSION.player_hand), sw, sh)
         mouse_pos = pygame.mouse.get_pos()
-        for i, card in enumerate(player1_hand):
+        for i, card in enumerate(_CLASSIC_SESSION.player_hand):
             card.rect.topleft = p1_pos[i]
             hovered = (
                 card.rect.collidepoint(mouse_pos)
-                and game_phase in ("discard", "pegging")
-                and player_turn == 0
+                and _CLASSIC_SESSION.phase in ("discard", "pegging")
+                and _CLASSIC_SESSION.player_turn == 0
             )
             draw_rect = card.rect.copy()
             if hovered:
@@ -1618,9 +1740,9 @@ def main():
             else:
                 card.draw(screen)
 
-        p2_pos = _row_positions(len(player2_hand), sw, 170, 86)
+        p2_pos = _row_positions(len(_CLASSIC_SESSION.ai_hand), sw, 170, 86)
         p2_size = (90, 135)
-        for i, card in enumerate(player2_hand):
+        for i, card in enumerate(_CLASSIC_SESSION.ai_hand):
             card.rect = pygame.Rect(p2_pos[i][0], p2_pos[i][1], p2_size[0], p2_size[1])
             shadow = pygame.Rect(
                 card.rect.x + 5, card.rect.y + 6, card.rect.width, card.rect.height
@@ -1630,7 +1752,7 @@ def main():
 
         pegging_card_size = (92, 138)
         pegging_y = 458
-        for i, card in enumerate(pegging_pile):
+        for i, card in enumerate(_CLASSIC_SESSION.pegging_pile):
             card.rect = pygame.Rect(
                 sw // 2 - 220 + i * 26, pegging_y, pegging_card_size[0], pegging_card_size[1]
             )
@@ -1657,7 +1779,7 @@ def main():
         )
 
         # Display scoring breakdown during end-of-hand phase
-        if game_phase == "end":
+        if _CLASSIC_SESSION.phase == "end":
             p1_pts, p1_breakdown = round_breakdown["player"]
             p2_pts, p2_breakdown = round_breakdown["ai"]
             crib_pts, crib_breakdown = round_breakdown["crib"]
@@ -1677,7 +1799,7 @@ def main():
 
                 crib_font = pygame.font.SysFont("arial", 16, bold=True)
                 item_font = pygame.font.SysFont("arial", 13)
-                crib_label = "Crib" if dealer == 1 else "Opponent's Crib"
+                crib_label = "Crib" if _CLASSIC_SESSION.dealer == 1 else "Opponent's Crib"
                 _draw_label(
                     screen,
                     crib_label,
@@ -1699,7 +1821,7 @@ def main():
                 screen.blit(total_surf, (crib_rect.x + 12, y + 8))
 
         # End-of-hand / game-over clickable button (in addition to the R key).
-        if game_phase in ("end", "game_over"):
+        if _CLASSIC_SESSION.phase in ("end", "game_over"):
             sw, sh = screen.get_width(), screen.get_height()
             btn = _primary_button_rect(sw, sh)
             btn_surface = pygame.Surface(btn.size, pygame.SRCALPHA)
@@ -1707,7 +1829,7 @@ def main():
             screen.blit(btn_surface, btn.topleft)
             pygame.draw.rect(screen, THEME["panel"], btn, 2, border_radius=18)
 
-            btn_text = "Next Round" if game_phase == "end" else "Back to Intro"
+            btn_text = "Next Round" if _CLASSIC_SESSION.phase == "end" else "Back to Intro"
             btn_font = pygame.font.SysFont("arial", 28, bold=True)
             btn_shadow = btn_font.render(btn_text, True, (0, 0, 0))
             btn_label = btn_font.render(btn_text, True, THEME["panel"])
@@ -1726,7 +1848,7 @@ def main():
                 pygame.quit()
                 return
 
-        if capture_discard_pending and game_phase == "discard":
+        if capture_discard_pending and _CLASSIC_SESSION.phase == "discard":
             capture_path = Path(args.capture_discard)
             capture_path.parent.mkdir(parents=True, exist_ok=True)
             pygame.image.save(screen, str(capture_path))
@@ -1739,7 +1861,7 @@ def main():
         if capture_video_pending:
             _save_video_frame()
 
-            if game_phase in ("end", "game_over"):
+            if _CLASSIC_SESSION.phase in ("end", "game_over"):
                 capture_end_frames += 1
             else:
                 capture_end_frames = 0
