@@ -18,10 +18,12 @@ from collections import Counter
 
 import cards as cribbage_cards
 import ai_strategy
+from audio_manager import AudioManager
 from engine import CribbageEngine
 from adapter import EngineAdapter
 from phase_states import PhaseStateMachine
 from animations import EffectsManager
+from settings_manager import GameSettings, load_settings, save_settings
 
 # --- Constants ---
 CARD_WIDTH = 120
@@ -97,6 +99,8 @@ _PHASE_SM = None
 _EFFECTS = None
 _LAST_SCREEN_SIZE = (1280, 900)
 _MAINE_BACK_SURFACE = None
+_AUDIO = None
+_SETTINGS = GameSettings()
 
 
 def _check_for_winner():
@@ -631,7 +635,10 @@ def _play_pegging_card(player_idx, idx):
     else:
         card = player2_hand.pop(idx)
 
-    if _EFFECTS is not None:
+    if _AUDIO is not None:
+        _AUDIO.play("card")
+
+    if _EFFECTS is not None and _SETTINGS.animations_enabled:
         start = card.rect.center
         end = _pegging_target_center(len(pegging_pile))
         _EFFECTS.add_card_flight(card.image, start, end)
@@ -644,13 +651,15 @@ def _play_pegging_card(player_idx, idx):
     player_scores[player_idx] += points
     pegging_points[player_idx] += points
     _queue_score_popup(player_idx, points)
+    if points > 0 and _AUDIO is not None:
+        _AUDIO.play("score")
 
     name = player_name if player_idx == 0 else 'Dad'
     point_note = f" (+{points})" if points else ""
 
     if get_pegging_total() == 31:
         message = f"{name} played 31{point_note}. New count."
-        if _EFFECTS is not None:
+        if _EFFECTS is not None and _SETTINGS.animations_enabled:
             _EFFECTS.trigger_shake(intensity=7, duration_ms=220)
         pegging_pile.clear()
         player_turn = 1 - player_idx
@@ -668,6 +677,8 @@ def handle_discard(event):
         for idx, card in enumerate(player1_hand):
             if card.rect.collidepoint(event.pos) and idx not in selected_cards:
                 selected_cards.append(idx)
+                if _AUDIO is not None:
+                    _AUDIO.play("card")
                 if len(selected_cards) == 2:
                     if _ADAPTER is not None and _ENGINE is not None:
                         # Route discard transition through engine adapter.
@@ -776,11 +787,16 @@ def handle_counting():
         player_scores[1] += p2_points
         player_scores[dealer] += crib_points
 
+    if (p1_points + p2_points + crib_points) > 0 and _AUDIO is not None:
+        _AUDIO.play("score")
+
     w = _check_for_winner()
     if w is None:
         message = f"Counted: You +{p1_points}, Dad +{p2_points}, Crib +{crib_points} (dealer). Press R for next round."
         game_phase = 'end'
     else:
+        if _AUDIO is not None:
+            _AUDIO.play("win")
         if w == -1:
             message = f"Game Over at {MAX_SCORE}! It's a tie. Press R to return to the intro."
         elif w == 0:
@@ -792,8 +808,13 @@ def handle_counting():
 # --- Main Entry ---
 def main():
     global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, winner_index, dad_ai_level, last_pegging_player
-    global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE
+    global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE, _AUDIO, _SETTINGS
     parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--online-url', dest='online_url', default='http://127.0.0.1:8787')
+    parser.add_argument('--online-ws-url', dest='online_ws_url', default='ws://127.0.0.1:8790')
+    parser.add_argument('--volume', dest='volume', type=float, default=None)
+    parser.add_argument('--animations', dest='animations', choices=['on', 'off'], default=None)
+    parser.add_argument('--online-ai-level', dest='online_ai_level', type=int, default=None)
     parser.add_argument('--capture-title', dest='capture_title', default=None)
     parser.add_argument('--capture-discard', dest='capture_discard', default=None)
     parser.add_argument('--capture-gameplay', dest='capture_gameplay', default=None)
@@ -808,6 +829,16 @@ def main():
     capture_discard_pending = bool(args.capture_discard)
     capture_gameplay_pending = bool(args.capture_gameplay)
     capture_video_pending = bool(args.capture_video)
+
+    _SETTINGS = load_settings()
+    if args.volume is not None:
+        _SETTINGS.volume = args.volume
+    if args.animations is not None:
+        _SETTINGS.animations_enabled = args.animations == 'on'
+    if args.online_ai_level is not None:
+        _SETTINGS.online_ai_level = args.online_ai_level
+    _SETTINGS.clamp()
+    save_settings(_SETTINGS)
 
     capture_video_path = Path(args.capture_video).resolve() if capture_video_pending else None
     capture_video_frames_dir = None
@@ -873,6 +904,7 @@ def main():
     screen = pygame.display.set_mode((1280, 900), pygame.RESIZABLE)
     pygame.display.set_caption("Upta - The Camp Cribbage Game")
     clock = pygame.time.Clock()
+    _AUDIO = AudioManager(volume=_SETTINGS.volume)
 
     _ENGINE = CribbageEngine()
     _ADAPTER = EngineAdapter(_ENGINE, sys.modules[__name__])
@@ -1026,11 +1058,96 @@ def main():
 
     # Intro screen difficulty buttons and state
     difficulty_buttons = {}
+    online_btn_rect = None
+    settings_btn_rect = None
+    settings_open = False
+    settings_volume_rect = None
+    settings_anim_rect = None
+    settings_ai_left_rect = None
+    settings_ai_right_rect = None
     difficulty_descriptions = {
         1: "Random play\nEasy wins",
         2: "Monte Carlo\nMixed strategy",
         3: "Risk simulation\nHard opponent"
     }
+
+    def _launch_online_client() -> None:
+        pygame.quit()
+        cmd = [
+            sys.executable,
+            str((_ROOT_DIR / 'main.py').resolve()),
+            '--new-client',
+            '--online-url',
+            args.online_url,
+            '--online-ws-url',
+            args.online_ws_url,
+            '--volume',
+            str(_SETTINGS.volume),
+            '--animations',
+            'on' if _SETTINGS.animations_enabled else 'off',
+            '--online-ai-level',
+            str(_SETTINGS.online_ai_level),
+        ]
+        subprocess.Popen(cmd, cwd=str(_ROOT_DIR))
+
+    def _persist_settings() -> None:
+        save_settings(_SETTINGS)
+        if _AUDIO is not None:
+            _AUDIO.set_volume(_SETTINGS.volume)
+
+    def _cycle_online_ai(delta: int) -> None:
+        levels = [1, 2, 3]
+        current_idx = levels.index(_SETTINGS.online_ai_level)
+        _SETTINGS.online_ai_level = levels[(current_idx + delta) % len(levels)]
+        _persist_settings()
+
+    def _draw_settings_modal(sw: int, sh: int) -> None:
+        nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
+        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        screen.blit(overlay, (0, 0))
+
+        modal = pygame.Rect(sw // 2 - 240, sh // 2 - 150, 480, 300)
+        pygame.draw.rect(screen, (32, 28, 24), modal, border_radius=20)
+        pygame.draw.rect(screen, (230, 205, 154), modal, width=2, border_radius=20)
+
+        title_font = pygame.font.SysFont('arial', 30, bold=True)
+        body_font = pygame.font.SysFont('arial', 22)
+        small_font = pygame.font.SysFont('arial', 16)
+        title = title_font.render('Settings', True, (245, 235, 220))
+        screen.blit(title, (modal.centerx - title.get_width() // 2, modal.y + 16))
+
+        vol_label = body_font.render(f'Volume: {int(_SETTINGS.volume * 100)}%', True, (240, 234, 220))
+        screen.blit(vol_label, (modal.x + 28, modal.y + 78))
+        settings_volume_rect = pygame.Rect(modal.x + 28, modal.y + 112, 420, 18)
+        pygame.draw.rect(screen, (82, 70, 58), settings_volume_rect, border_radius=9)
+        fill = settings_volume_rect.copy()
+        fill.width = max(8, int(settings_volume_rect.width * _SETTINGS.volume))
+        pygame.draw.rect(screen, (214, 176, 91), fill, border_radius=9)
+
+        anim_text = 'On' if _SETTINGS.animations_enabled else 'Off'
+        settings_anim_rect = pygame.Rect(modal.x + 28, modal.y + 160, 150, 42)
+        anim_label = body_font.render(f'Animations: {anim_text}', True, (240, 234, 220))
+        screen.blit(anim_label, (modal.x + 28, modal.y + 136))
+        pygame.draw.rect(screen, (70, 98, 72) if _SETTINGS.animations_enabled else (110, 70, 70), settings_anim_rect, border_radius=12)
+        toggle_text = body_font.render('Toggle', True, (255, 255, 255))
+        screen.blit(toggle_text, (settings_anim_rect.centerx - toggle_text.get_width() // 2, settings_anim_rect.centery - toggle_text.get_height() // 2))
+
+        ai_label = body_font.render(f'Online AI Pref: {AI_LEVELS[_SETTINGS.online_ai_level]}', True, (240, 234, 220))
+        screen.blit(ai_label, (modal.x + 230, modal.y + 136))
+        settings_ai_left_rect = pygame.Rect(modal.x + 230, modal.y + 160, 42, 42)
+        settings_ai_right_rect = pygame.Rect(modal.x + 340, modal.y + 160, 42, 42)
+        mid_rect = pygame.Rect(modal.x + 282, modal.y + 160, 48, 42)
+        for rect, label in ((settings_ai_left_rect, '<'), (settings_ai_right_rect, '>')):
+            pygame.draw.rect(screen, (84, 145, 225), rect, border_radius=10)
+            txt = body_font.render(label, True, (255, 255, 255))
+            screen.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+        ai_mid = body_font.render(str(_SETTINGS.online_ai_level), True, (255, 255, 255))
+        pygame.draw.rect(screen, (60, 60, 60), mid_rect, border_radius=10)
+        screen.blit(ai_mid, (mid_rect.centerx - ai_mid.get_width() // 2, mid_rect.centery - ai_mid.get_height() // 2))
+
+        hint = small_font.render('S or click outside to close. Volume bar is clickable.', True, (210, 198, 176))
+        screen.blit(hint, (modal.centerx - hint.get_width() // 2, modal.bottom - 28))
 
     if capture_gameplay_pending:
         _prepare_gameplay_preview_state()
@@ -1071,7 +1188,7 @@ def main():
 
     running = True
     while running:
-        if _EFFECTS is not None:
+        if _EFFECTS is not None and _SETTINGS.animations_enabled:
             _EFFECTS.update(clock.get_time())
 
         if game_phase == 'intro':
@@ -1156,7 +1273,7 @@ def main():
                     screen.blit(desc, (btn_x + button_width // 2 - desc.get_width() // 2, button_y + 44 + j * 16))
 
             start_button_width, start_button_height = 214, 58
-            start_btn_rect = pygame.Rect(sw // 2 - start_button_width // 2, panel_rect.bottom - 74, start_button_width, start_button_height)
+            start_btn_rect = pygame.Rect(sw // 2 - start_button_width - 10, panel_rect.bottom - 74, start_button_width, start_button_height)
             pygame.draw.rect(screen, (120, 77, 39), start_btn_rect, width=0, border_radius=18)
             pygame.draw.rect(screen, (240, 204, 114), start_btn_rect, width=2, border_radius=18)
 
@@ -1166,11 +1283,30 @@ def main():
                 start_btn_rect.centery - start_text.get_height() // 2
             ))
 
+            online_btn_rect = pygame.Rect(sw // 2 + 10, panel_rect.bottom - 74, start_button_width, start_button_height)
+            pygame.draw.rect(screen, (48, 86, 122), online_btn_rect, width=0, border_radius=18)
+            pygame.draw.rect(screen, (160, 212, 245), online_btn_rect, width=2, border_radius=18)
+
+            online_text = start_font.render('ONLINE MODE', True, (255, 255, 255))
+            screen.blit(online_text, (
+                online_btn_rect.centerx - online_text.get_width() // 2,
+                online_btn_rect.centery - online_text.get_height() // 2
+            ))
+
+            settings_btn_rect = pygame.Rect(panel_rect.right - 126, panel_rect.y + 16, 104, 36)
+            pygame.draw.rect(screen, (64, 64, 64), settings_btn_rect, border_radius=12)
+            pygame.draw.rect(screen, (190, 190, 190), settings_btn_rect, width=2, border_radius=12)
+            settings_text = subtitle_font.render('SETTINGS', True, (245, 245, 245))
+            screen.blit(settings_text, (settings_btn_rect.centerx - settings_text.get_width() // 2, settings_btn_rect.centery - settings_text.get_height() // 2))
+
             instructions_font = pygame.font.SysFont('arial', 16)
             inst1 = instructions_font.render('Press 1/2/3 or click a button', True, (210, 198, 176))
-            inst2 = instructions_font.render('Press Enter or click START GAME', True, (210, 198, 176))
+            inst2 = instructions_font.render('Press Enter for classic, O for online, S for settings', True, (210, 198, 176))
             screen.blit(inst1, (sw // 2 - inst1.get_width() // 2, panel_rect.bottom + 12))
             screen.blit(inst2, (sw // 2 - inst2.get_width() // 2, panel_rect.bottom + 32))
+
+            if settings_open:
+                _draw_settings_modal(sw, sh)
 
             if capture_title_pending:
                 capture_path = Path(args.capture_title)
@@ -1207,16 +1343,42 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+                    settings_open = not settings_open
                 elif event.type == pygame.KEYDOWN and event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
-                    dad_ai_level = int(event.unicode)
+                    if not settings_open:
+                        dad_ai_level = int(event.unicode)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_o:
+                    if not settings_open:
+                        _launch_online_client()
+                        return
                 elif event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    # Start a brand-new game
-                    d, sc, msg = _start_fresh_game()
-                    dealer = d
-                    starter_card = sc
-                    message = msg
-                    game_phase = 'discard'
+                    if not settings_open:
+                        # Start a brand-new game
+                        d, sc, msg = _start_fresh_game()
+                        dealer = d
+                        starter_card = sc
+                        message = msg
+                        game_phase = 'discard'
                 elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if settings_open:
+                        if settings_volume_rect is not None and settings_volume_rect.collidepoint(event.pos):
+                            ratio = (event.pos[0] - settings_volume_rect.x) / max(1, settings_volume_rect.width)
+                            _SETTINGS.volume = max(0.0, min(1.0, ratio))
+                            _persist_settings()
+                            if _AUDIO is not None:
+                                _AUDIO.play("score")
+                        elif settings_anim_rect is not None and settings_anim_rect.collidepoint(event.pos):
+                            _SETTINGS.animations_enabled = not _SETTINGS.animations_enabled
+                            _persist_settings()
+                        elif settings_ai_left_rect is not None and settings_ai_left_rect.collidepoint(event.pos):
+                            _cycle_online_ai(-1)
+                        elif settings_ai_right_rect is not None and settings_ai_right_rect.collidepoint(event.pos):
+                            _cycle_online_ai(1)
+                        else:
+                            settings_open = False
+                        continue
+
                     # Check if difficulty button clicked
                     for level, btn_rect in difficulty_buttons.items():
                         if btn_rect.collidepoint(mouse_pos):
@@ -1229,6 +1391,11 @@ def main():
                         starter_card = sc
                         message = msg
                         game_phase = 'discard'
+                    elif online_btn_rect is not None and online_btn_rect.collidepoint(mouse_pos):
+                        _launch_online_client()
+                        return
+                    elif settings_btn_rect is not None and settings_btn_rect.collidepoint(mouse_pos):
+                        settings_open = True
             continue
 
         sw, sh = screen.get_width(), screen.get_height()
@@ -1328,7 +1495,7 @@ def main():
             pygame.draw.rect(screen, (0, 0, 0, 75), shadow, border_radius=12)
             _draw_scaled_card(screen, card.image, card.rect, pegging_card_size)
 
-        if _EFFECTS is not None:
+        if _EFFECTS is not None and _SETTINGS.animations_enabled:
             _EFFECTS.draw(screen)
             shake_x, shake_y = _EFFECTS.shake_offset()
             if shake_x or shake_y:

@@ -6,14 +6,9 @@ from cribbage_engine import CribbageEngine
 from asset_manager import AssetManager
 from states.intro import IntroState
 
-def main():
+def _run_state_client(args):
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s [%(name)s] %(message)s')
     logger = logging.getLogger(__name__)
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--debug-play', action='store_true')
-    parser.add_argument('--online-url', default='http://127.0.0.1:8787')
-    parser.add_argument('--online-ws-url', default='ws://127.0.0.1:8790')
-    args, _ = parser.parse_known_args()
 
     pygame.init()
     screen = pygame.display.set_mode((1200, 800))
@@ -21,7 +16,13 @@ def main():
 
     assets = AssetManager()
     engine = CribbageEngine()
-    app = AppContext(server_url=args.online_url, ws_url=args.online_ws_url)
+    app = AppContext(
+        server_url=args.online_url,
+        ws_url=args.online_ws_url,
+        volume=args.volume,
+        animations_enabled=(args.animations != 'off'),
+        preferred_online_ai_level=args.online_ai_level,
+    )
 
     # Start in IntroState (state machine pattern)
     current_state = IntroState()
@@ -60,6 +61,31 @@ def main():
 
         pygame.display.flip()
         clock.tick(60)
+
+
+def main():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--debug-play', action='store_true')
+    parser.add_argument('--online-url', default='http://127.0.0.1:8787')
+    parser.add_argument('--online-ws-url', default='ws://127.0.0.1:8790')
+    parser.add_argument('--volume', type=float, default=0.6)
+    parser.add_argument('--animations', choices=['on', 'off'], default='on')
+    parser.add_argument('--online-ai-level', type=int, default=2)
+    parser.add_argument(
+        '--new-client',
+        action='store_true',
+        help='Run the new state-machine client (includes online UI). Default is classic gameplay client.',
+    )
+    args, _ = parser.parse_known_args()
+
+    # Default path: classic gameplay renderer/loop that matches screenshot-era visuals and mechanics.
+    if not args.new_client:
+        import cribbage_pygame as classic_client
+
+        return classic_client.main()
+
+    return _run_state_client(args)
+
 
 if __name__ == "__main__":
     main()

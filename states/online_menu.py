@@ -24,6 +24,10 @@ class OnlineMenuState(GameStateBase):
                 return self._join_room(app)
             elif event.key == pygame.K_3:
                 return self._quick_match(app)
+            elif event.key == pygame.K_LEFT:
+                app.preferred_online_ai_level = 3 if app.preferred_online_ai_level == 1 else app.preferred_online_ai_level - 1
+            elif event.key == pygame.K_RIGHT:
+                app.preferred_online_ai_level = 1 if app.preferred_online_ai_level == 3 else app.preferred_online_ai_level + 1
             else:
                 if event.unicode and event.unicode.isalnum() and len(self.join_code) < 12:
                     self.join_code += event.unicode.upper()
@@ -84,6 +88,7 @@ class OnlineMenuState(GameStateBase):
             "1) Create Room",
             "2) Join Room (type code below)",
             "3) Quick Match (queue + pair)",
+            f"Left/Right) Online AI pref: {app.preferred_online_ai_level}",
             "Esc) Back",
         ]
         y = 200

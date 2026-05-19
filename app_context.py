@@ -11,6 +11,9 @@ class AppContext:
     online_enabled: bool = False
     server_url: str = "http://127.0.0.1:8787"
     ws_url: str = "ws://127.0.0.1:8790"
+    volume: float = 0.6
+    animations_enabled: bool = True
+    preferred_online_ai_level: int = 2
     player_id: Optional[str] = None
     display_name: Optional[str] = None
     session_token: Optional[str] = None

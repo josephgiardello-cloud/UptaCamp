@@ -135,6 +135,10 @@ Hand totals and crib scoring are displayed before moving to the next round.
    python main.py
    ```
 
+By default, `main.py` launches the classic gameplay client (full visuals/mechanics used in screenshots).
+Use `--new-client` to run the newer state-machine client with built-in online menu screens.
+From the classic title screen you can also press `O` or click `ONLINE MODE` to jump into the online client.
+
 ## How to Play
 
 ### Starting a Game
@@ -202,8 +206,8 @@ First player to reach **121 points** wins!
 ### Project Structure
 ```
 UptaCamp/
-├── main.py                   # Main game (state-machine client)
-├── cribbage_pygame.py        # Legacy compatibility module (tests/migration)
+├── main.py                   # Main launcher (defaults to classic gameplay client)
+├── cribbage_pygame.py        # Classic gameplay client (rich visuals/mechanics)
 ├── cards.py                  # Scoring engine
 ├── convert_card_assets.py    # Asset utilities
 ├── assets/
@@ -304,7 +308,13 @@ curl -X POST http://127.0.0.1:8787/matches/<match_id>/turns \
    -d '{"player_id":"p1","action_type":"deal_ready","payload":{"ready":true},"idempotency_key":"req-123","signature":"<HMAC_SHA256_SIGNATURE>"}'
 ```
 
-The Pygame online client flow is available in [main.py](main.py):
+The Pygame online client flow is available via:
+
+```bash
+python main.py --new-client --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
+```
+
+State-machine online client flow:
 - Intro -> Online Match
 - Login
 - Create Room / Join Room / Quick Match

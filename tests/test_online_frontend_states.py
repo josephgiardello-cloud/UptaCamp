@@ -45,6 +45,9 @@ class _FakeApp:
     def __init__(self):
         self.client = _FakeClient()
         self.online_enabled = False
+        self.volume = 0.6
+        self.animations_enabled = True
+        self.preferred_online_ai_level = 2
         self.player_id = None
         self.display_name = None
         self.session_token = None
@@ -103,3 +106,20 @@ def test_online_menu_quick_match_transitions_to_match():
 
     assert app.current_match_id == "match_quick"
     assert isinstance(next_state, OnlineMatchState)
+
+
+def test_online_menu_adjusts_preferred_online_ai_level():
+    app = _FakeApp()
+    app.player_id = "p_test"
+    app.session_token = "tok"
+    app.display_name = "Ali"
+
+    state = OnlineMenuState()
+    state.handle_event(_key_event(pygame.K_RIGHT), None, None, app)
+    assert app.preferred_online_ai_level == 3
+
+    state.handle_event(_key_event(pygame.K_RIGHT), None, None, app)
+    assert app.preferred_online_ai_level == 1
+
+    state.handle_event(_key_event(pygame.K_LEFT), None, None, app)
+    assert app.preferred_online_ai_level == 3
