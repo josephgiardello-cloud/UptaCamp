@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import logging
 import secrets
 import sqlite3
 import threading
@@ -9,6 +12,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _utc_now_iso() -> str:
@@ -44,12 +50,27 @@ class MatchSummary:
     turns_played: int
 
 
+@dataclass(frozen=True)
+class LoginResult:
+    player_id: str
+    display_name: str
+    session_token: str
+
+
 class OnlineBackend:
     """Concrete online/async backend for matchmaking, rooms, turns, and ratings.
 
     This module intentionally avoids framework abstractions so it can be embedded in
     pygame, a CLI service, or an HTTP layer later without changing core behavior.
     """
+
+    PHASES = ["deal", "discard", "pegging", "counting", "finished"]
+    PHASE_TURN_TARGET = {
+        "deal": 2,
+        "discard": 2,
+        "pegging": 8,
+        "counting": 2,
+    }
 
     def __init__(self, db_path: str | Path = "online_state.db"):
         self.db_path = str(db_path)
@@ -79,6 +100,7 @@ class OnlineBackend:
                 CREATE TABLE IF NOT EXISTS players (
                     player_id TEXT PRIMARY KEY,
                     display_name TEXT NOT NULL,
+                    session_token_hash TEXT,
                     rating INTEGER NOT NULL DEFAULT 1200,
                     games_played INTEGER NOT NULL DEFAULT 0,
                     wins INTEGER NOT NULL DEFAULT 0,
@@ -124,6 +146,7 @@ class OnlineBackend:
                     turn_index INTEGER NOT NULL,
                     action_type TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
+                    signature TEXT,
                     idempotency_key TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     UNIQUE(match_id, idempotency_key),
@@ -155,21 +178,98 @@ class OnlineBackend:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(match_id) REFERENCES matches(match_id)
                 );
+
+                CREATE INDEX IF NOT EXISTS idx_matches_player_one ON matches(player_one_id);
+                CREATE INDEX IF NOT EXISTS idx_matches_player_two ON matches(player_two_id);
+                CREATE INDEX IF NOT EXISTS idx_turns_match_id ON turns(match_id);
+                CREATE INDEX IF NOT EXISTS idx_queue_status_time ON matchmaking_queue(status, enqueued_at);
+                CREATE INDEX IF NOT EXISTS idx_telemetry_match ON bot_telemetry(match_id);
                 """
             )
+
+            cols = {
+                row["name"]: row["type"]
+                for row in conn.execute("PRAGMA table_info(players)").fetchall()
+            }
+            if "session_token_hash" not in cols:
+                conn.execute("ALTER TABLE players ADD COLUMN session_token_hash TEXT")
+
+            turn_cols = {
+                row["name"]: row["type"]
+                for row in conn.execute("PRAGMA table_info(turns)").fetchall()
+            }
+            if "signature" not in turn_cols:
+                conn.execute("ALTER TABLE turns ADD COLUMN signature TEXT")
+
+    @staticmethod
+    def _hash_token(session_token: str) -> str:
+        return hashlib.sha256(session_token.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def build_turn_signature(
+        session_token: str,
+        match_id: str,
+        player_id: str,
+        turn_number: int,
+        action_type: str,
+        payload: dict[str, Any],
+    ) -> str:
+        payload_blob = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        msg = f"{match_id}|{player_id}|{turn_number}|{action_type}|{payload_blob}".encode("utf-8")
+        return hmac.new(session_token.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+    def login_player(self, display_name: str, player_id: Optional[str] = None) -> LoginResult:
+        display_name = display_name.strip()
+        if not display_name:
+            raise ValueError("Display name cannot be blank")
+
+        now = _utc_now_iso()
+        resolved_player_id = player_id or _new_id("player")
+        session_token = secrets.token_urlsafe(32)
+        token_hash = self._hash_token(session_token)
+
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO players (player_id, display_name, session_token_hash, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(player_id) DO UPDATE SET
+                    display_name=excluded.display_name,
+                    session_token_hash=excluded.session_token_hash,
+                    updated_at=excluded.updated_at
+                """,
+                (resolved_player_id, display_name, token_hash, now, now),
+            )
+
+        LOGGER.info("login: player_id=%s display_name=%s", resolved_player_id, display_name)
+        return LoginResult(
+            player_id=resolved_player_id,
+            display_name=display_name,
+            session_token=session_token,
+        )
+
+    def verify_session_token(self, player_id: str, session_token: str) -> bool:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT session_token_hash FROM players WHERE player_id = ?",
+                (player_id,),
+            ).fetchone()
+            if row is None or not row["session_token_hash"]:
+                return False
+            return hmac.compare_digest(str(row["session_token_hash"]), self._hash_token(session_token))
 
     def upsert_player(self, player_id: str, display_name: str) -> None:
         now = _utc_now_iso()
         with self._connection() as conn:
             conn.execute(
                 """
-                INSERT INTO players (player_id, display_name, created_at, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO players (player_id, display_name, created_at, updated_at, session_token_hash)
+                VALUES (?, ?, ?, ?, COALESCE((SELECT session_token_hash FROM players WHERE player_id = ?), NULL))
                 ON CONFLICT(player_id) DO UPDATE SET
                     display_name=excluded.display_name,
                     updated_at=excluded.updated_at
                 """,
-                (player_id, display_name, now, now),
+                (player_id, display_name, now, now, player_id),
             )
 
     def create_invite(self, host_player_id: str) -> str:
@@ -271,7 +371,9 @@ class OnlineBackend:
         match_id = _new_id("match")
         now = _utc_now_iso()
         initial_state = {
-            "phase": "intro",
+            "phase": "deal",
+            "phase_index": 0,
+            "phase_progress": 0,
             "scores": [0, 0],
             "dealer": 0,
             "last_action": None,
@@ -297,23 +399,27 @@ class OnlineBackend:
         )
         return match_id
 
+    def _get_match_row(self, conn: sqlite3.Connection, match_id: str) -> sqlite3.Row:
+        row = conn.execute(
+            """
+            SELECT m.*, COALESCE(t.turn_count, 0) AS turn_count
+            FROM matches m
+            LEFT JOIN (
+                SELECT match_id, COUNT(*) AS turn_count
+                FROM turns
+                GROUP BY match_id
+            ) t ON t.match_id = m.match_id
+            WHERE m.match_id = ?
+            """,
+            (match_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Match does not exist")
+        return row
+
     def get_match(self, match_id: str) -> MatchSummary:
         with self._connection() as conn:
-            row = conn.execute(
-                """
-                SELECT m.*, COALESCE(t.turn_count, 0) AS turn_count
-                FROM matches m
-                LEFT JOIN (
-                    SELECT match_id, COUNT(*) AS turn_count
-                    FROM turns
-                    GROUP BY match_id
-                ) t ON t.match_id = m.match_id
-                WHERE m.match_id = ?
-                """,
-                (match_id,),
-            ).fetchone()
-            if row is None:
-                raise ValueError("Match does not exist")
+            row = self._get_match_row(conn, match_id)
             return MatchSummary(
                 match_id=row["match_id"],
                 mode=row["mode"],
@@ -326,6 +432,122 @@ class OnlineBackend:
                 turns_played=int(row["turn_count"]),
             )
 
+    def get_match_details(self, match_id: str) -> dict[str, Any]:
+        with self._connection() as conn:
+            row = self._get_match_row(conn, match_id)
+            state = json.loads(row["game_state_json"])
+            return {
+                "summary": {
+                    "match_id": row["match_id"],
+                    "mode": row["mode"],
+                    "state": row["state"],
+                    "player_one_id": row["player_one_id"],
+                    "player_two_id": row["player_two_id"],
+                    "active_player_id": row["active_player_id"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                    "turns_played": int(row["turn_count"]),
+                },
+                "game_state": state,
+            }
+
+    @staticmethod
+    def _validate_action(phase: str, action_type: str, payload: dict[str, Any]) -> None:
+        if phase == "deal":
+            if action_type != "deal_ready":
+                raise ValueError("Only deal_ready is valid during deal phase")
+            return
+        if phase == "discard":
+            cards = payload.get("cards")
+            if action_type != "discard" or not isinstance(cards, list) or len(cards) != 2:
+                raise ValueError("Discard phase requires discard action with exactly 2 cards")
+            return
+        if phase == "pegging":
+            if action_type != "peg":
+                raise ValueError("Pegging phase requires peg action")
+            if not isinstance(payload.get("card"), str):
+                raise ValueError("Peg action requires card label")
+            running_total = payload.get("running_total")
+            if not isinstance(running_total, int) or running_total < 0 or running_total > 31:
+                raise ValueError("Peg action requires running_total between 0 and 31")
+            return
+        if phase == "counting":
+            points = payload.get("points")
+            if action_type != "count" or not isinstance(points, int) or points < 0 or points > 29:
+                raise ValueError("Counting phase requires count action with points 0..29")
+            return
+        raise ValueError("No actions accepted for current phase")
+
+    def _finish_match_locked(
+        self,
+        conn: sqlite3.Connection,
+        match_row: sqlite3.Row,
+        winner_player_id: Optional[str],
+    ) -> None:
+        match_id = str(match_row["match_id"])
+        if match_row["state"] != "active":
+            raise ValueError("Match already finalized")
+
+        now = _utc_now_iso()
+        conn.execute(
+            """
+            UPDATE matches
+            SET state='finished', winner_player_id=?, finished_at=?, updated_at=?
+            WHERE match_id=?
+            """,
+            (winner_player_id, now, now, match_id),
+        )
+
+        p1 = conn.execute("SELECT * FROM players WHERE player_id = ?", (match_row["player_one_id"],)).fetchone()
+        p2 = conn.execute("SELECT * FROM players WHERE player_id = ?", (match_row["player_two_id"],)).fetchone()
+        if p1 is None or p2 is None:
+            raise ValueError("Players missing for ratings update")
+
+        if winner_player_id is None:
+            score_a = 0.5
+        elif winner_player_id == p1["player_id"]:
+            score_a = 1.0
+        elif winner_player_id == p2["player_id"]:
+            score_a = 0.0
+        else:
+            raise ValueError("Winner must be player one, player two, or None for draw")
+
+        new_a, new_b = _elo_update(int(p1["rating"]), int(p2["rating"]), score_a)
+
+        def _record(player_row: sqlite3.Row, new_rating: int, result: str) -> None:
+            conn.execute(
+                """
+                UPDATE players
+                SET rating=?,
+                    games_played=games_played+1,
+                    wins=wins+?,
+                    losses=losses+?,
+                    draws=draws+?,
+                    updated_at=?
+                WHERE player_id=?
+                """,
+                (
+                    new_rating,
+                    1 if result == "win" else 0,
+                    1 if result == "loss" else 0,
+                    1 if result == "draw" else 0,
+                    now,
+                    player_row["player_id"],
+                ),
+            )
+
+        if score_a == 1.0:
+            _record(p1, new_a, "win")
+            _record(p2, new_b, "loss")
+        elif score_a == 0.0:
+            _record(p1, new_a, "loss")
+            _record(p2, new_b, "win")
+        else:
+            _record(p1, new_a, "draw")
+            _record(p2, new_b, "draw")
+
+        LOGGER.info("finish_match: match_id=%s winner=%s", match_id, winner_player_id)
+
     def submit_turn(
         self,
         match_id: str,
@@ -333,6 +555,8 @@ class OnlineBackend:
         action_type: str,
         payload: dict[str, Any],
         idempotency_key: str,
+        signature: Optional[str] = None,
+        session_token: Optional[str] = None,
     ) -> int:
         """Submit a turn and return the committed turn index.
 
@@ -365,11 +589,31 @@ class OnlineBackend:
                 if match["active_player_id"] != player_id:
                     raise PermissionError("It is not this player's turn")
 
+                if session_token:
+                    if not self.verify_session_token(player_id, session_token):
+                        raise PermissionError("Invalid session token")
+
                 turn_index_row = conn.execute(
                     "SELECT COALESCE(MAX(turn_index), -1) AS max_index FROM turns WHERE match_id = ?",
                     (match_id,),
                 ).fetchone()
                 turn_index = int(turn_index_row["max_index"]) + 1
+
+                state = json.loads(match["game_state_json"])
+                phase = str(state.get("phase", "deal"))
+                self._validate_action(phase, action_type, payload)
+
+                if session_token:
+                    expected_signature = self.build_turn_signature(
+                        session_token=session_token,
+                        match_id=match_id,
+                        player_id=player_id,
+                        turn_number=turn_index,
+                        action_type=action_type,
+                        payload=payload,
+                    )
+                    if not signature or not hmac.compare_digest(signature, expected_signature):
+                        raise PermissionError("Invalid turn signature")
 
                 turn_id = _new_id("turn")
                 now = _utc_now_iso()
@@ -377,9 +621,9 @@ class OnlineBackend:
                     """
                     INSERT INTO turns (
                         turn_id, match_id, player_id, turn_index,
-                        action_type, payload_json, idempotency_key, created_at
+                        action_type, payload_json, signature, idempotency_key, created_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         turn_id,
@@ -388,19 +632,68 @@ class OnlineBackend:
                         turn_index,
                         action_type,
                         json.dumps(payload, separators=(",", ":")),
+                        signature,
                         idempotency_key,
                         now,
                     ),
                 )
 
-                state = json.loads(match["game_state_json"])
+                if action_type in ("peg", "count"):
+                    points = payload.get("points")
+                    if isinstance(points, int):
+                        idx = 0 if player_id == match["player_one_id"] else 1
+                        state["scores"][idx] += points
+
                 state["last_action"] = {
                     "turn_index": turn_index,
                     "player_id": player_id,
                     "action_type": action_type,
                     "payload": payload,
                 }
+
+                current_phase = str(state.get("phase", "deal"))
+                progress = int(state.get("phase_progress", 0)) + 1
+                state["phase_progress"] = progress
+
+                target = self.PHASE_TURN_TARGET.get(current_phase, 0)
+                if target and progress >= target:
+                    next_phase_index = min(int(state.get("phase_index", 0)) + 1, len(self.PHASES) - 1)
+                    next_phase = self.PHASES[next_phase_index]
+                    state["phase_index"] = next_phase_index
+                    state["phase"] = next_phase
+                    state["phase_progress"] = 0
+
                 next_player = match["player_two_id"] if player_id == match["player_one_id"] else match["player_one_id"]
+
+                if state.get("phase") == "finished":
+                    p1_score = int(state["scores"][0])
+                    p2_score = int(state["scores"][1])
+                    winner: Optional[str]
+                    if p1_score > p2_score:
+                        winner = str(match["player_one_id"])
+                    elif p2_score > p1_score:
+                        winner = str(match["player_two_id"])
+                    else:
+                        winner = None
+                    conn.execute(
+                        """
+                        UPDATE matches
+                        SET active_player_id = ?, game_state_json = ?, updated_at = ?
+                        WHERE match_id = ?
+                        """,
+                        (
+                            next_player,
+                            json.dumps(state, separators=(",", ":")),
+                            now,
+                            match_id,
+                        ),
+                    )
+                    refreshed = conn.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+                    if refreshed is None:
+                        raise ValueError("Match disappeared during submit")
+                    self._finish_match_locked(conn, refreshed, winner)
+                    return turn_index
+
                 conn.execute(
                     """
                     UPDATE matches
@@ -415,77 +708,24 @@ class OnlineBackend:
                     ),
                 )
 
+                LOGGER.info(
+                    "submit_turn: match_id=%s turn=%s player=%s action=%s phase=%s",
+                    match_id,
+                    turn_index,
+                    player_id,
+                    action_type,
+                    state.get("phase"),
+                )
+
                 return turn_index
 
     def finish_match(self, match_id: str, winner_player_id: Optional[str]) -> None:
         with self._lock:
             with self._connection() as conn:
-                match = conn.execute(
-                    "SELECT * FROM matches WHERE match_id = ?",
-                    (match_id,),
-                ).fetchone()
+                match = conn.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone()
                 if match is None:
                     raise ValueError("Match does not exist")
-                if match["state"] != "active":
-                    raise ValueError("Match already finalized")
-
-                now = _utc_now_iso()
-                conn.execute(
-                    """
-                    UPDATE matches
-                    SET state='finished', winner_player_id=?, finished_at=?, updated_at=?
-                    WHERE match_id=?
-                    """,
-                    (winner_player_id, now, now, match_id),
-                )
-
-                p1 = conn.execute("SELECT * FROM players WHERE player_id = ?", (match["player_one_id"],)).fetchone()
-                p2 = conn.execute("SELECT * FROM players WHERE player_id = ?", (match["player_two_id"],)).fetchone()
-                if p1 is None or p2 is None:
-                    raise ValueError("Players missing for ratings update")
-
-                if winner_player_id is None:
-                    score_a = 0.5
-                elif winner_player_id == p1["player_id"]:
-                    score_a = 1.0
-                elif winner_player_id == p2["player_id"]:
-                    score_a = 0.0
-                else:
-                    raise ValueError("Winner must be player one, player two, or None for draw")
-
-                new_a, new_b = _elo_update(int(p1["rating"]), int(p2["rating"]), score_a)
-
-                def _record(player_row: sqlite3.Row, new_rating: int, result: str) -> None:
-                    conn.execute(
-                        """
-                        UPDATE players
-                        SET rating=?,
-                            games_played=games_played+1,
-                            wins=wins+?,
-                            losses=losses+?,
-                            draws=draws+?,
-                            updated_at=?
-                        WHERE player_id=?
-                        """,
-                        (
-                            new_rating,
-                            1 if result == "win" else 0,
-                            1 if result == "loss" else 0,
-                            1 if result == "draw" else 0,
-                            now,
-                            player_row["player_id"],
-                        ),
-                    )
-
-                if score_a == 1.0:
-                    _record(p1, new_a, "win")
-                    _record(p2, new_b, "loss")
-                elif score_a == 0.0:
-                    _record(p1, new_a, "loss")
-                    _record(p2, new_b, "win")
-                else:
-                    _record(p1, new_a, "draw")
-                    _record(p2, new_b, "draw")
+                self._finish_match_locked(conn, match, winner_player_id)
 
     def get_player_profile(self, player_id: str) -> dict[str, Any]:
         with self._connection() as conn:
@@ -541,3 +781,35 @@ class OnlineBackend:
                 ),
             )
         return event_id
+
+    def record_bot_decisions_batch(self, rows: list[dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+        now = _utc_now_iso()
+        batch = []
+        for row in rows:
+            batch.append(
+                (
+                    row.get("event_id") or _new_id("bot"),
+                    row.get("match_id"),
+                    row["phase"],
+                    int(row["ai_level"]),
+                    row["state_hash"],
+                    json.dumps(row.get("candidates", []), separators=(",", ":")),
+                    row["selected_action"],
+                    row.get("expected_value"),
+                    row.get("created_at") or now,
+                )
+            )
+        with self._connection() as conn:
+            conn.executemany(
+                """
+                INSERT INTO bot_telemetry (
+                    event_id, match_id, phase, ai_level, state_hash,
+                    candidate_json, selected_action, expected_value, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                batch,
+            )
+        return len(batch)

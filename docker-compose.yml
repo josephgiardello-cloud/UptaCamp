@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  online-api:
+    build: .
+    command: ["python", "online_api_server.py", "--host", "0.0.0.0", "--port", "8787", "--db", "/data/online_state.db"]
+    ports:
+      - "8787:8787"
+    volumes:
+      - uptacamp-data:/data
+
+  online-ws:
+    build: .
+    command: ["python", "online_ws_server.py", "--host", "0.0.0.0", "--port", "8790", "--db", "/data/online_state.db"]
+    ports:
+      - "8790:8790"
+    volumes:
+      - uptacamp-data:/data
+    depends_on:
+      - online-api
+
+volumes:
+  uptacamp-data:

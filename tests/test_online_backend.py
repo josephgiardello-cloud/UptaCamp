@@ -11,10 +11,40 @@ from online_backend import OnlineBackend
 def backend(tmp_path: Path) -> OnlineBackend:
     db = tmp_path / "online.db"
     service = OnlineBackend(db)
-    service.upsert_player("p1", "Alice")
-    service.upsert_player("p2", "Bob")
-    service.upsert_player("p3", "Chris")
+    service.login_player("Alice", player_id="p1")
+    service.login_player("Bob", player_id="p2")
+    service.login_player("Chris", player_id="p3")
     return service
+
+
+def _submit_signed(
+    backend: OnlineBackend,
+    token: str,
+    match_id: str,
+    player_id: str,
+    action_type: str,
+    payload: dict,
+    key: str,
+) -> int:
+    details = backend.get_match_details(match_id)
+    turn_number = int(details["summary"]["turns_played"])
+    signature = OnlineBackend.build_turn_signature(
+        session_token=token,
+        match_id=match_id,
+        player_id=player_id,
+        turn_number=turn_number,
+        action_type=action_type,
+        payload=payload,
+    )
+    return backend.submit_turn(
+        match_id=match_id,
+        player_id=player_id,
+        action_type=action_type,
+        payload=payload,
+        idempotency_key=key,
+        signature=signature,
+        session_token=token,
+    )
 
 
 def test_invite_accept_creates_room_match(backend: OnlineBackend) -> None:
@@ -40,22 +70,27 @@ def test_matchmaking_pairs_two_waiting_players(backend: OnlineBackend) -> None:
 
 
 def test_submit_turn_is_idempotent(backend: OnlineBackend) -> None:
+    p1 = backend.login_player("Alice", player_id="p1")
     invite = backend.create_invite("p1")
     match_id = backend.accept_invite(invite, "p2")
 
-    first = backend.submit_turn(
+    first = _submit_signed(
+        backend,
+        p1.session_token,
         match_id=match_id,
         player_id="p1",
-        action_type="play_card",
-        payload={"card": "5_of_hearts"},
-        idempotency_key="same-key",
+        action_type="deal_ready",
+        payload={"ready": True},
+        key="same-key",
     )
-    second = backend.submit_turn(
+    second = _submit_signed(
+        backend,
+        p1.session_token,
         match_id=match_id,
         player_id="p1",
-        action_type="play_card",
-        payload={"card": "5_of_hearts"},
-        idempotency_key="same-key",
+        action_type="deal_ready",
+        payload={"ready": True},
+        key="same-key",
     )
 
     assert first == 0
@@ -65,17 +100,89 @@ def test_submit_turn_is_idempotent(backend: OnlineBackend) -> None:
 
 
 def test_submit_turn_rejects_wrong_player_order(backend: OnlineBackend) -> None:
+    p2 = backend.login_player("Bob", player_id="p2")
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+
+    with pytest.raises(PermissionError):
+        _submit_signed(
+            backend,
+            p2.session_token,
+            match_id=match_id,
+            player_id="p2",
+            action_type="deal_ready",
+            payload={"ready": True},
+            key="wrong-order",
+        )
+
+
+def test_submit_turn_rejects_bad_signature(backend: OnlineBackend) -> None:
+    p1 = backend.login_player("Alice", player_id="p1")
     invite = backend.create_invite("p1")
     match_id = backend.accept_invite(invite, "p2")
 
     with pytest.raises(PermissionError):
         backend.submit_turn(
             match_id=match_id,
-            player_id="p2",
-            action_type="play_card",
-            payload={"card": "7_of_spades"},
-            idempotency_key="wrong-order",
+            player_id="p1",
+            action_type="deal_ready",
+            payload={"ready": True},
+            idempotency_key="bad-signature",
+            signature="not-valid",
+            session_token=p1.session_token,
         )
+
+
+def test_phase_progression_auto_finishes_and_updates_elo(backend: OnlineBackend) -> None:
+    p1 = backend.login_player("Alice", player_id="p1")
+    p2 = backend.login_player("Bob", player_id="p2")
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+
+    _submit_signed(backend, p1.session_token, match_id, "p1", "deal_ready", {"ready": True}, "a1")
+    _submit_signed(backend, p2.session_token, match_id, "p2", "deal_ready", {"ready": True}, "a2")
+    _submit_signed(
+        backend,
+        p1.session_token,
+        match_id,
+        "p1",
+        "discard",
+        {"cards": ["5_of_hearts", "6_of_hearts"]},
+        "a3",
+    )
+    _submit_signed(
+        backend,
+        p2.session_token,
+        match_id,
+        "p2",
+        "discard",
+        {"cards": ["7_of_hearts", "8_of_hearts"]},
+        "a4",
+    )
+
+    keys = ["a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12"]
+    players = [("p1", p1.session_token), ("p2", p2.session_token)] * 4
+    for idx, (pid, tok) in enumerate(players):
+        _submit_signed(
+            backend,
+            tok,
+            match_id,
+            pid,
+            "peg",
+            {"card": f"{idx+2}_of_spades", "running_total": (idx + 1) * 2 % 31, "points": 1},
+            keys[idx],
+        )
+
+    _submit_signed(backend, p1.session_token, match_id, "p1", "count", {"points": 3}, "a13")
+    _submit_signed(backend, p2.session_token, match_id, "p2", "count", {"points": 1}, "a14")
+
+    details = backend.get_match_details(match_id)
+    assert details["summary"]["state"] == "finished"
+
+    p1_profile = backend.get_player_profile("p1")
+    p2_profile = backend.get_player_profile("p2")
+    assert p1_profile["games_played"] == 1
+    assert p2_profile["games_played"] == 1
 
 
 def test_finish_match_updates_elo_and_stats(backend: OnlineBackend) -> None:

@@ -276,24 +276,43 @@ Run the online API server:
 python online_api_server.py --host 127.0.0.1 --port 8787 --db online_state.db
 ```
 
+Run the websocket push server:
+
+```bash
+python online_ws_server.py --host 127.0.0.1 --port 8790 --db online_state.db
+```
+
 API examples:
 
 ```bash
-# Upsert player profile
-curl -X POST http://127.0.0.1:8787/players/upsert \
+# Create/login player session (returns player_id + session_token)
+curl -X POST http://127.0.0.1:8787/players \
    -H "Content-Type: application/json" \
-   -d '{"player_id":"p1","display_name":"Alice"}'
+   -d '{"display_name":"Alice"}'
 
 # Create invite room
 curl -X POST http://127.0.0.1:8787/invites/create \
+   -H "Authorization: Bearer <SESSION_TOKEN>" \
    -H "Content-Type: application/json" \
    -d '{"host_player_id":"p1"}'
 
-# Submit turn with idempotency protection
+# Submit signed turn with idempotency protection
 curl -X POST http://127.0.0.1:8787/matches/<match_id>/turns \
+   -H "Authorization: Bearer <SESSION_TOKEN>" \
    -H "Content-Type: application/json" \
-   -d '{"player_id":"p1","action_type":"play_card","payload":{"card":"5_of_hearts"},"idempotency_key":"req-123"}'
+   -d '{"player_id":"p1","action_type":"deal_ready","payload":{"ready":true},"idempotency_key":"req-123","signature":"<HMAC_SHA256_SIGNATURE>"}'
 ```
+
+The Pygame online client flow is available in [main.py](main.py):
+- Intro -> Online Match
+- Login
+- Create Room / Join Room / Quick Match
+- Live phase-based turn loop (deal/discard/pegging/counting)
+
+WebSocket protocol:
+- Client sends initial auth payload: `{ "match_id", "player_id", "session_token" }`
+- Server pushes `match_snapshot` and `turn_update` events
+- Client falls back to HTTP polling when websocket is unavailable
 
 Run self-play ladder (large AI benchmark batches):
 
@@ -306,6 +325,22 @@ Export bot telemetry for analysis:
 ```bash
 python tools/export_bot_telemetry.py --db online_state.db --out bot_telemetry.csv
 ```
+
+## Production Stack (Docker)
+
+Start API + websocket servers with shared SQLite data:
+
+```bash
+docker compose up --build
+```
+
+Services:
+- API: `http://127.0.0.1:8787`
+- WebSocket: `ws://127.0.0.1:8790`
+
+## Environment
+
+- `UPTACAMP_DB_PATH`: SQLite path for online backend state (default `online_state.db`)
 
 ## Contributing
 

@@ -11,7 +11,7 @@ class DealState(GameStateBase):
         self.player_hand = []
         self.ai_hand = []
 
-    def handle_event(self, event, engine, assets):
+    def handle_event(self, event, engine, assets, app):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 return IntroState()
@@ -21,7 +21,7 @@ class DealState(GameStateBase):
                 self.ai_hand = []
         return self
 
-    def update(self, engine, dt):
+    def update(self, engine, dt, app):
         if not self.dealt:
             # Deal 6 cards to player and AI
             deck = [Card(rank, suit) for suit in ['Hearts', 'Diamonds', 'Clubs', 'Spades']
@@ -31,7 +31,7 @@ class DealState(GameStateBase):
             self.ai_hand = deck[6:12]
             self.dealt = True
 
-    def draw(self, screen, engine, assets):
+    def draw(self, screen, engine, assets, app):
         # Draw background if available
         bg = assets.get_background('table.jpg') or assets.get_background('table.png')
         if bg:
