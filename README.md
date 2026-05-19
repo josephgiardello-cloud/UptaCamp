@@ -86,6 +86,14 @@ Hand totals and crib scoring are displayed before moving to the next round.
 - Non-blocking capture mode for screenshots (game continues unless --exit-after-capture flag)
 - Automated one-hand gameplay video capture (intro screen -> end of hand)
 
+✅ **Online And Competitive Foundation**
+- Persistent online backend with room invites and strict turn-order validation
+- Async-safe turn submission with idempotency keys (retry-safe client behavior)
+- Matchmaking queue pairing for ranked games
+- ELO ratings updates, match history, and player profile stats
+- Bot decision telemetry capture and CSV export for tuning workflows
+- Self-play ladder simulation tooling for large-scale AI benchmark runs
+
 ## Tech Stack
 
 | Component | Technology |
@@ -259,6 +267,45 @@ python cribbage_pygame.py \
 Notes:
 - Video encoding uses `ffmpeg` if available on PATH.
 - If `ffmpeg` is missing, frame PNGs are still saved to a sibling `*_frames` folder.
+
+## Online Backend (Deep Mode)
+
+Run the online API server:
+
+```bash
+python online_api_server.py --host 127.0.0.1 --port 8787 --db online_state.db
+```
+
+API examples:
+
+```bash
+# Upsert player profile
+curl -X POST http://127.0.0.1:8787/players/upsert \
+   -H "Content-Type: application/json" \
+   -d '{"player_id":"p1","display_name":"Alice"}'
+
+# Create invite room
+curl -X POST http://127.0.0.1:8787/invites/create \
+   -H "Content-Type: application/json" \
+   -d '{"host_player_id":"p1"}'
+
+# Submit turn with idempotency protection
+curl -X POST http://127.0.0.1:8787/matches/<match_id>/turns \
+   -H "Content-Type: application/json" \
+   -d '{"player_id":"p1","action_type":"play_card","payload":{"card":"5_of_hearts"},"idempotency_key":"req-123"}'
+```
+
+Run self-play ladder (large AI benchmark batches):
+
+```bash
+python tools/self_play_ladder.py --db online_state.db --rounds-per-pair 500 --seed 11
+```
+
+Export bot telemetry for analysis:
+
+```bash
+python tools/export_bot_telemetry.py --db online_state.db --out bot_telemetry.csv
+```
 
 ## Contributing
 
