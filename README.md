@@ -28,13 +28,27 @@ Cribbage is a classic two-player card game known for its unique scoring system a
 
 ## Screenshots
 
-### Title Screen - Difficulty Selection
-![Upta title screen](screenshots/gameplay_intro.png)
+Each image below is a curated single-shot representation of a key game stage.
 
-### Pegging Phase - Maine Card Backs & Animations
-![Upta pegging phase](screenshots/gameplay_pegging.png)
+### 1. Title / Welcome Screen
+![Upta title screen](screenshots/readme_title.png)
 
-*Features Maine-themed card back textures on opponent's visible cards and real-time score animations during play.*
+Select AI difficulty and start a new game.
+
+### 2. Discard Phase
+![Discard phase](screenshots/readme_discard.png)
+
+Each player receives 6 cards and discards 2 to the crib.
+
+### 3. Pegging Phase
+![Pegging phase](screenshots/readme_pegging.png)
+
+Players alternate cards up to 31, scoring for fifteens, pairs, runs, go, and last card.
+
+### 4. End-Of-Hand Counting
+![Counting phase](screenshots/readme_counting.png)
+
+Hand totals and crib scoring are displayed before moving to the next round.
 
 ## Features
 
@@ -70,6 +84,7 @@ Cribbage is a classic two-player card game known for its unique scoring system a
 - Track scores across multiple rounds
 - Switch difficulty mid-session with F2
 - Non-blocking capture mode for screenshots (game continues unless --exit-after-capture flag)
+- Automated one-hand gameplay video capture (intro screen -> end of hand)
 
 ## Tech Stack
 
@@ -208,6 +223,42 @@ If you modify card SVG files:
 ```bash
 python convert_card_assets.py
 ```
+
+### Capture Screenshots And Video
+
+Capture the title screen screenshot:
+```bash
+python cribbage_pygame.py --capture-title screenshots/readme_title.png --exit-after-capture
+```
+
+Capture the discard phase screenshot:
+```bash
+python cribbage_pygame.py --capture-discard screenshots/readme_discard.png --exit-after-capture
+```
+
+Capture a pegging-phase gameplay screenshot:
+```bash
+python cribbage_pygame.py --capture-gameplay screenshots/readme_pegging.png --exit-after-capture
+```
+
+Capture a short video clip that starts on the title screen, auto-plays one full hand, and stops at end-of-hand scoring:
+```bash
+python cribbage_pygame.py --capture-video screenshots/gameplay_hand.mp4
+```
+
+Optional tuning flags:
+```bash
+python cribbage_pygame.py \
+   --capture-video screenshots/gameplay_hand.mp4 \
+   --capture-video-fps 30 \
+   --capture-video-intro-seconds 1.5 \
+   --capture-video-end-seconds 1.2 \
+   --capture-video-max-seconds 90
+```
+
+Notes:
+- Video encoding uses `ffmpeg` if available on PATH.
+- If `ffmpeg` is missing, frame PNGs are still saved to a sibling `*_frames` folder.
 
 ## Contributing
 
