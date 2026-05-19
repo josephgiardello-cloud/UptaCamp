@@ -179,11 +179,32 @@ class OnlineBackend:
                     FOREIGN KEY(match_id) REFERENCES matches(match_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS match_chat (
+                    message_id TEXT PRIMARY KEY,
+                    match_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(match_id) REFERENCES matches(match_id),
+                    FOREIGN KEY(player_id) REFERENCES players(player_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS rematch_requests (
+                    request_id TEXT PRIMARY KEY,
+                    prior_match_id TEXT NOT NULL,
+                    requested_by_player_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(prior_match_id, requested_by_player_id),
+                    FOREIGN KEY(prior_match_id) REFERENCES matches(match_id),
+                    FOREIGN KEY(requested_by_player_id) REFERENCES players(player_id)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_matches_player_one ON matches(player_one_id);
                 CREATE INDEX IF NOT EXISTS idx_matches_player_two ON matches(player_two_id);
                 CREATE INDEX IF NOT EXISTS idx_turns_match_id ON turns(match_id);
                 CREATE INDEX IF NOT EXISTS idx_queue_status_time ON matchmaking_queue(status, enqueued_at);
                 CREATE INDEX IF NOT EXISTS idx_telemetry_match ON bot_telemetry(match_id);
+                CREATE INDEX IF NOT EXISTS idx_chat_match_time ON match_chat(match_id, created_at);
                 """
             )
 
@@ -746,6 +767,126 @@ class OnlineBackend:
                 (player_id, player_id, limit),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def leaderboard(self, limit: int = 50) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT player_id, display_name, rating, games_played, wins, losses, draws
+                FROM players
+                ORDER BY rating DESC, wins DESC, games_played DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def post_chat_message(
+        self,
+        match_id: str,
+        player_id: str,
+        message: str,
+        session_token: Optional[str] = None,
+    ) -> dict[str, Any]:
+        text = message.strip()
+        if not text:
+            raise ValueError("Message cannot be blank")
+        if len(text) > 400:
+            raise ValueError("Message too long")
+        if session_token and not self.verify_session_token(player_id, session_token):
+            raise PermissionError("Invalid session token")
+
+        now = _utc_now_iso()
+        message_id = _new_id("chat")
+        with self._connection() as conn:
+            match = conn.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+            if match is None:
+                raise ValueError("Match does not exist")
+            if player_id not in {match["player_one_id"], match["player_two_id"]}:
+                raise PermissionError("Player is not in this match")
+            conn.execute(
+                """
+                INSERT INTO match_chat (message_id, match_id, player_id, message, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (message_id, match_id, player_id, text, now),
+            )
+        return {
+            "message_id": message_id,
+            "match_id": match_id,
+            "player_id": player_id,
+            "message": text,
+            "created_at": now,
+        }
+
+    def list_chat_messages(self, match_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT message_id, match_id, player_id, message, created_at
+                FROM match_chat
+                WHERE match_id = ?
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (match_id, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def request_rematch(
+        self,
+        prior_match_id: str,
+        player_id: str,
+        session_token: Optional[str] = None,
+    ) -> dict[str, Any]:
+        if session_token and not self.verify_session_token(player_id, session_token):
+            raise PermissionError("Invalid session token")
+
+        with self._lock:
+            with self._connection() as conn:
+                prior = conn.execute("SELECT * FROM matches WHERE match_id = ?", (prior_match_id,)).fetchone()
+                if prior is None:
+                    raise ValueError("Prior match does not exist")
+                if prior["state"] != "finished":
+                    raise ValueError("Rematch allowed only for finished matches")
+                if player_id not in {prior["player_one_id"], prior["player_two_id"]}:
+                    raise PermissionError("Player is not in this match")
+
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO rematch_requests (request_id, prior_match_id, requested_by_player_id, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (_new_id("rmq"), prior_match_id, player_id, _utc_now_iso()),
+                )
+
+                req_rows = conn.execute(
+                    "SELECT requested_by_player_id FROM rematch_requests WHERE prior_match_id = ?",
+                    (prior_match_id,),
+                ).fetchall()
+                requested = {r["requested_by_player_id"] for r in req_rows}
+
+                players = {prior["player_one_id"], prior["player_two_id"]}
+                if requested == players:
+                    new_match_id = self._create_match_locked(
+                        conn,
+                        mode=str(prior["mode"]),
+                        player_one_id=str(prior["player_two_id"]),
+                        player_two_id=str(prior["player_one_id"]),
+                    )
+                    conn.execute(
+                        "DELETE FROM rematch_requests WHERE prior_match_id = ?",
+                        (prior_match_id,),
+                    )
+                    return {
+                        "status": "accepted",
+                        "new_match_id": new_match_id,
+                    }
+
+                return {
+                    "status": "pending",
+                    "new_match_id": None,
+                }
 
     def record_bot_decision(
         self,

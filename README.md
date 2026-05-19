@@ -132,13 +132,13 @@ Hand totals and crib scoring are displayed before moving to the next round.
 
 4. **Run the game**
    ```bash
-   python cribbage_pygame.py
+   python main.py
    ```
 
 ## How to Play
 
 ### Starting a Game
-1. Launch the game: `python cribbage_pygame.py`
+1. Launch the game: `python main.py`
 2. Press **Enter** to start
 3. Choose AI difficulty with **1** (Easy), **2** (Medium), or **3** (Hard)
 
@@ -202,7 +202,8 @@ First player to reach **121 points** wins!
 ### Project Structure
 ```
 UptaCamp/
-├── cribbage_pygame.py        # Main game
+├── main.py                   # Main game (state-machine client)
+├── cribbage_pygame.py        # Legacy compatibility module (tests/migration)
 ├── cards.py                  # Scoring engine
 ├── convert_card_assets.py    # Asset utilities
 ├── assets/
@@ -236,27 +237,27 @@ python convert_card_assets.py
 
 Capture the title screen screenshot:
 ```bash
-python cribbage_pygame.py --capture-title screenshots/readme_title.png --exit-after-capture
+python main.py --capture-title screenshots/readme_title.png --exit-after-capture
 ```
 
 Capture the discard phase screenshot:
 ```bash
-python cribbage_pygame.py --capture-discard screenshots/readme_discard.png --exit-after-capture
+python main.py --capture-discard screenshots/readme_discard.png --exit-after-capture
 ```
 
 Capture a pegging-phase gameplay screenshot:
 ```bash
-python cribbage_pygame.py --capture-gameplay screenshots/readme_pegging.png --exit-after-capture
+python main.py --capture-gameplay screenshots/readme_pegging.png --exit-after-capture
 ```
 
 Capture a short video clip that starts on the title screen, auto-plays one full hand, and stops at end-of-hand scoring:
 ```bash
-python cribbage_pygame.py --capture-video screenshots/gameplay_hand.mp4
+python main.py --capture-video screenshots/gameplay_hand.mp4
 ```
 
 Optional tuning flags:
 ```bash
-python cribbage_pygame.py \
+python main.py \
    --capture-video screenshots/gameplay_hand.mp4 \
    --capture-video-fps 30 \
    --capture-video-intro-seconds 1.5 \

@@ -212,3 +212,48 @@ def test_recent_matches_returns_player_history(backend: OnlineBackend) -> None:
     assert len(rows) == 1
     assert rows[0]["match_id"] == match_id
     assert rows[0]["state"] == "finished"
+
+
+def test_leaderboard_returns_sorted_players(backend: OnlineBackend) -> None:
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+    backend.finish_match(match_id, winner_player_id="p1")
+
+    board = backend.leaderboard(limit=3)
+
+    assert len(board) >= 2
+    assert board[0]["rating"] >= board[1]["rating"]
+
+
+def test_match_chat_round_trip(backend: OnlineBackend) -> None:
+    p1 = backend.login_player("Alice", player_id="p1")
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+
+    posted = backend.post_chat_message(
+        match_id=match_id,
+        player_id="p1",
+        message="gl hf",
+        session_token=p1.session_token,
+    )
+    rows = backend.list_chat_messages(match_id)
+
+    assert posted["message"] == "gl hf"
+    assert len(rows) == 1
+    assert rows[0]["message"] == "gl hf"
+
+
+def test_rematch_requires_both_players_and_creates_new_match(backend: OnlineBackend) -> None:
+    p1 = backend.login_player("Alice", player_id="p1")
+    p2 = backend.login_player("Bob", player_id="p2")
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+    backend.finish_match(match_id, winner_player_id="p1")
+
+    first = backend.request_rematch(match_id, "p1", session_token=p1.session_token)
+    second = backend.request_rematch(match_id, "p2", session_token=p2.session_token)
+
+    assert first["status"] == "pending"
+    assert first["new_match_id"] is None
+    assert second["status"] == "accepted"
+    assert second["new_match_id"]

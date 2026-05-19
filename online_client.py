@@ -84,6 +84,35 @@ class OnlineClient:
     def get_match(self, match_id: str) -> dict[str, Any]:
         return self._request("GET", f"/matches/{match_id}")
 
+    def leaderboard(self, limit: int = 50) -> list[dict[str, Any]]:
+        res = self._request("GET", f"/leaderboard?limit={limit}")
+        return list(res.get("players", []))
+
+    def post_chat(self, match_id: str, message: str) -> dict[str, Any]:
+        self._require_login()
+        return self._request(
+            "POST",
+            f"/matches/{match_id}/chat",
+            {
+                "player_id": self.player_id,
+                "message": message,
+            },
+        )
+
+    def get_chat(self, match_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        res = self._request("GET", f"/matches/{match_id}/chat?limit={limit}")
+        return list(res.get("messages", []))
+
+    def request_rematch(self, match_id: str) -> dict[str, Any]:
+        self._require_login()
+        return self._request(
+            "POST",
+            f"/matches/{match_id}/rematch",
+            {
+                "player_id": self.player_id,
+            },
+        )
+
     def submit_turn(self, match_id: str, action_type: str, payload: dict[str, Any]) -> int:
         self._require_login()
         details = self.get_match(match_id)

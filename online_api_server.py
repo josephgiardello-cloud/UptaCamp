@@ -76,6 +76,20 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {"matches": rows})
                 return
 
+            if parts == ["leaderboard"]:
+                qs = parse_qs(parsed.query)
+                limit = int(qs.get("limit", ["50"])[0])
+                rows = self.backend.leaderboard(limit=limit)
+                self._send_json(HTTPStatus.OK, {"players": rows})
+                return
+
+            if len(parts) == 3 and parts[0] == "matches" and parts[2] == "chat":
+                qs = parse_qs(parsed.query)
+                limit = int(qs.get("limit", ["100"])[0])
+                rows = self.backend.list_chat_messages(parts[1], limit=limit)
+                self._send_json(HTTPStatus.OK, {"messages": rows})
+                return
+
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
         except PermissionError as exc:
             self._send_json(HTTPStatus.UNAUTHORIZED, {"error": str(exc)})
@@ -164,6 +178,27 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
                     self._require_auth(owner)
                 self.backend.finish_match(parts[1], payload.get("winner_player_id"))
                 self._send_json(HTTPStatus.OK, {"ok": True})
+                return
+
+            if len(parts) == 3 and parts[0] == "matches" and parts[2] == "chat":
+                token = self._require_auth(payload["player_id"])
+                row = self.backend.post_chat_message(
+                    match_id=parts[1],
+                    player_id=payload["player_id"],
+                    message=payload["message"],
+                    session_token=token,
+                )
+                self._send_json(HTTPStatus.OK, row)
+                return
+
+            if len(parts) == 3 and parts[0] == "matches" and parts[2] == "rematch":
+                token = self._require_auth(payload["player_id"])
+                row = self.backend.request_rematch(
+                    prior_match_id=parts[1],
+                    player_id=payload["player_id"],
+                    session_token=token,
+                )
+                self._send_json(HTTPStatus.OK, row)
                 return
 
             if parts == ["telemetry", "bot-decision"]:

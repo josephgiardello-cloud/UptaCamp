@@ -51,7 +51,7 @@ Repository = "https://github.com/josephgiardello-cloud/UptaCamp.git"
 "Bug Tracker" = "https://github.com/josephgiardello-cloud/UptaCamp/issues"
 
 [project.scripts]
-uptacamp = "cribbage_pygame:main"
+uptacamp = "main:main"
 uptacamp-online-api = "online_api_server:main"
 uptacamp-online-ws = "online_ws_server:main"
 

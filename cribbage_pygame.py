@@ -1,4 +1,10 @@
-﻿import os
+﻿"""Legacy compatibility module.
+
+The primary game client is now main.py + states/.
+This module remains for compatibility with existing tests and migration tooling.
+"""
+
+import os
 import sys
 import random
 import shutil
