@@ -1,0 +1,5 @@
+# Backup of cribbage_pygame.py before entry-creds scene changes
+
+import shutil
+shutil.copyfile('cribbage_pygame.py', 'CRIBacup/cribbage_pygame.py')
+# This file is a backup and does not affect the game logic.
