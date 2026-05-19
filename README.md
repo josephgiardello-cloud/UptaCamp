@@ -28,11 +28,13 @@ Cribbage is a classic two-player card game known for its unique scoring system a
 
 ## Screenshots
 
-### Title Screen
-![Upta title screen](screenshots/title-screen.png)
+### Title Screen - Difficulty Selection
+![Upta title screen](screenshots/gameplay_intro.png)
 
-### Gameplay Screen
-![Upta gameplay screen](screenshots/gameplay-screen.png)
+### Pegging Phase - Maine Card Backs & Animations
+![Upta pegging phase](screenshots/gameplay_pegging.png)
+
+*Features Maine-themed card back textures on opponent's visible cards and real-time score animations during play.*
 
 ## Features
 
@@ -41,6 +43,14 @@ Cribbage is a classic two-player card game known for its unique scoring system a
 - Accurate hand scoring (pairs, runs, fifteens, flush, nobs)
 - Automatic crib scoring
 - Winner detection at 121 points
+- **End-of-round scoring breakdown** showing detailed point contributions
+
+✅ **Premium Presentation**
+- Maine-themed card back textures on opponent's cards
+- Floating score popups and card flight animations during pegging
+- Screen shake effects on 31-point plays
+- Smooth tweened card movements and transitions
+- Real-time hand scoring breakdown display
 
 ✅ **Intelligent AI**
 - Level 1 (Easy): Random play
@@ -48,15 +58,18 @@ Cribbage is a classic two-player card game known for its unique scoring system a
 - Level 3 (Hard): Opponent risk estimation without hand peeking
 
 ✅ **User-Friendly Interface**
-- Drag-and-drop card selection
-- Clear game phase indicators
-- Real-time scoring display
+- Click or press keys to select difficulty
+- Drag-and-drop card selection for discard phase
+- Clear game phase indicators and messages
+- Real-time scoring display with pegging totals
+- End-of-hand scoring recap panels (15s, pairs, runs, flush, nobs)
 - Responsive window sizing
 
 ✅ **Flexible Gameplay**
 - Choose AI difficulty before each game
 - Track scores across multiple rounds
 - Switch difficulty mid-session with F2
+- Non-blocking capture mode for screenshots (game continues unless --exit-after-capture flag)
 
 ## Tech Stack
 

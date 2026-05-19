@@ -9,6 +9,11 @@ from itertools import combinations
 from collections import Counter
 
 import cards as cribbage_cards
+import ai_strategy
+from engine import CribbageEngine
+from adapter import EngineAdapter
+from phase_states import PhaseStateMachine
+from animations import EffectsManager
 
 # --- Constants ---
 CARD_WIDTH = 120
@@ -69,6 +74,22 @@ dad_ai_level = 2
 pegging_passes = [False, False]
 last_pegging_player = None
 
+# Scoring breakdown tracking for end-of-round display
+pegging_points = [0, 0]  # Points from pegging phase by player
+round_breakdown = {  # Details of hand scoring
+    'player': (0, []),  # (total_points, breakdown_list)
+    'ai': (0, []),
+    'crib': (0, [])
+}
+
+# Engine migration bridge (incremental refactor path)
+_ENGINE = None
+_ADAPTER = None
+_PHASE_SM = None
+_EFFECTS = None
+_LAST_SCREEN_SIZE = (1280, 900)
+_MAINE_BACK_SURFACE = None
+
 
 def _check_for_winner():
     global winner_index
@@ -99,15 +120,15 @@ def _parse_label(label):
 
 def _rank_index(rank):
     rank = rank.lower()
-    mapping = {'ace': 1, 'jack': 11, 'queen': 12, 'king': 13}
+    mapping = {'ace': 1, 'a': 1, 'jack': 11, 'j': 11, 'queen': 12, 'q': 12, 'king': 13, 'k': 13}
     if rank in mapping: return mapping[rank]
     try: return int(rank)
     except: return 0
 
 def _value_for_15(rank):
     rank = rank.lower()
-    if rank == 'ace': return 1
-    if rank in ('jack', 'queen', 'king', '10'): return 10
+    if rank in ('ace', 'a'): return 1
+    if rank in ('jack', 'queen', 'king', 'j', 'q', 'k', '10'): return 10
     try: return int(rank)
     except: return 0
 
@@ -288,6 +309,12 @@ def _draw_label(screen, text, pos, font, color, shadow=(0, 0), align_left=True):
 
 
 def _draw_card_back(screen, rect):
+    if _MAINE_BACK_SURFACE is not None:
+        textured = pygame.transform.smoothscale(_MAINE_BACK_SURFACE, (rect.width, rect.height))
+        screen.blit(textured, rect.topleft)
+        pygame.draw.rect(screen, (232, 208, 146), rect, width=3, border_radius=12)
+        return
+
     pygame.draw.rect(screen, (235, 228, 214), rect, border_radius=12)
     inner = rect.inflate(-14, -14)
     pygame.draw.rect(screen, (56, 79, 115), inner, border_radius=10)
@@ -307,7 +334,42 @@ def _draw_score_panel(screen, dealer, player_scores, dad_ai_level, player_name):
     _draw_label(screen, f"Dealer: {'You' if dealer == 0 else 'Dad'}", (panel_rect.x + 16, panel_rect.y + 48), body_font, THEME["ink"])
     _draw_label(screen, f"{player_name}: {player_scores[0]}", (panel_rect.x + 16, panel_rect.y + 78), body_font, THEME["blue"])
     _draw_label(screen, f"Dad: {player_scores[1]}", (panel_rect.x + 16, panel_rect.y + 104), body_font, THEME["red"])
-    _draw_label(screen, f"AI: {AI_LEVELS[dad_ai_level]}", (panel_rect.x + 16, panel_rect.y + 128), small_font, THEME["muted"])
+    _draw_label(screen, f"AI: {AI_LEVELS[dad_ai_level]}", (panel_rect.x + 16, panel_rect.y + 120), small_font, THEME["muted"])
+
+
+def _draw_scoring_breakdown(screen, player_idx, breakdown_list, total_points, player_name):
+    """Draw a breakdown of scoring items for a player."""
+    sw, sh = screen.get_width(), screen.get_height()
+    if player_idx == 0:
+        panel_x = 24
+    else:
+        panel_x = sw - 244
+    panel_y = sh // 2 - 140
+    panel_rect = pygame.Rect(panel_x, panel_y, 220, 280)
+
+    _draw_shadowed_panel(screen, panel_rect, THEME["panel"], THEME["panel_edge"], radius=18)
+
+    header_font = pygame.font.SysFont('arial', 16, bold=True)
+    item_font = pygame.font.SysFont('arial', 13)
+    total_font = pygame.font.SysFont('arial', 14, bold=True)
+
+    player_label = player_name if player_idx == 0 else "Dad"
+    _draw_label(screen, f"{player_label}'s Score", (panel_rect.x + 12, panel_rect.y + 10), header_font, THEME["ink"])
+
+    y_offset = panel_rect.y + 38
+    if breakdown_list:
+        for desc, cards, points in breakdown_list:
+            score_str = f"{desc}: +{points}"
+            item_surf = item_font.render(score_str, True, THEME["ink"])
+            screen.blit(item_surf, (panel_rect.x + 12, y_offset))
+            y_offset += 22
+
+    pygame.draw.line(screen, THEME["ink"], (panel_rect.x + 12, y_offset), (panel_rect.right - 12, y_offset), 1)
+    y_offset += 8
+
+    total_str = f"Hand: +{total_points}"
+    total_surf = total_font.render(total_str, True, THEME["blue"] if player_idx == 0 else THEME["red"])
+    screen.blit(total_surf, (panel_rect.x + 12, y_offset))
 
 
 def _draw_game_header(screen, message):
@@ -353,6 +415,23 @@ def _draw_scaled_card(screen, surface, rect, size):
     scaled = pygame.transform.smoothscale(surface, size)
     screen.blit(scaled, rect.topleft)
 
+
+def _pegging_target_center(slot_index):
+    sw, _ = _LAST_SCREEN_SIZE
+    x = sw // 2 - 220 + slot_index * 26 + 46
+    y = 458 + 69
+    return (x, y)
+
+
+def _queue_score_popup(player_idx, points):
+    if _EFFECTS is None or points <= 0:
+        return
+    sw, sh = _LAST_SCREEN_SIZE
+    x = sw // 2 - 150 if player_idx == 0 else sw // 2 + 150
+    y = sh - 220 if player_idx == 0 else 180
+    color = THEME["blue"] if player_idx == 0 else THEME["red"]
+    _EFFECTS.add_score_popup(f"+{points}", (x, y), color=color)
+
 def get_pegging_total():
     return sum(_value_for_15(_parse_label(c.label)[0]) for c in pegging_pile)
 
@@ -361,7 +440,7 @@ def _score_pegging_play(pile):
     if not pile:
         return 0
 
-    total = get_pegging_total()
+    total = sum(_value_for_15(_parse_label(c.label)[0]) for c in pile)
     points = 0
 
     if total == 15:
@@ -399,99 +478,35 @@ def _score_pegging_play(pile):
 def _score_labels_hand(hand_labels, starter_label, is_crib=False):
     hand_model = [_label_to_model_card(lbl) for lbl in hand_labels]
     starter_model = _label_to_model_card(starter_label)
-    total, _ = cribbage_cards.score_hand(hand_model, starter_model)
+    total, _ = cribbage_cards.score_hand(hand_model, starter_model, is_crib=is_crib)
     return total
 
 
 def _choose_dad_discards():
     dad_labels = [c.label for c in player2_hand]
-    if len(dad_labels) != 6:
-        return [0, 1]
-
-    if dad_ai_level == 1:
-        return random.sample(range(6), 2)
-
-    all_labels = set(_canonical_deck_labels())
-    unseen_pool = list(all_labels - set(dad_labels))
-    if not unseen_pool:
-        return random.sample(range(6), 2)
-
-    dad_is_dealer = dealer == 1
-    best_idxs = [0, 1]
-    best_score = -10**9
-
-    for discard_idxs in combinations(range(6), 2):
-        discard_set = set(discard_idxs)
-        kept = [dad_labels[i] for i in range(6) if i not in discard_set]
-        discards = [dad_labels[i] for i in discard_idxs]
-
-        if dad_ai_level == 2:
-            total = 0.0
-            for starter in unseen_pool:
-                total += _score_labels_hand(kept, starter, is_crib=False)
-            score = total / len(unseen_pool)
-        else:
-            # Hard: estimate own hand EV plus/minus crib EV via Monte Carlo.
-            trials = min(220, len(unseen_pool) * 4)
-            total = 0.0
-            for _ in range(trials):
-                opp_discards = random.sample(unseen_pool, 2)
-                rem = [lbl for lbl in unseen_pool if lbl not in opp_discards]
-                if not rem:
-                    continue
-                starter = random.choice(rem)
-                own_score = _score_labels_hand(kept, starter, is_crib=False)
-                crib_labels = discards + opp_discards
-                crib_score = _score_labels_hand(crib_labels, starter, is_crib=True)
-                total += own_score + (crib_score if dad_is_dealer else -crib_score)
-            score = total / max(1, trials)
-
-        if score > best_score:
-            best_score = score
-            best_idxs = list(discard_idxs)
-
-    return best_idxs
+    return ai_strategy.choose_discard_indices(
+        dad_labels=dad_labels,
+        dad_ai_level=dad_ai_level,
+        dealer_is_dad=(dealer == 1),
+        canonical_deck_labels=_canonical_deck_labels(),
+        score_labels_hand=_score_labels_hand,
+    )
 
 
 def _choose_dad_pegging_index(current_total):
-    legal = [
-        i for i, c in enumerate(player2_hand)
-        if current_total + _value_for_15(_parse_label(c.label)[0]) <= 31
-    ]
-    if not legal:
-        return None
-
-    if dad_ai_level == 1:
-        return random.choice(legal)
-
-    best_idx = legal[0]
-    best_score = -10**9
-
-    for idx in legal:
-        candidate = player2_hand[idx]
-        trial_pile = pegging_pile + [candidate]
-        immediate = _score_pegging_play(trial_pile)
-        trial_total = sum(_value_for_15(_parse_label(c.label)[0]) for c in trial_pile)
-
-        # Prefer keeping flexible totals away from obvious traps.
-        shape_bonus = 0
-        if trial_total in (5, 10, 21):
-            shape_bonus += 0.6
-        if trial_total in (14, 20, 26):
-            shape_bonus -= 0.5
-
-        score = immediate + shape_bonus
-
-        if dad_ai_level == 3:
-            # Hard mode avoids peeking at the real player hand and uses inferred risk.
-            opp_risk = _estimate_opponent_reply_risk(trial_pile)
-            score -= 0.85 * opp_risk
-
-        if score > best_score:
-            best_score = score
-            best_idx = idx
-
-    return best_idx
+    hand_labels = [c.label for c in player2_hand]
+    pegging_labels = [c.label for c in pegging_pile]
+    return ai_strategy.choose_pegging_index(
+        hand_labels=hand_labels,
+        current_total=current_total,
+        dad_ai_level=dad_ai_level,
+        value_for_15=_value_for_15,
+        parse_label=_parse_label,
+        score_pegging_play=_score_pegging_play,
+        label_card_factory=_LabelCard,
+        current_pegging_labels=pegging_labels,
+        estimate_opponent_reply_risk=_estimate_opponent_reply_risk,
+    )
 
 
 def _estimate_opponent_reply_risk(trial_pile):
@@ -528,13 +543,14 @@ def _estimate_opponent_reply_risk(trial_pile):
 
 
 def _finalize_pegging_if_complete():
-    global game_phase, message
+    global game_phase, message, pegging_points
     if player1_hand or player2_hand:
         return False
 
     # Last card point if sequence did not already end at 31.
     if pegging_pile and get_pegging_total() != 31 and last_pegging_player is not None:
         player_scores[last_pegging_player] += 1
+        pegging_points[last_pegging_player] += 1
         if last_pegging_player == 0:
             message = "Last card for 1 point. Counting hands."
         else:
@@ -547,13 +563,15 @@ def _finalize_pegging_if_complete():
 
 
 def _handle_go(player_idx):
-    global player_turn, message
+    global player_turn, message, pegging_points
     pegging_passes[player_idx] = True
     other = 1 - player_idx
 
     if pegging_passes[other]:
         if pegging_pile and get_pegging_total() < 31 and last_pegging_player is not None:
             player_scores[last_pegging_player] += 1
+            pegging_points[last_pegging_player] += 1
+            _queue_score_popup(last_pegging_player, 1)
             if last_pegging_player == 0:
                 message = "Go for you (+1). New count."
             else:
@@ -571,11 +589,16 @@ def _handle_go(player_idx):
 
 
 def _play_pegging_card(player_idx, idx):
-    global player_turn, message
+    global player_turn, message, pegging_points
     if player_idx == 0:
         card = player1_hand.pop(idx)
     else:
         card = player2_hand.pop(idx)
+
+    if _EFFECTS is not None:
+        start = card.rect.center
+        end = _pegging_target_center(len(pegging_pile))
+        _EFFECTS.add_card_flight(card.image, start, end)
 
     pegging_pile.append(card)
     pegging_passes[0] = False
@@ -583,12 +606,16 @@ def _play_pegging_card(player_idx, idx):
 
     points = _score_pegging_play(pegging_pile)
     player_scores[player_idx] += points
+    pegging_points[player_idx] += points
+    _queue_score_popup(player_idx, points)
 
     name = player_name if player_idx == 0 else 'Dad'
     point_note = f" (+{points})" if points else ""
 
     if get_pegging_total() == 31:
         message = f"{name} played 31{point_note}. New count."
+        if _EFFECTS is not None:
+            _EFFECTS.trigger_shake(intensity=7, duration_ms=220)
         pegging_pile.clear()
         player_turn = 1 - player_idx
     else:
@@ -606,29 +633,31 @@ def handle_discard(event):
             if card.rect.collidepoint(event.pos) and idx not in selected_cards:
                 selected_cards.append(idx)
                 if len(selected_cards) == 2:
-                    # Execute Discard
-                    for i in sorted(selected_cards, reverse=True):
-                        crib.append(player1_hand.pop(i))
-                    dad_discards = _choose_dad_discards()
-                    for i in sorted(dad_discards, reverse=True):
-                        crib.append(player2_hand.pop(i))
+                    if _ADAPTER is not None and _ENGINE is not None:
+                        # Route discard transition through engine adapter.
+                        _ADAPTER.update_engine_from_globals()
+                        _ENGINE.handle_discard(selected_cards)
+                        _ADAPTER.update_globals_from_engine()
+                    else:
+                        # Fallback legacy path
+                        for i in sorted(selected_cards, reverse=True):
+                            crib.append(player1_hand.pop(i))
+                        dad_discards = _choose_dad_discards()
+                        for i in sorted(dad_discards, reverse=True):
+                            crib.append(player2_hand.pop(i))
+                        player1_kept = player1_hand.copy()
+                        player2_kept = player2_hand.copy()
+                        starter_card = None
+                        if _stock_labels:
+                            starter_card = _stock_labels.pop(0)
+                        game_phase = 'pegging'
+                        player_turn = 1 - dealer
+                        pegging_passes[0] = False
+                        pegging_passes[1] = False
+                        last_pegging_player = None
+                        message = "Pegging phase begins!"
+
                     selected_cards = []
-
-                    # Save the kept 4-card hands for counting (pegging will consume player*_hand).
-                    player1_kept = player1_hand.copy()
-                    player2_kept = player2_hand.copy()
-
-                    # Cut a starter card from the stock
-                    starter_card = None
-                    if _stock_labels:
-                        starter_card = _stock_labels.pop(0)
-
-                    game_phase = 'pegging'
-                    player_turn = 1 - dealer
-                    pegging_passes[0] = False
-                    pegging_passes[1] = False
-                    last_pegging_player = None
-                    message = "Pegging phase begins!"
                 break
 
 def handle_pegging(event):
@@ -665,28 +694,44 @@ def handle_pegging(event):
 
 
 def handle_counting():
-    global game_phase, message, player_scores, player1_kept, player2_kept
+    global game_phase, message, player_scores, player1_kept, player2_kept, round_breakdown
 
-    if starter_card is None:
-        message = "No starter card available. Press R to reset."
-        game_phase = 'end'
-        return
+    if _ADAPTER is not None and _ENGINE is not None:
+        _ADAPTER.update_engine_from_globals()
+        results = _ENGINE.count_hands(_label_to_model_card)
+        _ADAPTER.update_globals_from_engine()
+        p1_points = results["player"]
+        p2_points = results["ai"]
+        crib_points = results["crib"]
+        # For engine path, breakdown would come from engine; for now use empty
+        round_breakdown = {'player': (p1_points, []), 'ai': (p2_points, []), 'crib': (crib_points, [])}
+    else:
+        if starter_card is None:
+            message = "No starter card available. Press R to reset."
+            game_phase = 'end'
+            return
 
-    starter = _label_to_model_card(starter_card)
-    p1_hand_model = [_label_to_model_card(c.label) for c in player1_kept]
-    p2_hand_model = [_label_to_model_card(c.label) for c in player2_kept]
-    crib_model = [_label_to_model_card(c.label) for c in crib]
+        starter = _label_to_model_card(starter_card)
+        p1_hand_model = [_label_to_model_card(c.label) for c in player1_kept]
+        p2_hand_model = [_label_to_model_card(c.label) for c in player2_kept]
+        crib_model = [_label_to_model_card(c.label) for c in crib]
 
-    p1_total, _ = cribbage_cards.score_hand(p1_hand_model, starter)
-    p2_total, _ = cribbage_cards.score_hand(p2_hand_model, starter)
-    crib_total, _ = cribbage_cards.score_hand(crib_model, starter) if len(crib_model) == 4 else (0, [])
-    p1_points = p1_total
-    p2_points = p2_total
-    crib_points = crib_total
+        p1_total, p1_breakdown = cribbage_cards.score_hand(p1_hand_model, starter, is_crib=False)
+        p2_total, p2_breakdown = cribbage_cards.score_hand(p2_hand_model, starter, is_crib=False)
+        crib_total, crib_breakdown = cribbage_cards.score_hand(crib_model, starter, is_crib=True) if len(crib_model) == 4 else (0, [])
+        p1_points = p1_total
+        p2_points = p2_total
+        crib_points = crib_total
 
-    player_scores[0] += p1_points
-    player_scores[1] += p2_points
-    player_scores[dealer] += crib_points
+        round_breakdown = {
+            'player': (p1_points, p1_breakdown),
+            'ai': (p2_points, p2_breakdown),
+            'crib': (crib_points, crib_breakdown)
+        }
+
+        player_scores[0] += p1_points
+        player_scores[1] += p2_points
+        player_scores[dealer] += crib_points
 
     w = _check_for_winner()
     if w is None:
@@ -704,15 +749,24 @@ def handle_counting():
 # --- Main Entry ---
 def main():
     global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, winner_index, dad_ai_level, last_pegging_player
+    global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--capture-title', dest='capture_title', default=None)
     parser.add_argument('--capture-gameplay', dest='capture_gameplay', default=None)
+    parser.add_argument('--exit-after-capture', dest='exit_after_capture', action='store_true')
     args, _ = parser.parse_known_args()
+    capture_title_pending = bool(args.capture_title)
+    capture_gameplay_pending = bool(args.capture_gameplay)
 
     pygame.init()
     screen = pygame.display.set_mode((1280, 900), pygame.RESIZABLE)
     pygame.display.set_caption("Upta - The Camp Cribbage Game")
     clock = pygame.time.Clock()
+
+    _ENGINE = CribbageEngine()
+    _ADAPTER = EngineAdapter(_ENGINE, sys.modules[__name__])
+    _PHASE_SM = PhaseStateMachine(_ENGINE)
+    _EFFECTS = EffectsManager()
 
     intro_background = None
     for intro_candidate in ('table.jpg', 'table.png', 'board.jpg', 'welcome_bg.png', 'Tony.jpg', 'name_entry_bg.jpg'):
@@ -738,6 +792,13 @@ def main():
             gameplay_background = None
             gameplay_background_name = None
             continue
+
+    maine_back = _ASSETS_DIR / 'maine.jpg'
+    if maine_back.exists():
+        try:
+            _MAINE_BACK_SURFACE = _load_image(maine_back)
+        except pygame.error:
+            _MAINE_BACK_SURFACE = None
     
     _ensure_card_pngs_from_svgs()
     card_images = load_card_images()
@@ -745,7 +806,10 @@ def main():
     def _start_fresh_game():
         global winner_index
         nonlocal card_images
+        global pegging_points, round_breakdown
         # Fresh game from intro
+        pegging_points[:] = [0, 0]
+        round_breakdown = {'player': (0, []), 'ai': (0, []), 'crib': (0, [])}
         player_scores[:] = [0, 0]
         winner_index = None
         pegging_pile.clear()
@@ -763,13 +827,23 @@ def main():
         player1_hand[:] = [CardSprite(card_images[_deck_labels[i]], (0, 0), _deck_labels[i]) for i in range(6)]
         player2_hand[:] = [CardSprite(card_images[_deck_labels[i + 6]], (0, 0), _deck_labels[i + 6]) for i in range(6)]
 
+        if _ENGINE is not None:
+            _ENGINE.state.dad_ai_level = dad_ai_level
+            _ENGINE.start_new_game(player1_hand, player2_hand, _stock_labels, dealer=dealer)
+            if _ADAPTER is not None:
+                _ADAPTER.update_globals_from_engine()
+
         # Start at discard phase
         message = "Select 2 cards to discard to the crib."
         return dealer, starter_card, message
 
     def _start_next_round():
         """Start the next hand while keeping the running score."""
+        global last_pegging_player
         nonlocal card_images
+        global pegging_points, round_breakdown
+        pegging_points[:] = [0, 0]
+        round_breakdown = {'player': (0, []), 'ai': (0, []), 'crib': (0, [])}
         pegging_pile.clear()
         crib.clear()
         selected_cards.clear()
@@ -790,14 +864,22 @@ def main():
         player1_hand[:] = [CardSprite(card_images[_deck_labels[i]], (0, 0), _deck_labels[i]) for i in range(6)]
         player2_hand[:] = [CardSprite(card_images[_deck_labels[i + 6]], (0, 0), _deck_labels[i + 6]) for i in range(6)]
 
+        if _ENGINE is not None:
+            _ENGINE.state.dad_ai_level = dad_ai_level
+            _ENGINE.start_next_round(player1_hand, player2_hand, _stock_labels)
+            if _ADAPTER is not None:
+                _ADAPTER.update_globals_from_engine()
+
         return nonlocal_dealer, nonlocal_starter, "New Round. Select 2 cards to discard."
 
     def _prepare_gameplay_preview_state():
         """Build a deterministic pegging-phase board for screenshot capture."""
-        global game_phase, message, player_turn, starter_card, last_pegging_player
+        global game_phase, message, player_turn, starter_card, last_pegging_player, dealer
 
         d, sc, msg = _start_fresh_game()
-        _ = (d, sc, msg)
+        dealer = d
+        starter_card = sc
+        message = msg
 
         # Simulate discards quickly so we can render a real pegging phase.
         if len(player1_hand) >= 2:
@@ -839,11 +921,14 @@ def main():
         3: "Risk simulation\nHard opponent"
     }
 
-    if args.capture_gameplay:
+    if capture_gameplay_pending:
         _prepare_gameplay_preview_state()
 
     running = True
     while running:
+        if _EFFECTS is not None:
+            _EFFECTS.update(clock.get_time())
+
         if game_phase == 'intro':
             sw, sh = screen.get_width(), screen.get_height()
             if intro_background is not None:
@@ -942,13 +1027,15 @@ def main():
             screen.blit(inst1, (sw // 2 - inst1.get_width() // 2, panel_rect.bottom + 12))
             screen.blit(inst2, (sw // 2 - inst2.get_width() // 2, panel_rect.bottom + 32))
 
-            if args.capture_title:
+            if capture_title_pending:
                 capture_path = Path(args.capture_title)
                 capture_path.parent.mkdir(parents=True, exist_ok=True)
                 pygame.image.save(screen, str(capture_path))
                 print(f"Saved title screenshot to: {capture_path}")
-                pygame.quit()
-                return
+                capture_title_pending = False
+                if args.exit_after_capture:
+                    pygame.quit()
+                    return
 
             pygame.display.flip()
             clock.tick(FPS)
@@ -983,6 +1070,7 @@ def main():
             continue
 
         sw, sh = screen.get_width(), screen.get_height()
+        _LAST_SCREEN_SIZE = (sw, sh)
         if gameplay_background is not None:
             bg = pygame.transform.smoothscale(gameplay_background, (sw, sh))
             screen.blit(bg, (0, 0))
@@ -998,7 +1086,7 @@ def main():
             
             if game_phase == 'discard':
                 handle_discard(event)
-            elif game_phase == 'pegging':
+            elif game_phase == 'pegging' and event.type == pygame.MOUSEBUTTONDOWN:
                 handle_pegging(event)
             elif game_phase == 'end':
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
@@ -1025,11 +1113,17 @@ def main():
                         game_phase = 'intro'
 
         # Let the game logic advance even when there are no input events.
-        if not args.capture_gameplay:
+        if not capture_gameplay_pending:
             if game_phase == 'pegging':
                 handle_pegging(None)
             elif game_phase == 'counting':
                 handle_counting()
+
+        # Keep phase machine synchronized during transition period.
+        if _ADAPTER is not None and _PHASE_SM is not None:
+            _ADAPTER.update_engine_from_globals()
+            _PHASE_SM.update()
+            _ADAPTER.update_globals_from_engine()
 
         _draw_game_header(screen, message)
         _draw_score_panel(screen, dealer, player_scores, dad_ai_level, player_name)
@@ -1037,11 +1131,22 @@ def main():
 
         # Update Card Positions for rendering
         p1_pos = fixed_hand_positions(1, len(player1_hand), sw, sh)
+        mouse_pos = pygame.mouse.get_pos()
         for i, card in enumerate(player1_hand):
             card.rect.topleft = p1_pos[i]
-            shadow = pygame.Rect(card.rect.x + 6, card.rect.y + 8, card.rect.width, card.rect.height)
+            hovered = card.rect.collidepoint(mouse_pos) and game_phase in ('discard', 'pegging') and player_turn == 0
+            draw_rect = card.rect.copy()
+            if hovered:
+                draw_rect.y -= 14
+
+            shadow = pygame.Rect(draw_rect.x + 6, draw_rect.y + 8, draw_rect.width, draw_rect.height)
             pygame.draw.rect(screen, (0, 0, 0, 80), shadow, border_radius=12)
-            card.draw(screen)
+            if hovered:
+                lifted = pygame.transform.rotozoom(card.image, -3, 1.03)
+                lifted_rect = lifted.get_rect(center=draw_rect.center)
+                screen.blit(lifted, lifted_rect)
+            else:
+                card.draw(screen)
 
         p2_pos = _row_positions(len(player2_hand), sw, 170, 86)
         p2_size = (90, 135)
@@ -1059,10 +1164,52 @@ def main():
             pygame.draw.rect(screen, (0, 0, 0, 75), shadow, border_radius=12)
             _draw_scaled_card(screen, card.image, card.rect, pegging_card_size)
 
+        if _EFFECTS is not None:
+            _EFFECTS.draw(screen)
+            shake_x, shake_y = _EFFECTS.shake_offset()
+            if shake_x or shake_y:
+                shaken = screen.copy()
+                screen.fill((0, 0, 0))
+                screen.blit(shaken, (shake_x, shake_y))
+
         font = pygame.font.SysFont('arial', 22, bold=True)
 
         total_surf = font.render(f"Pegging Total: {get_pegging_total()}", True, THEME["text"])
         screen.blit(total_surf, (sw // 2 - total_surf.get_width() // 2, pegging_y + pegging_card_size[1] + 10))
+
+        # Display scoring breakdown during end-of-hand phase
+        if game_phase == 'end':
+            p1_pts, p1_breakdown = round_breakdown['player']
+            p2_pts, p2_breakdown = round_breakdown['ai']
+            crib_pts, crib_breakdown = round_breakdown['crib']
+            
+            # Show player and ai hand scoring
+            _draw_scoring_breakdown(screen, 0, p1_breakdown, p1_pts, player_name)
+            _draw_scoring_breakdown(screen, 1, p2_breakdown, p2_pts, player_name)
+            
+            # Show crib scoring in the center if dealer
+            if crib_pts > 0 or crib_breakdown:
+                crib_panel_x = sw // 2 - 110
+                crib_panel_y = sh // 2 + 60
+                crib_rect = pygame.Rect(crib_panel_x, crib_panel_y, 220, 140)
+                _draw_shadowed_panel(screen, crib_rect, (32, 85, 52), THEME["wood_light"], radius=18)
+                
+                crib_font = pygame.font.SysFont('arial', 16, bold=True)
+                item_font = pygame.font.SysFont('arial', 13)
+                crib_label = "Crib" if dealer == 1 else "Opponent's Crib"
+                _draw_label(screen, crib_label, (crib_rect.x + 12, crib_rect.y + 10), crib_font, THEME["text"])
+                
+                y = crib_rect.y + 38
+                for desc, cards, points in crib_breakdown:
+                    score_str = f"{desc}: +{points}"
+                    item_surf = item_font.render(score_str, True, THEME["text"])
+                    screen.blit(item_surf, (crib_rect.x + 12, y))
+                    y += 22
+                
+                total_font = pygame.font.SysFont('arial', 14, bold=True)
+                total_str = f"Total: +{crib_pts}"
+                total_surf = total_font.render(total_str, True, THEME["gold"])
+                screen.blit(total_surf, (crib_rect.x + 12, y + 8))
 
         # End-of-hand / game-over clickable button (in addition to the R key).
         if game_phase in ('end', 'game_over'):
@@ -1082,13 +1229,15 @@ def main():
             screen.blit(btn_shadow, (tx + 2, ty + 2))
             screen.blit(btn_label, (tx, ty))
 
-        if args.capture_gameplay:
+        if capture_gameplay_pending:
             capture_path = Path(args.capture_gameplay)
             capture_path.parent.mkdir(parents=True, exist_ok=True)
             pygame.image.save(screen, str(capture_path))
             print(f"Saved gameplay screenshot to: {capture_path}")
-            pygame.quit()
-            return
+            capture_gameplay_pending = False
+            if args.exit_after_capture:
+                pygame.quit()
+                return
 
         pygame.display.flip()
         clock.tick(FPS)
