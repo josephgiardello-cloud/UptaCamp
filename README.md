@@ -5,6 +5,7 @@ A fun, interactive **Cribbage card game** built with Python and Pygame. Play aga
 ## Table of Contents
 
 - [Overview](#overview)
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Installation](#installation)
@@ -24,6 +25,14 @@ A fun, interactive **Cribbage card game** built with Python and Pygame. Play aga
 - Support for multiple rounds with running scores
 
 Cribbage is a classic two-player card game known for its unique scoring system and strategic depth. If you're new to Cribbage, start with the **Easy** difficulty to learn the rules!
+
+## Screenshots
+
+### Title Screen
+![Upta title screen](screenshots/title-screen.png)
+
+### Gameplay Screen
+![Upta gameplay screen](screenshots/gameplay-screen.png)
 
 ## Features
 
