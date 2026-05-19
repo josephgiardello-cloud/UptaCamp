@@ -1,6 +1,8 @@
 ﻿import os
 import sys
 import random
+import shutil
+import subprocess
 from pathlib import Path
 import argparse
 
@@ -509,6 +511,34 @@ def _choose_dad_pegging_index(current_total):
     )
 
 
+def _choose_auto_player_discard_indices():
+    player_labels = [c.label for c in player1_hand]
+    return ai_strategy.choose_discard_indices(
+        dad_labels=player_labels,
+        dad_ai_level=dad_ai_level,
+        dealer_is_dad=(dealer == 0),
+        canonical_deck_labels=_canonical_deck_labels(),
+        score_labels_hand=_score_labels_hand,
+    )
+
+
+def _choose_auto_player_pegging_index(current_total):
+    best_idx = None
+    best_score = -1
+    best_value = 99
+    for idx, card in enumerate(player1_hand):
+        value = _value_for_15(_parse_label(card.label)[0])
+        if current_total + value > 31:
+            continue
+        trial = pegging_pile + [_LabelCard(card.label)]
+        immediate = _score_pegging_play(trial)
+        if immediate > best_score or (immediate == best_score and value < best_value):
+            best_idx = idx
+            best_score = immediate
+            best_value = value
+    return best_idx
+
+
 def _estimate_opponent_reply_risk(trial_pile):
     trial_total = sum(_value_for_15(_parse_label(c.label)[0]) for c in trial_pile)
     opponent_hand_size = len(player1_hand)
@@ -660,7 +690,7 @@ def handle_discard(event):
                     selected_cards = []
                 break
 
-def handle_pegging(event):
+def handle_pegging(event, auto_player=False):
     global player_turn
 
     if _finalize_pegging_if_complete():
@@ -672,6 +702,13 @@ def handle_pegging(event):
         player_can_move = any(current_total + _value_for_15(_parse_label(c.label)[0]) <= 31 for c in player1_hand)
         if not player_can_move:
             _handle_go(0)
+            return
+        if auto_player and event is None:
+            chosen = _choose_auto_player_pegging_index(current_total)
+            if chosen is not None:
+                _play_pegging_card(0, chosen)
+                _check_for_winner()
+            _finalize_pegging_if_complete()
             return
         if event and event.type == pygame.MOUSEBUTTONDOWN:
             for idx, card in enumerate(player1_hand):
@@ -752,11 +789,79 @@ def main():
     global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--capture-title', dest='capture_title', default=None)
+    parser.add_argument('--capture-discard', dest='capture_discard', default=None)
     parser.add_argument('--capture-gameplay', dest='capture_gameplay', default=None)
+    parser.add_argument('--capture-video', dest='capture_video', default=None)
+    parser.add_argument('--capture-video-fps', dest='capture_video_fps', type=int, default=30)
+    parser.add_argument('--capture-video-intro-seconds', dest='capture_video_intro_seconds', type=float, default=1.4)
+    parser.add_argument('--capture-video-end-seconds', dest='capture_video_end_seconds', type=float, default=1.2)
+    parser.add_argument('--capture-video-max-seconds', dest='capture_video_max_seconds', type=float, default=90.0)
     parser.add_argument('--exit-after-capture', dest='exit_after_capture', action='store_true')
     args, _ = parser.parse_known_args()
     capture_title_pending = bool(args.capture_title)
+    capture_discard_pending = bool(args.capture_discard)
     capture_gameplay_pending = bool(args.capture_gameplay)
+    capture_video_pending = bool(args.capture_video)
+
+    capture_video_path = Path(args.capture_video).resolve() if capture_video_pending else None
+    capture_video_frames_dir = None
+    capture_video_frame_index = 0
+    capture_intro_frames = 0
+    capture_end_frames = 0
+    capture_intro_target = max(1, int(args.capture_video_intro_seconds * FPS))
+    capture_end_target = max(1, int(args.capture_video_end_seconds * FPS))
+    capture_max_frames = max(60, int(args.capture_video_max_seconds * FPS))
+
+    if capture_video_pending:
+        capture_video_frames_dir = capture_video_path.parent / f"{capture_video_path.stem}_frames"
+        capture_video_frames_dir.mkdir(parents=True, exist_ok=True)
+        for stale in capture_video_frames_dir.glob('frame_*.png'):
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+        print(f"Starting automated capture to frames: {capture_video_frames_dir}")
+
+    def _save_video_frame():
+        nonlocal capture_video_frame_index
+        if not capture_video_pending or capture_video_frames_dir is None:
+            return
+        frame_path = capture_video_frames_dir / f"frame_{capture_video_frame_index:06d}.png"
+        pygame.image.save(screen, str(frame_path))
+        capture_video_frame_index += 1
+
+    def _finalize_video_capture():
+        if not capture_video_pending or capture_video_frames_dir is None or capture_video_path is None:
+            return
+
+        ffmpeg = shutil.which('ffmpeg')
+        if ffmpeg is None:
+            print("Capture complete, but ffmpeg was not found on PATH.")
+            print(f"Frames are available in: {capture_video_frames_dir}")
+            return
+
+        capture_video_path.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            ffmpeg,
+            '-y',
+            '-framerate',
+            str(max(1, args.capture_video_fps)),
+            '-i',
+            str(capture_video_frames_dir / 'frame_%06d.png'),
+            '-c:v',
+            'libx264',
+            '-pix_fmt',
+            'yuv420p',
+            str(capture_video_path),
+        ]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            print(f"Saved gameplay video to: {capture_video_path}")
+        except subprocess.CalledProcessError as exc:
+            print("ffmpeg encoding failed.")
+            if exc.stderr:
+                print(exc.stderr)
+            print(f"Frames are still available in: {capture_video_frames_dir}")
 
     pygame.init()
     screen = pygame.display.set_mode((1280, 900), pygame.RESIZABLE)
@@ -924,6 +1029,40 @@ def main():
     if capture_gameplay_pending:
         _prepare_gameplay_preview_state()
 
+    def _auto_discard_player_hand():
+        global game_phase, player_turn, starter_card, message, selected_cards, last_pegging_player
+
+        if len(player1_hand) < 2:
+            return
+
+        selected = _choose_auto_player_discard_indices()
+        if len(selected) != 2:
+            selected = [0, 1]
+
+        if _ADAPTER is not None and _ENGINE is not None:
+            _ADAPTER.update_engine_from_globals()
+            _ENGINE.handle_discard(selected)
+            _ADAPTER.update_globals_from_engine()
+        else:
+            for i in sorted(selected, reverse=True):
+                crib.append(player1_hand.pop(i))
+            dad_discards = _choose_dad_discards()
+            for i in sorted(dad_discards, reverse=True):
+                crib.append(player2_hand.pop(i))
+            player1_kept[:] = player1_hand.copy()
+            player2_kept[:] = player2_hand.copy()
+            starter_card = None
+            if _stock_labels:
+                starter_card = _stock_labels.pop(0)
+            game_phase = 'pegging'
+            player_turn = 1 - dealer
+            pegging_passes[0] = False
+            pegging_passes[1] = False
+            last_pegging_player = None
+            message = "Pegging phase begins!"
+
+        selected_cards = []
+
     running = True
     while running:
         if _EFFECTS is not None:
@@ -1037,6 +1176,23 @@ def main():
                     pygame.quit()
                     return
 
+            if capture_discard_pending:
+                d, sc, msg = _start_fresh_game()
+                dealer = d
+                starter_card = sc
+                message = msg
+                game_phase = 'discard'
+
+            if capture_video_pending:
+                _save_video_frame()
+                capture_intro_frames += 1
+                if capture_intro_frames >= capture_intro_target:
+                    d, sc, msg = _start_fresh_game()
+                    dealer = d
+                    starter_card = sc
+                    message = msg
+                    game_phase = 'discard'
+
             pygame.display.flip()
             clock.tick(FPS)
 
@@ -1114,8 +1270,10 @@ def main():
 
         # Let the game logic advance even when there are no input events.
         if not capture_gameplay_pending:
+            if capture_video_pending and game_phase == 'discard':
+                _auto_discard_player_hand()
             if game_phase == 'pegging':
-                handle_pegging(None)
+                handle_pegging(None, auto_player=capture_video_pending)
             elif game_phase == 'counting':
                 handle_counting()
 
@@ -1236,6 +1394,31 @@ def main():
             print(f"Saved gameplay screenshot to: {capture_path}")
             capture_gameplay_pending = False
             if args.exit_after_capture:
+                pygame.quit()
+                return
+
+        if capture_discard_pending and game_phase == 'discard':
+            capture_path = Path(args.capture_discard)
+            capture_path.parent.mkdir(parents=True, exist_ok=True)
+            pygame.image.save(screen, str(capture_path))
+            print(f"Saved discard screenshot to: {capture_path}")
+            capture_discard_pending = False
+            if args.exit_after_capture:
+                pygame.quit()
+                return
+
+        if capture_video_pending:
+            _save_video_frame()
+
+            if game_phase in ('end', 'game_over'):
+                capture_end_frames += 1
+            else:
+                capture_end_frames = 0
+
+            hit_end_target = capture_end_frames >= capture_end_target
+            hit_max_frames = capture_video_frame_index >= capture_max_frames
+            if hit_end_target or hit_max_frames:
+                _finalize_video_capture()
                 pygame.quit()
                 return
 
