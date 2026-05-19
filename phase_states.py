@@ -79,7 +79,11 @@ class PhaseStateMachine:
         if target_phase not in self.states:
             return False
         current = self.current
-        if not force and current.allowed_transitions and target_phase not in current.allowed_transitions:
+        if (
+            not force
+            and current.allowed_transitions
+            and target_phase not in current.allowed_transitions
+        ):
             return False
         self.engine.state.phase = target_phase
         return True

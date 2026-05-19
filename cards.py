@@ -101,6 +101,51 @@ def label_to_card(label: str) -> Card:
     return Card(model_rank, model_suit)
 
 
+def card_label(card_or_label) -> str:
+    return str(getattr(card_or_label, "label", card_or_label))
+
+
+def pegging_total(pile) -> int:
+    return sum(value_for_fifteen(parse_card_label(card_label(item))[0]) for item in pile)
+
+
+def score_pegging_play(pile) -> int:
+    if not pile:
+        return 0
+
+    total = pegging_total(pile)
+    points = 0
+
+    if total in {15, 31}:
+        points += 2
+
+    # Pair / pair royal / double pair royal from the end of the pile.
+    last_rank = parse_card_label(card_label(pile[-1]))[0]
+    same_rank_count = 1
+    for i in range(len(pile) - 2, -1, -1):
+        if parse_card_label(card_label(pile[i]))[0] == last_rank:
+            same_rank_count += 1
+        else:
+            break
+    if same_rank_count == 2:
+        points += 2
+    elif same_rank_count == 3:
+        points += 6
+    elif same_rank_count >= 4:
+        points += 12
+
+    # Longest trailing run scores.
+    for run_len in range(len(pile), 2, -1):
+        ranks = [rank_index(parse_card_label(card_label(c))[0]) for c in pile[-run_len:]]
+        if len(set(ranks)) != run_len:
+            continue
+        if max(ranks) - min(ranks) + 1 == run_len:
+            points += run_len
+            break
+
+    return points
+
+
 def score_15s(cards):
     breakdown = []
     for r in range(2, len(cards) + 1):

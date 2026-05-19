@@ -494,46 +494,11 @@ def _queue_score_popup(player_idx, points):
 
 
 def get_pegging_total():
-    return sum(_value_for_15(_parse_label(c.label)[0]) for c in pegging_pile)
+    return cribbage_cards.pegging_total(pegging_pile)
 
 
 def _score_pegging_play(pile):
-    if not pile:
-        return 0
-
-    total = sum(_value_for_15(_parse_label(c.label)[0]) for c in pile)
-    points = 0
-
-    if total == 15:
-        points += 2
-    if total == 31:
-        points += 2
-
-    # Pair / pair royal / double pair royal from the end of the pile.
-    last_rank = _parse_label(pile[-1].label)[0]
-    same_rank_count = 1
-    for i in range(len(pile) - 2, -1, -1):
-        if _parse_label(pile[i].label)[0] == last_rank:
-            same_rank_count += 1
-        else:
-            break
-    if same_rank_count == 2:
-        points += 2
-    elif same_rank_count == 3:
-        points += 6
-    elif same_rank_count >= 4:
-        points += 12
-
-    # Longest trailing run scores.
-    for run_len in range(len(pile), 2, -1):
-        ranks = [_rank_index(_parse_label(c.label)[0]) for c in pile[-run_len:]]
-        if len(set(ranks)) != run_len:
-            continue
-        if max(ranks) - min(ranks) + 1 == run_len:
-            points += run_len
-            break
-
-    return points
+    return cribbage_cards.score_pegging_play(pile)
 
 
 def _score_labels_hand(hand_labels, starter_label, is_crib=False):
