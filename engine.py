@@ -1,30 +1,31 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Sequence, Any
+from typing import Any, cast
 
-import cards as cribbage_cards
 import ai_strategy
+import cards as cribbage_cards
 
 
 @dataclass
 class GameState:
     phase: str = "intro"
     dealer: int = 0
-    scores: List[int] = field(default_factory=lambda: [0, 0])
-    player_hand: List[Any] = field(default_factory=list)
-    ai_hand: List[Any] = field(default_factory=list)
-    crib: List[Any] = field(default_factory=list)
-    pegging_pile: List[Any] = field(default_factory=list)
-    player_kept: List[Any] = field(default_factory=list)
-    ai_kept: List[Any] = field(default_factory=list)
-    starter_card: Optional[str] = None
+    scores: list[int] = field(default_factory=lambda: [0, 0])
+    player_hand: list[Any] = field(default_factory=list)
+    ai_hand: list[Any] = field(default_factory=list)
+    crib: list[Any] = field(default_factory=list)
+    pegging_pile: list[Any] = field(default_factory=list)
+    player_kept: list[Any] = field(default_factory=list)
+    ai_kept: list[Any] = field(default_factory=list)
+    starter_card: str | None = None
     player_turn: int = 0
-    pegging_passes: List[bool] = field(default_factory=lambda: [False, False])
-    last_pegging_player: Optional[int] = None
+    pegging_passes: list[bool] = field(default_factory=lambda: [False, False])
+    last_pegging_player: int | None = None
     message: str = ""
     dad_ai_level: int = 2
-    stock_labels: List[str] = field(default_factory=list)
+    stock_labels: list[str] = field(default_factory=list)
 
 
 class CribbageEngine:
@@ -36,7 +37,7 @@ class CribbageEngine:
     def _label(card_obj: Any) -> str:
         return getattr(card_obj, "label", str(card_obj))
 
-    def _labels(self, cards: Sequence[Any]) -> List[str]:
+    def _labels(self, cards: Sequence[Any]) -> list[str]:
         return [self._label(c) for c in cards]
 
     def start_new_game(
@@ -140,13 +141,15 @@ class CribbageEngine:
             self.state.pegging_pile.clear()
             self.state.player_turn = 1 - player_idx
         else:
-            self.state.message = f"{name} pegs{point_note}. " + ("Dad's turn." if player_idx == 0 else "Your turn.")
+            self.state.message = f"{name} pegs{point_note}. " + (
+                "Dad's turn." if player_idx == 0 else "Your turn."
+            )
             self.state.player_turn = 1 - player_idx
 
         self.state.last_pegging_player = player_idx
         return points
 
-    def ai_discard(self) -> List[int]:
+    def ai_discard(self) -> list[int]:
         dad_labels = self._labels(self.state.ai_hand)
         return ai_strategy.choose_discard_indices(
             dad_labels=dad_labels,
@@ -163,8 +166,8 @@ class CribbageEngine:
         parse_label: Callable[[str], tuple[str, str]],
         score_pegging_play: Callable[[Sequence[Any]], int],
         label_card_factory: Callable[[str], Any],
-        estimate_opponent_reply_risk: Optional[Callable[[Sequence[Any]], float]] = None,
-    ) -> Optional[int]:
+        estimate_opponent_reply_risk: Callable[[Sequence[Any]], float] | None = None,
+    ) -> int | None:
         return ai_strategy.choose_pegging_index(
             hand_labels=self._labels(self.state.ai_hand),
             current_total=current_total,
@@ -184,9 +187,17 @@ class CribbageEngine:
         if self.state.player_hand or self.state.ai_hand:
             return False
 
-        if self.state.pegging_pile and get_pegging_total() != 31 and self.state.last_pegging_player is not None:
+        if (
+            self.state.pegging_pile
+            and get_pegging_total() != 31
+            and self.state.last_pegging_player is not None
+        ):
             self.state.scores[self.state.last_pegging_player] += 1
-            self.state.message = "Last card for 1 point. Counting hands." if self.state.last_pegging_player == 0 else "Dad gets last card for 1 point. Counting hands."
+            self.state.message = (
+                "Last card for 1 point. Counting hands."
+                if self.state.last_pegging_player == 0
+                else "Dad gets last card for 1 point. Counting hands."
+            )
         else:
             self.state.message = "Counting hands."
 
@@ -206,7 +217,9 @@ class CribbageEngine:
 
         p1_total, p1_breakdown = self.score_func(p1, starter, is_crib=False)
         p2_total, p2_breakdown = self.score_func(p2, starter, is_crib=False)
-        crib_total, crib_breakdown = self.score_func(crib_cards, starter, is_crib=True) if len(crib_cards) == 4 else (0, [])
+        crib_total, crib_breakdown = (
+            self.score_func(crib_cards, starter, is_crib=True) if len(crib_cards) == 4 else (0, [])
+        )
 
         self.state.scores[0] += p1_total
         self.state.scores[1] += p2_total
@@ -222,33 +235,21 @@ class CribbageEngine:
         }
 
     @staticmethod
-    def _canonical_deck_labels() -> List[str]:
+    def _canonical_deck_labels() -> list[str]:
         suits = ["clubs", "diamonds", "hearts", "spades"]
         ranks = ["ace", "2", "3", "4", "5", "6", "7", "8", "9", "10", "jack", "queen", "king"]
         return [f"{rank}_of_{suit}" for suit in suits for rank in ranks]
 
-    def _score_labels_hand(self, hand_labels: List[str], starter_label: str, is_crib: bool) -> int:
+    def _score_labels_hand(self, hand_labels: list[str], starter_label: str, is_crib: bool) -> int:
         hand_model = [self._label_to_model_card(lbl) for lbl in hand_labels]
         starter_model = self._label_to_model_card(starter_label)
         total, _ = self.score_func(hand_model, starter_model, is_crib=is_crib)
-        return total
+        return cast(int, total)
 
     @staticmethod
-    def _label_to_model_card(label: str) -> "cribbage_cards.Card":
-        rank, suit = CribbageEngine._parse_label(label)
-        rank_map = {"ace": "A", "jack": "J", "queen": "Q", "king": "K"}
-        suit_map = {"clubs": "Clubs", "diamonds": "Diamonds", "hearts": "Hearts", "spades": "Spades"}
-        return cribbage_cards.Card(rank_map.get(rank, rank.upper()), suit_map.get(suit, suit.title()))
+    def _label_to_model_card(label: str) -> cribbage_cards.Card:
+        return cribbage_cards.label_to_card(label)
 
     @staticmethod
     def _parse_label(label: str) -> tuple[str, str]:
-        if " of " in label:
-            rank, suit = label.split(" of ", 1)
-            return rank.lower(), suit.lower()
-        if "_of_" in label:
-            rank, suit = label.split("_of_", 1)
-            return rank.lower(), suit.lower()
-        if "_" in label:
-            rank, suit = label.split("_", 1)
-            return rank.lower(), suit.lower()
-        return label.lower(), ""
+        return cribbage_cards.parse_card_label(label)

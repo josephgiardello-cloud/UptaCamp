@@ -5,10 +5,10 @@ import json
 import logging
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from online_backend import OnlineBackend
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
             raise PermissionError("Invalid session token")
         return token
 
-    def _send_json(self, status: HTTPStatus, payload: dict) -> None:
+    def _send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
         raw = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -39,14 +39,15 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def _read_json_body(self) -> dict:
+    def _read_json_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
             return {}
         body = self.rfile.read(length)
         if not body:
             return {}
-        return json.loads(body.decode("utf-8"))
+        parsed = json.loads(body.decode("utf-8"))
+        return cast(dict[str, Any], parsed)
 
     def log_message(self, fmt: str, *args):
         return
@@ -143,7 +144,9 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
 
             if parts == ["invites", "accept"]:
                 self._require_auth(payload["guest_player_id"])
-                match_id = self.backend.accept_invite(payload["invite_code"], payload["guest_player_id"])
+                match_id = self.backend.accept_invite(
+                    payload["invite_code"], payload["guest_player_id"]
+                )
                 self._send_json(HTTPStatus.OK, {"match_id": match_id})
                 return
 
@@ -154,8 +157,8 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
                 return
 
             if parts == ["matchmaking", "pair"]:
-                match_id = self.backend.pair_waiting_players()
-                self._send_json(HTTPStatus.OK, {"match_id": match_id})
+                paired_match_id = self.backend.pair_waiting_players()
+                self._send_json(HTTPStatus.OK, {"match_id": paired_match_id})
                 return
 
             if len(parts) == 3 and parts[0] == "matches" and parts[2] == "turns":

@@ -6,7 +6,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from online_backend import OnlineBackend
 
@@ -18,11 +18,13 @@ class OnlineClientError(RuntimeError):
 class OnlineClient:
     def __init__(self, base_url: str = "http://127.0.0.1:8787"):
         self.base_url = base_url.rstrip("/")
-        self.player_id: Optional[str] = None
-        self.display_name: Optional[str] = None
-        self.session_token: Optional[str] = None
+        self.player_id: str | None = None
+        self.display_name: str | None = None
+        self.session_token: str | None = None
 
-    def _request(self, method: str, path: str, payload: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def _request(
+        self, method: str, path: str, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         data = None
         headers = {"Content-Type": "application/json"}
@@ -76,7 +78,7 @@ class OnlineClient:
         res = self._request("POST", "/matchmaking/enqueue", {"player_id": self.player_id})
         return str(res["queue_id"])
 
-    def trigger_pair(self) -> Optional[str]:
+    def trigger_pair(self) -> str | None:
         res = self._request("POST", "/matchmaking/pair", {})
         raw = res.get("match_id")
         return str(raw) if raw else None
@@ -147,14 +149,14 @@ class OnlineClient:
 class MatchEventStream:
     """Background match updates with websocket-first and polling fallback."""
 
-    def __init__(self, client: OnlineClient, match_id: str, ws_url: Optional[str] = None):
+    def __init__(self, client: OnlineClient, match_id: str, ws_url: str | None = None):
         self.client = client
         self.match_id = match_id
         self.ws_url = ws_url
-        self.last_snapshot: Optional[dict[str, Any]] = None
-        self.last_error: Optional[str] = None
+        self.last_snapshot: dict[str, Any] | None = None
+        self.last_error: str | None = None
         self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -169,10 +171,13 @@ class MatchEventStream:
 
     def _run(self) -> None:
         # WebSocket support is optional; fallback to polling if missing/fails.
-        ws_url = self.ws_url or self.client.base_url.replace("http://", "ws://").replace("https://", "wss://")
+        ws_url = self.ws_url or self.client.base_url.replace("http://", "ws://").replace(
+            "https://", "wss://"
+        )
 
         try:
             import asyncio
+
             import websockets  # type: ignore
 
             async def _listen() -> None:

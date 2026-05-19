@@ -11,8 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
-
+from typing import Any, cast
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +28,9 @@ def _elo_expected(rating_a: int, rating_b: int) -> float:
     return 1.0 / (1.0 + 10 ** ((rating_b - rating_a) / 400.0))
 
 
-def _elo_update(rating_a: int, rating_b: int, score_a: float, k_factor: int = 24) -> tuple[int, int]:
+def _elo_update(
+    rating_a: int, rating_b: int, score_a: float, k_factor: int = 24
+) -> tuple[int, int]:
     expected_a = _elo_expected(rating_a, rating_b)
     expected_b = _elo_expected(rating_b, rating_a)
     new_a = round(rating_a + k_factor * (score_a - expected_a))
@@ -93,8 +94,7 @@ class OnlineBackend:
 
     def _ensure_schema(self) -> None:
         with self._connection() as conn:
-            conn.executescript(
-                """
+            conn.executescript("""
                 PRAGMA journal_mode=WAL;
 
                 CREATE TABLE IF NOT EXISTS players (
@@ -205,8 +205,7 @@ class OnlineBackend:
                 CREATE INDEX IF NOT EXISTS idx_queue_status_time ON matchmaking_queue(status, enqueued_at);
                 CREATE INDEX IF NOT EXISTS idx_telemetry_match ON bot_telemetry(match_id);
                 CREATE INDEX IF NOT EXISTS idx_chat_match_time ON match_chat(match_id, created_at);
-                """
-            )
+                """)
 
             cols = {
                 row["name"]: row["type"]
@@ -236,10 +235,10 @@ class OnlineBackend:
         payload: dict[str, Any],
     ) -> str:
         payload_blob = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-        msg = f"{match_id}|{player_id}|{turn_number}|{action_type}|{payload_blob}".encode("utf-8")
+        msg = f"{match_id}|{player_id}|{turn_number}|{action_type}|{payload_blob}".encode()
         return hmac.new(session_token.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
-    def login_player(self, display_name: str, player_id: Optional[str] = None) -> LoginResult:
+    def login_player(self, display_name: str, player_id: str | None = None) -> LoginResult:
         display_name = display_name.strip()
         if not display_name:
             raise ValueError("Display name cannot be blank")
@@ -277,7 +276,9 @@ class OnlineBackend:
             ).fetchone()
             if row is None or not row["session_token_hash"]:
                 return False
-            return hmac.compare_digest(str(row["session_token_hash"]), self._hash_token(session_token))
+            return hmac.compare_digest(
+                str(row["session_token_hash"]), self._hash_token(session_token)
+            )
 
     def upsert_player(self, player_id: str, display_name: str) -> None:
         now = _utc_now_iso()
@@ -351,17 +352,15 @@ class OnlineBackend:
             )
         return queue_id
 
-    def pair_waiting_players(self) -> Optional[str]:
+    def pair_waiting_players(self) -> str | None:
         with self._lock:
             with self._connection() as conn:
-                waiting = conn.execute(
-                    """
+                waiting = conn.execute("""
                     SELECT queue_id, player_id FROM matchmaking_queue
                     WHERE status = 'waiting'
                     ORDER BY enqueued_at ASC
                     LIMIT 2
-                    """
-                ).fetchall()
+                    """).fetchall()
                 if len(waiting) < 2:
                     return None
 
@@ -436,7 +435,7 @@ class OnlineBackend:
         ).fetchone()
         if row is None:
             raise ValueError("Match does not exist")
-        return row
+        return cast(sqlite3.Row, row)
 
     def get_match(self, match_id: str) -> MatchSummary:
         with self._connection() as conn:
@@ -503,7 +502,7 @@ class OnlineBackend:
         self,
         conn: sqlite3.Connection,
         match_row: sqlite3.Row,
-        winner_player_id: Optional[str],
+        winner_player_id: str | None,
     ) -> None:
         match_id = str(match_row["match_id"])
         if match_row["state"] != "active":
@@ -519,8 +518,12 @@ class OnlineBackend:
             (winner_player_id, now, now, match_id),
         )
 
-        p1 = conn.execute("SELECT * FROM players WHERE player_id = ?", (match_row["player_one_id"],)).fetchone()
-        p2 = conn.execute("SELECT * FROM players WHERE player_id = ?", (match_row["player_two_id"],)).fetchone()
+        p1 = conn.execute(
+            "SELECT * FROM players WHERE player_id = ?", (match_row["player_one_id"],)
+        ).fetchone()
+        p2 = conn.execute(
+            "SELECT * FROM players WHERE player_id = ?", (match_row["player_two_id"],)
+        ).fetchone()
         if p1 is None or p2 is None:
             raise ValueError("Players missing for ratings update")
 
@@ -576,8 +579,8 @@ class OnlineBackend:
         action_type: str,
         payload: dict[str, Any],
         idempotency_key: str,
-        signature: Optional[str] = None,
-        session_token: Optional[str] = None,
+        signature: str | None = None,
+        session_token: str | None = None,
     ) -> int:
         """Submit a turn and return the committed turn index.
 
@@ -678,18 +681,24 @@ class OnlineBackend:
 
                 target = self.PHASE_TURN_TARGET.get(current_phase, 0)
                 if target and progress >= target:
-                    next_phase_index = min(int(state.get("phase_index", 0)) + 1, len(self.PHASES) - 1)
+                    next_phase_index = min(
+                        int(state.get("phase_index", 0)) + 1, len(self.PHASES) - 1
+                    )
                     next_phase = self.PHASES[next_phase_index]
                     state["phase_index"] = next_phase_index
                     state["phase"] = next_phase
                     state["phase_progress"] = 0
 
-                next_player = match["player_two_id"] if player_id == match["player_one_id"] else match["player_one_id"]
+                next_player = (
+                    match["player_two_id"]
+                    if player_id == match["player_one_id"]
+                    else match["player_one_id"]
+                )
 
                 if state.get("phase") == "finished":
                     p1_score = int(state["scores"][0])
                     p2_score = int(state["scores"][1])
-                    winner: Optional[str]
+                    winner: str | None
                     if p1_score > p2_score:
                         winner = str(match["player_one_id"])
                     elif p2_score > p1_score:
@@ -709,7 +718,9 @@ class OnlineBackend:
                             match_id,
                         ),
                     )
-                    refreshed = conn.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+                    refreshed = conn.execute(
+                        "SELECT * FROM matches WHERE match_id = ?", (match_id,)
+                    ).fetchone()
                     if refreshed is None:
                         raise ValueError("Match disappeared during submit")
                     self._finish_match_locked(conn, refreshed, winner)
@@ -740,10 +751,12 @@ class OnlineBackend:
 
                 return turn_index
 
-    def finish_match(self, match_id: str, winner_player_id: Optional[str]) -> None:
+    def finish_match(self, match_id: str, winner_player_id: str | None) -> None:
         with self._lock:
             with self._connection() as conn:
-                match = conn.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+                match = conn.execute(
+                    "SELECT * FROM matches WHERE match_id = ?", (match_id,)
+                ).fetchone()
                 if match is None:
                     raise ValueError("Match does not exist")
                 self._finish_match_locked(conn, match, winner_player_id)
@@ -786,7 +799,7 @@ class OnlineBackend:
         match_id: str,
         player_id: str,
         message: str,
-        session_token: Optional[str] = None,
+        session_token: str | None = None,
     ) -> dict[str, Any]:
         text = message.strip()
         if not text:
@@ -837,14 +850,16 @@ class OnlineBackend:
         self,
         prior_match_id: str,
         player_id: str,
-        session_token: Optional[str] = None,
+        session_token: str | None = None,
     ) -> dict[str, Any]:
         if session_token and not self.verify_session_token(player_id, session_token):
             raise PermissionError("Invalid session token")
 
         with self._lock:
             with self._connection() as conn:
-                prior = conn.execute("SELECT * FROM matches WHERE match_id = ?", (prior_match_id,)).fetchone()
+                prior = conn.execute(
+                    "SELECT * FROM matches WHERE match_id = ?", (prior_match_id,)
+                ).fetchone()
                 if prior is None:
                     raise ValueError("Prior match does not exist")
                 if prior["state"] != "finished":
@@ -895,8 +910,8 @@ class OnlineBackend:
         state_hash: str,
         candidates: list[dict[str, Any]],
         selected_action: str,
-        expected_value: Optional[float],
-        match_id: Optional[str] = None,
+        expected_value: float | None,
+        match_id: str | None = None,
     ) -> str:
         event_id = _new_id("bot")
         now = _utc_now_iso()

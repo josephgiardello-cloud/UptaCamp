@@ -4,7 +4,6 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-
 SETTINGS_PATH = Path(__file__).resolve().parent / "uptacamp_settings.json"
 
 
@@ -14,7 +13,7 @@ class GameSettings:
     animations_enabled: bool = True
     online_ai_level: int = 2
 
-    def clamp(self) -> "GameSettings":
+    def clamp(self) -> GameSettings:
         self.volume = max(0.0, min(1.0, float(self.volume)))
         if self.online_ai_level not in (1, 2, 3):
             self.online_ai_level = 2

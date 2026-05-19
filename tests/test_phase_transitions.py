@@ -36,10 +36,20 @@ def test_discard_phase_transitions_to_pegging(monkeypatch):
     game.last_pegging_player = 1
 
     p1_labels = [
-        "ace_of_spades", "2_of_spades", "3_of_spades", "4_of_spades", "5_of_spades", "6_of_spades"
+        "ace_of_spades",
+        "2_of_spades",
+        "3_of_spades",
+        "4_of_spades",
+        "5_of_spades",
+        "6_of_spades",
     ]
     p2_labels = [
-        "ace_of_hearts", "2_of_hearts", "3_of_hearts", "4_of_hearts", "5_of_hearts", "6_of_hearts"
+        "ace_of_hearts",
+        "2_of_hearts",
+        "3_of_hearts",
+        "4_of_hearts",
+        "5_of_hearts",
+        "6_of_hearts",
     ]
 
     game.player1_hand[:] = _make_hand(p1_labels, "p1")
@@ -70,7 +80,10 @@ def test_finalize_pegging_moves_to_counting_with_last_card_point():
     game.game_phase = "pegging"
     game.player1_hand[:] = []
     game.player2_hand[:] = []
-    game.pegging_pile[:] = [SimpleNamespace(label="10_of_clubs"), SimpleNamespace(label="9_of_hearts")]
+    game.pegging_pile[:] = [
+        SimpleNamespace(label="10_of_clubs"),
+        SimpleNamespace(label="9_of_hearts"),
+    ]
     game.player_scores[:] = [0, 0]
     game.last_pegging_player = 0
 
@@ -88,8 +101,12 @@ def test_handle_counting_moves_to_end_when_no_winner():
     game.dealer = 1
 
     # Set 4-card kept hands and crib with known labels.
-    game.player1_kept[:] = _make_hand(["2_of_clubs", "3_of_diamonds", "4_of_hearts", "5_of_spades"], "k1")
-    game.player2_kept[:] = _make_hand(["6_of_clubs", "7_of_diamonds", "8_of_hearts", "9_of_spades"], "k2")
+    game.player1_kept[:] = _make_hand(
+        ["2_of_clubs", "3_of_diamonds", "4_of_hearts", "5_of_spades"], "k1"
+    )
+    game.player2_kept[:] = _make_hand(
+        ["6_of_clubs", "7_of_diamonds", "8_of_hearts", "9_of_spades"], "k2"
+    )
     game.crib[:] = _make_hand(["ace_of_clubs", "2_of_hearts", "3_of_spades", "4_of_diamonds"], "cr")
     game.starter_card = "5_of_clubs"
 

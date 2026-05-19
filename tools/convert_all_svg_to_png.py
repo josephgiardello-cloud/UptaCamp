@@ -1,7 +1,8 @@
 import sys
-import os
 from pathlib import Path
+
 import cairosvg
+
 
 def convert_all_svg_to_png(src_dir, out_dir, scale=1.0, bg=None):
     src = Path(src_dir)
@@ -25,7 +26,7 @@ def convert_all_svg_to_png(src_dir, out_dir, scale=1.0, bg=None):
                 url=str(svg),
                 write_to=str(png_path),
                 scale=scale,
-                background_color=bg  # e.g., "white" or None for transparent
+                background_color=bg,  # e.g., "white" or None for transparent
             )
             print(f"[OK] {svg} -> {png_path}")
             ok += 1
@@ -35,6 +36,7 @@ def convert_all_svg_to_png(src_dir, out_dir, scale=1.0, bg=None):
 
     print(f"\nDone. Success: {ok}, Failed: {fail}, Output dir: {out.resolve()}")
     return 0 if fail == 0 else 2
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:

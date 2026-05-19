@@ -9,14 +9,12 @@ def export_rows(db_path: str, out_csv: str) -> int:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(
-            """
+        rows = conn.execute("""
             SELECT event_id, match_id, phase, ai_level, state_hash,
                    candidate_json, selected_action, expected_value, created_at
             FROM bot_telemetry
             ORDER BY created_at DESC
-            """
-        ).fetchall()
+            """).fetchall()
     finally:
         conn.close()
 

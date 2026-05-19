@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Tuple
 import random
+from dataclasses import dataclass
 
 import pygame
 
@@ -15,8 +14,8 @@ def _ease_out_cubic(t: float) -> float:
 @dataclass
 class CardFlight:
     image: pygame.Surface
-    start: Tuple[float, float]
-    end: Tuple[float, float]
+    start: tuple[float, float]
+    end: tuple[float, float]
     duration_ms: int
     elapsed_ms: int = 0
 
@@ -29,7 +28,11 @@ class CardFlight:
         eased = _ease_out_cubic(t)
 
         x = self.start[0] + (self.end[0] - self.start[0]) * eased
-        y = self.start[1] + (self.end[1] - self.start[1]) * eased - 20 * (1.0 - (2 * eased - 1) ** 2)
+        y = (
+            self.start[1]
+            + (self.end[1] - self.start[1]) * eased
+            - 20 * (1.0 - (2 * eased - 1) ** 2)
+        )
 
         angle = (1.0 - eased) * 8
         scaled = pygame.transform.rotozoom(self.image, angle, 0.9 + 0.1 * eased)
@@ -40,8 +43,8 @@ class CardFlight:
 @dataclass
 class FloatingScore:
     text: str
-    pos: Tuple[float, float]
-    color: Tuple[int, int, int]
+    pos: tuple[float, float]
+    color: tuple[int, int, int]
     duration_ms: int
     elapsed_ms: int = 0
 
@@ -66,8 +69,8 @@ class FloatingScore:
 
 class EffectsManager:
     def __init__(self) -> None:
-        self.flights: List[CardFlight] = []
-        self.popups: List[FloatingScore] = []
+        self.flights: list[CardFlight] = []
+        self.popups: list[FloatingScore] = []
         self._rng = random.Random()
         self._shake_timer_ms = 0
         self._shake_intensity = 0
@@ -76,8 +79,8 @@ class EffectsManager:
     def add_card_flight(
         self,
         image: pygame.Surface,
-        start: Tuple[float, float],
-        end: Tuple[float, float],
+        start: tuple[float, float],
+        end: tuple[float, float],
         duration_ms: int = 280,
     ) -> None:
         self.flights.append(CardFlight(image=image, start=start, end=end, duration_ms=duration_ms))
@@ -85,8 +88,8 @@ class EffectsManager:
     def add_score_popup(
         self,
         text: str,
-        pos: Tuple[float, float],
-        color: Tuple[int, int, int] = (245, 241, 230),
+        pos: tuple[float, float],
+        color: tuple[int, int, int] = (245, 241, 230),
         duration_ms: int = 900,
     ) -> None:
         self.popups.append(FloatingScore(text=text, pos=pos, color=color, duration_ms=duration_ms))
@@ -99,13 +102,13 @@ class EffectsManager:
         if dt_ms <= 0:
             return
 
-        remaining_flights: List[CardFlight] = []
+        remaining_flights: list[CardFlight] = []
         for f in self.flights:
             if not f.update(dt_ms):
                 remaining_flights.append(f)
         self.flights = remaining_flights
 
-        remaining_popups: List[FloatingScore] = []
+        remaining_popups: list[FloatingScore] = []
         for p in self.popups:
             if not p.update(dt_ms):
                 remaining_popups.append(p)
@@ -116,7 +119,7 @@ class EffectsManager:
             if self._shake_timer_ms == 0:
                 self._shake_intensity = 0
 
-    def shake_offset(self) -> Tuple[int, int]:
+    def shake_offset(self) -> tuple[int, int]:
         if self._shake_timer_ms <= 0 or self._shake_intensity <= 0:
             return (0, 0)
         return (

@@ -56,7 +56,29 @@ uptacamp-online-api = "online_api_server:main"
 uptacamp-online-ws = "online_ws_server:main"
 
 [tool.setuptools]
-packages = ["uptacamp"]
+py-modules = [
+    "adapter",
+    "ai_strategy",
+    "animations",
+    "app_context",
+    "asset_manager",
+    "audio_manager",
+    "cards",
+    "cribbage_engine",
+    "cribbage_pygame",
+    "engine",
+    "game_state",
+    "main",
+    "online_api_server",
+    "online_backend",
+    "online_client",
+    "online_ws_server",
+    "phase_states",
+    "settings_manager",
+]
+
+[tool.setuptools.packages.find]
+include = ["states"]
 
 [tool.black]
 line-length = 100

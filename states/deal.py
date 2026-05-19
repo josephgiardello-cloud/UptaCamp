@@ -1,9 +1,12 @@
+import random
+
 import pygame
+
+from cards import Card
+from states.intro import IntroState
+
 from .base import GameStateBase
 
-import random
-from states.intro import IntroState
-from cards import Card
 
 class DealState(GameStateBase):
     def __init__(self):
@@ -24,8 +27,11 @@ class DealState(GameStateBase):
     def update(self, engine, dt, app):
         if not self.dealt:
             # Deal 6 cards to player and AI
-            deck = [Card(rank, suit) for suit in ['Hearts', 'Diamonds', 'Clubs', 'Spades']
-                                      for rank in ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']]
+            deck = [
+                Card(rank, suit)
+                for suit in ["Hearts", "Diamonds", "Clubs", "Spades"]
+                for rank in ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+            ]
             random.shuffle(deck)
             self.player_hand = deck[:6]
             self.ai_hand = deck[6:12]
@@ -33,7 +39,7 @@ class DealState(GameStateBase):
 
     def draw(self, screen, engine, assets, app):
         # Draw background if available
-        bg = assets.get_background('table.jpg') or assets.get_background('table.png')
+        bg = assets.get_background("table.jpg") or assets.get_background("table.png")
         if bg:
             bg = pygame.transform.smoothscale(bg, screen.get_size())
             screen.blit(bg, (0, 0))
@@ -42,7 +48,7 @@ class DealState(GameStateBase):
 
         font = pygame.font.SysFont(None, 48)
         text = font.render("Dealing Cards...", True, (255, 255, 255))
-        rect = text.get_rect(center=(screen.get_width()//2, 60))
+        rect = text.get_rect(center=(screen.get_width() // 2, 60))
         screen.blit(text, rect)
 
         help_font = pygame.font.SysFont(None, 28)
@@ -53,13 +59,13 @@ class DealState(GameStateBase):
         # Draw Dad's hand (card backs)
         x = 100
         y = 120
-        back_img = assets.get_card_image('back')
+        back_img = assets.get_card_image("back")
         for _ in self.ai_hand:
             if back_img:
                 img = pygame.transform.smoothscale(back_img, (80, 120))
                 screen.blit(img, (x, y))
             else:
-                pygame.draw.rect(screen, (180,180,180), (x, y, 80, 120))
+                pygame.draw.rect(screen, (180, 180, 180), (x, y, 80, 120))
             x += 90
 
         # Draw player hand (face up)
@@ -71,12 +77,12 @@ class DealState(GameStateBase):
                 img = pygame.transform.smoothscale(img, (80, 120))
                 screen.blit(img, (x, y))
             else:
-                pygame.draw.rect(screen, (255,255,255), (x, y, 80, 120))
+                pygame.draw.rect(screen, (255, 255, 255), (x, y, 80, 120))
             x += 90
 
         # Add labels for clarity
         small_font = pygame.font.SysFont(None, 32)
-        dad_label = small_font.render("Dad's Hand", True, (255,255,255))
-        player_label = small_font.render("Your Hand", True, (255,255,255))
+        dad_label = small_font.render("Dad's Hand", True, (255, 255, 255))
+        player_label = small_font.render("Your Hand", True, (255, 255, 255))
         screen.blit(dad_label, (100, 90))
         screen.blit(player_label, (100, screen.get_height() - 250))

@@ -25,9 +25,13 @@ class OnlineMenuState(GameStateBase):
             elif event.key == pygame.K_3:
                 return self._quick_match(app)
             elif event.key == pygame.K_LEFT:
-                app.preferred_online_ai_level = 3 if app.preferred_online_ai_level == 1 else app.preferred_online_ai_level - 1
+                app.preferred_online_ai_level = (
+                    3 if app.preferred_online_ai_level == 1 else app.preferred_online_ai_level - 1
+                )
             elif event.key == pygame.K_RIGHT:
-                app.preferred_online_ai_level = 1 if app.preferred_online_ai_level == 3 else app.preferred_online_ai_level + 1
+                app.preferred_online_ai_level = (
+                    1 if app.preferred_online_ai_level == 3 else app.preferred_online_ai_level + 1
+                )
             else:
                 if event.unicode and event.unicode.isalnum() and len(self.join_code) < 12:
                     self.join_code += event.unicode.upper()
@@ -81,7 +85,9 @@ class OnlineMenuState(GameStateBase):
         title = title_font.render("Online Menu", True, (245, 245, 245))
         screen.blit(title, title.get_rect(center=(screen.get_width() // 2, 80)))
 
-        login = body_font.render(f"Player: {app.display_name} ({app.player_id})", True, (200, 220, 235))
+        login = body_font.render(
+            f"Player: {app.display_name} ({app.player_id})", True, (200, 220, 235)
+        )
         screen.blit(login, login.get_rect(center=(screen.get_width() // 2, 130)))
 
         opts = [

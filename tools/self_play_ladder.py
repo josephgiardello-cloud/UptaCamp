@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import random
 from dataclasses import dataclass
 
@@ -17,7 +18,7 @@ class BotSpec:
 
 def _win_probability(strength_a: float, strength_b: float) -> float:
     # Logistic mapping gives stable, monotonic win-rate behavior.
-    return 1.0 / (1.0 + pow(2.718281828, -(strength_a - strength_b)))
+    return 1.0 / (1.0 + math.exp(-(strength_a - strength_b)))
 
 
 def run_ladder(

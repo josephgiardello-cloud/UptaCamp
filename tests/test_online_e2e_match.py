@@ -3,9 +3,8 @@ from __future__ import annotations
 import contextlib
 import socket
 import threading
-from pathlib import Path
-
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 from online_api_server import OnlineApiHandler
 from online_backend import OnlineBackend

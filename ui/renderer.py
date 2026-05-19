@@ -1,5 +1,5 @@
-import pygame
 from .sprites import CardSprite
+
 
 class UIRenderer:
     def __init__(self, assets):

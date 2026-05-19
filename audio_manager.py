@@ -25,7 +25,9 @@ class AudioManager:
         except pygame.error:
             self.available = False
 
-    def _make_tone(self, frequency: float, duration_s: float, fade: bool = False) -> pygame.mixer.Sound:
+    def _make_tone(
+        self, frequency: float, duration_s: float, fade: bool = False
+    ) -> pygame.mixer.Sound:
         sample_rate = 22050
         total_samples = max(1, int(sample_rate * duration_s))
         buf = array("h")

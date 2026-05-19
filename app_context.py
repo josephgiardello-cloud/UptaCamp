@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from online_client import MatchEventStream, OnlineClient
 
@@ -14,16 +13,16 @@ class AppContext:
     volume: float = 0.6
     animations_enabled: bool = True
     preferred_online_ai_level: int = 2
-    player_id: Optional[str] = None
-    display_name: Optional[str] = None
-    session_token: Optional[str] = None
-    current_match_id: Optional[str] = None
+    player_id: str | None = None
+    display_name: str | None = None
+    session_token: str | None = None
+    current_match_id: str | None = None
     last_error: str = ""
     status_message: str = ""
 
     def __post_init__(self) -> None:
         self.client = OnlineClient(self.server_url)
-        self.stream: Optional[MatchEventStream] = None
+        self.stream: MatchEventStream | None = None
 
     def reset_stream(self) -> None:
         if self.stream is not None:

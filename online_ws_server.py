@@ -9,7 +9,6 @@ from typing import Any
 
 from online_backend import OnlineBackend
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -28,7 +27,9 @@ class OnlineWsServer:
             player_id = str(hello.get("player_id", ""))
             token = str(hello.get("session_token", ""))
             if not match_id or not player_id or not token:
-                await websocket.send(json.dumps({"error": "auth payload requires match_id/player_id/session_token"}))
+                await websocket.send(
+                    json.dumps({"error": "auth payload requires match_id/player_id/session_token"})
+                )
                 await websocket.close()
                 return
             if not self.backend.verify_session_token(player_id, token):
@@ -51,7 +52,7 @@ class OnlineWsServer:
                 # Keepalive from client; no-op.
                 try:
                     msg = await asyncio.wait_for(websocket.recv(), timeout=15.0)
-                    if str(msg).lower() in {"ping", "{\"type\":\"ping\"}"}:
+                    if str(msg).lower() in {"ping", '{"type":"ping"}'}:
                         await websocket.send(json.dumps({"type": "pong"}))
                 except asyncio.TimeoutError:
                     await websocket.send(json.dumps({"type": "pong"}))
@@ -100,7 +101,9 @@ async def _run(host: str, port: int, db_path: str) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s"
+    )
     parser = argparse.ArgumentParser(description="Run UptaCamp websocket match server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8790)

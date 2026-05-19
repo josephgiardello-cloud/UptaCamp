@@ -36,7 +36,9 @@ def test_hard_pegging_avoids_leading_five_when_safe_option_exists() -> None:
         hand_labels=hand,
         current_total=0,
         dad_ai_level=3,
-        value_for_15=lambda rank: 1 if rank == "ace" else 10 if rank in {"10", "jack", "queen", "king"} else int(rank),
+        value_for_15=lambda rank: (
+            1 if rank == "ace" else 10 if rank in {"10", "jack", "queen", "king"} else int(rank)
+        ),
         parse_label=lambda label: (label.split("_of_")[0], label.split("_of_")[1]),
         score_pegging_play=lambda pile: 0,
         label_card_factory=lambda label: label,

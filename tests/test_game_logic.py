@@ -22,7 +22,12 @@ def test_parse_label_supports_expected_formats():
 
 def test_pegging_score_15_and_31_from_pile_argument():
     pile_15 = [_peg("10_of_hearts"), _peg("5_of_spades")]
-    pile_31 = [_peg("10_of_hearts"), _peg("10_of_spades"), _peg("10_of_clubs"), _peg("A_of_diamonds")]
+    pile_31 = [
+        _peg("10_of_hearts"),
+        _peg("10_of_spades"),
+        _peg("10_of_clubs"),
+        _peg("A_of_diamonds"),
+    ]
     assert game._score_pegging_play(pile_15) == 2
     assert game._score_pegging_play(pile_31) == 2
 
@@ -75,7 +80,13 @@ def test_nobs_handles_rank_name_variant_jack():
 
 
 def test_pairs_treat_rank_variants_as_same_rank():
-    cards = [_mk("J", "Hearts"), _mk("jack", "Spades"), _mk("4", "Clubs"), _mk("9", "Diamonds"), _mk("2", "Hearts")]
+    cards = [
+        _mk("J", "Hearts"),
+        _mk("jack", "Spades"),
+        _mk("4", "Clubs"),
+        _mk("9", "Diamonds"),
+        _mk("2", "Hearts"),
+    ]
     breakdown = cards_mod.score_pairs(cards)
     assert sum(item[2] for item in breakdown) >= 2
 

@@ -1,7 +1,7 @@
 import random
 from collections import Counter
+from collections.abc import Callable, Sequence
 from itertools import combinations
-from typing import Callable, List, Optional, Sequence
 
 
 def _parse_label(label: str) -> tuple[str, str]:
@@ -90,7 +90,9 @@ def _discard_crib_score(labels: Sequence[str]) -> float:
     return score
 
 
-def _pegging_shape_adjustment(trial_total: int, immediate: int, hand_labels: Sequence[str], played_label: str) -> float:
+def _pegging_shape_adjustment(
+    trial_total: int, immediate: int, hand_labels: Sequence[str], played_label: str
+) -> float:
     score = 0.0
 
     # Avoid feeding easy 15/31 replies on common ten-card responses.
@@ -122,8 +124,8 @@ def choose_discard_indices(
     dad_ai_level: int,
     dealer_is_dad: bool,
     canonical_deck_labels: Sequence[str],
-    score_labels_hand: Callable[[List[str], str, bool], int],
-) -> List[int]:
+    score_labels_hand: Callable[[list[str], str, bool], int],
+) -> list[int]:
     if len(dad_labels) != 6:
         return [0, 1]
 
@@ -182,10 +184,11 @@ def choose_pegging_index(
     score_pegging_play: Callable[[Sequence], int],
     label_card_factory: Callable[[str], object],
     current_pegging_labels: Sequence[str],
-    estimate_opponent_reply_risk: Optional[Callable[[Sequence], float]] = None,
-) -> Optional[int]:
+    estimate_opponent_reply_risk: Callable[[Sequence], float] | None = None,
+) -> int | None:
     legal = [
-        i for i, label in enumerate(hand_labels)
+        i
+        for i, label in enumerate(hand_labels)
         if current_total + value_for_15(parse_label(label)[0]) <= 31
     ]
     if not legal:
@@ -199,9 +202,13 @@ def choose_pegging_index(
 
     for idx in legal:
         label = hand_labels[idx]
-        trial_pile = [label_card_factory(lbl) for lbl in current_pegging_labels] + [label_card_factory(label)]
+        trial_pile = [label_card_factory(lbl) for lbl in current_pegging_labels] + [
+            label_card_factory(label)
+        ]
         immediate = score_pegging_play(trial_pile)
-        trial_total = sum(value_for_15(parse_label(lbl)[0]) for lbl in current_pegging_labels + [label])
+        trial_total = sum(
+            value_for_15(parse_label(lbl)[0]) for lbl in [*list(current_pegging_labels), label]
+        )
 
         shape_bonus = _pegging_shape_adjustment(trial_total, immediate, hand_labels, label)
 

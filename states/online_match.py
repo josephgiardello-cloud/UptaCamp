@@ -118,12 +118,18 @@ class OnlineMatchState(GameStateBase):
 
         if app.status_message:
             msg = body_font.render(app.status_message, True, (180, 220, 180))
-            screen.blit(msg, msg.get_rect(center=(screen.get_width() // 2, screen.get_height() - 110)))
+            screen.blit(
+                msg, msg.get_rect(center=(screen.get_width() // 2, screen.get_height() - 110))
+            )
 
         if self.last_action_msg:
             line = body_font.render(self.last_action_msg, True, (180, 210, 245))
-            screen.blit(line, line.get_rect(center=(screen.get_width() // 2, screen.get_height() - 76)))
+            screen.blit(
+                line, line.get_rect(center=(screen.get_width() // 2, screen.get_height() - 76))
+            )
 
         if app.last_error:
             err = body_font.render(app.last_error, True, (230, 110, 110))
-            screen.blit(err, err.get_rect(center=(screen.get_width() // 2, screen.get_height() - 42)))
+            screen.blit(
+                err, err.get_rect(center=(screen.get_width() // 2, screen.get_height() - 42))
+            )
