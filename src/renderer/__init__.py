@@ -1,3 +1,6 @@
 """Drawing and rendering logic for the game board."""
 
-__all__ = ["BoardRenderer", "AnimationManager"]
+from .animation_manager import AnimationManager
+from .board_renderer import BoardRenderer, RenderingContext
+
+__all__ = ["BoardRenderer", "AnimationManager", "RenderingContext"]
