@@ -16,6 +16,7 @@ from typing import Any
 import pygame
 
 import ai_strategy
+import bert_persona
 import cards as cribbage_cards
 from adapter import EngineAdapter
 from animations import EffectsManager
@@ -26,6 +27,8 @@ from engine import CribbageEngine
 from game_state import GameState
 from phase_states import PhaseStateMachine
 from settings_manager import GameSettings, load_settings, save_settings
+from stats_manager import record_game_result, record_hand_stats
+from voice_manager import VoiceManager
 
 # --- Constants ---
 CARD_WIDTH = 120
@@ -34,7 +37,7 @@ FPS = 60
 TABLE_COLOR = (34, 139, 34)
 MAX_SCORE = 121
 PEGGING_Y = 440
-AI_LEVELS = {1: "Easy", 2: "Medium", 3: "Hard", 4: "Bert"}
+AI_LEVELS = {1: "Easy", 2: "Medium", 3: "Hard", 4: "Bert", 5: "Bert Learning"}
 PLAYFIELD_ALPHA = 128  # 50% transparent (50% opacity)
 
 THEME = {
@@ -108,10 +111,19 @@ _LAST_SCREEN_SIZE = (1280, 900)
 _MAINE_BACK_SURFACE = None
 _CARD_BACK_CACHE: dict[tuple[int, int], pygame.Surface] = {}
 _AUDIO = None
+_VOICE = None
 _SETTINGS = GameSettings()
 ctx = AppContext()
 state: GameState = ctx.game_state
 _CLASSIC_SESSION = state
+_UI_STYLE = "classic"
+_UI_STYLES = ["classic", "competitive_minimal", "broadcast_table", "premium_tabletop"]
+_UI_STYLE_LABELS = {
+    "classic": "Classic",
+    "competitive_minimal": "Competitive Minimal",
+    "broadcast_table": "Broadcast Table",
+    "premium_tabletop": "Premium Tabletop",
+}
 
 
 def _check_for_winner():
@@ -143,11 +155,88 @@ _label_to_model_card = cribbage_cards.label_to_card
 
 
 def _dealer_display_name(ai_level: int) -> str:
-    return "Bert" if ai_level == 4 else "AI"
+    return "Bert" if ai_level in (4, 5) else "AI"
 
 
 def _current_dealer_name() -> str:
     return _dealer_display_name(dad_ai_level)
+
+
+def _speak_bert(line: str, *, force: bool = False) -> None:
+    if _VOICE is None:
+        return
+    _VOICE.speak_bert(
+        line,
+        dad_ai_level=dad_ai_level,
+        bypass_cooldown=force,
+        voice_style=_SETTINGS.bert_voice_style,
+    )
+
+
+def _speak_bert_event(event: str, *, force: bool = False) -> None:
+    phrase = bert_persona.choose_line(
+        event=event,
+        style=_SETTINGS.bert_voice_style,
+        dad_ai_level=dad_ai_level,
+    )
+    if not phrase:
+        return
+    _speak_bert(phrase, force=force)
+
+
+def _record_single_player_hand_stats(
+    player_points: int,
+    ai_points: int,
+    dealer_idx: int,
+) -> None:
+    try:
+        record_hand_stats(
+            player_name=player_name,
+            hand_points=player_points,
+            pegging_points=pegging_points[0],
+            as_dealer=(dealer_idx == 0),
+            mode="single_player",
+        )
+        record_hand_stats(
+            player_name=_current_dealer_name(),
+            hand_points=ai_points,
+            pegging_points=pegging_points[1],
+            as_dealer=(dealer_idx == 1),
+            mode="single_player",
+        )
+    except OSError:
+        pass
+
+
+def _record_single_player_game_result(winner: int) -> None:
+    if winner not in (0, 1):
+        return
+
+    player_final = int(_CLASSIC_SESSION.scores[0])
+    ai_final = int(_CLASSIC_SESSION.scores[1])
+    player_won = winner == 0
+    player_skunk_for = player_won and ai_final <= 90
+    player_skunk_against = (not player_won) and player_final <= 90
+
+    try:
+        record_game_result(
+            player_name=player_name,
+            won=player_won,
+            skunk_for=player_skunk_for,
+            skunk_against=player_skunk_against,
+            final_score=player_final,
+            mode="single_player",
+        )
+        record_game_result(
+            player_name=_current_dealer_name(),
+            won=not player_won,
+            skunk_for=player_skunk_against,
+            skunk_against=player_skunk_for,
+            final_score=ai_final,
+            mode="single_player",
+        )
+    except OSError:
+        pass
 
 
 def _transition_phase(target_phase: str, *, force: bool = False) -> None:
@@ -315,17 +404,26 @@ def fixed_hand_positions(player, n, screen_width, screen_height):
     margin = 60
     available_width = screen_width - 2 * margin
     spacing = min((available_width - CARD_WIDTH) // (n - 1), CARD_WIDTH + 20) if n > 1 else 0
-    y = max(510, screen_height - CARD_HEIGHT - 70) if player == 1 else 160
-    return [(margin + i * spacing, y) for i in range(n)]
+    y = max(500, screen_height - CARD_HEIGHT - 84) if player == 1 else 160
+    row_w = CARD_WIDTH if n <= 1 else CARD_WIDTH + spacing * (n - 1)
+    start_x = max(margin, (screen_width - row_w) // 2)
+    return [(start_x + i * spacing, y) for i in range(n)]
 
 
 def _row_positions(n, screen_width, y, card_width, margin=60):
     available_width = screen_width - 2 * margin
     spacing = min((available_width - card_width) // (n - 1), card_width + 18) if n > 1 else 0
-    return [(margin + i * spacing, y) for i in range(n)]
+    row_w = card_width if n <= 1 else card_width + spacing * (n - 1)
+    start_x = max(margin, (screen_width - row_w) // 2)
+    return [(start_x + i * spacing, y) for i in range(n)]
 
 
 def _draw_shadowed_panel(screen, rect, fill, border, radius=18, shadow=(6, 7)):
+    if _UI_STYLE == "competitive_minimal":
+        pygame.draw.rect(screen, fill, rect, border_radius=radius)
+        pygame.draw.rect(screen, border, rect, width=1, border_radius=radius)
+        return
+
     shadow_rect = rect.move(shadow)
     pygame.draw.rect(screen, (0, 0, 0, 35), shadow_rect.inflate(10, 10), border_radius=radius + 8)
     pygame.draw.rect(screen, (0, 0, 0, 70), shadow_rect.inflate(4, 4), border_radius=radius + 4)
@@ -339,6 +437,41 @@ def _draw_shadowed_panel(screen, rect, fill, border, radius=18, shadow=(6, 7)):
 
 def _draw_board_frame(screen):
     sw, sh = screen.get_width(), screen.get_height()
+
+    if _UI_STYLE == "competitive_minimal":
+        screen.fill((12, 14, 20))
+        playfield = _playfield_rect(screen)
+        for x in range(playfield.left + 20, playfield.right, 140):
+            pygame.draw.line(screen, (24, 30, 40), (x, playfield.top), (x, playfield.bottom), 1)
+        for y in range(playfield.top + 20, playfield.bottom, 110):
+            pygame.draw.line(screen, (24, 30, 40), (playfield.left, y), (playfield.right, y), 1)
+        return
+
+    if _UI_STYLE == "broadcast_table":
+        screen.fill((11, 38, 28))
+        playfield = _playfield_rect(screen)
+        pygame.draw.rect(screen, (8, 29, 22), playfield, border_radius=24)
+        pygame.draw.rect(screen, (203, 180, 118), playfield, width=2, border_radius=24)
+        for y in range(playfield.top + 30, playfield.bottom, 86):
+            pygame.draw.line(
+                screen,
+                (18, 58, 43),
+                (playfield.left + 18, y),
+                (playfield.right - 18, y),
+                1,
+            )
+        return
+
+    if _UI_STYLE == "premium_tabletop":
+        screen.fill((66, 40, 21))
+        board_rect = pygame.Rect(20, 20, sw - 40, sh - 40)
+        pygame.draw.rect(screen, (92, 58, 31), board_rect, border_radius=36)
+        pygame.draw.rect(screen, (186, 134, 74), board_rect, width=3, border_radius=36)
+        felt = board_rect.inflate(-40, -40)
+        pygame.draw.rect(screen, (26, 86, 56), felt, border_radius=30)
+        pygame.draw.rect(screen, (226, 196, 138), felt, width=2, border_radius=30)
+        return
+
     screen.fill(THEME["outer_bg"])
 
     board_rect = pygame.Rect(24, 24, sw - 48, sh - 48)
@@ -388,14 +521,30 @@ def _playfield_rect(screen):
 
 
 def _crib_panel_rect(sw, sh):
-    ai_row_bottom = 170 + 135
+    ai_row_bottom = 170 + 159
     player_row_top = max(510, sh - CARD_HEIGHT - 70)
     gap_top = ai_row_bottom + 22
     gap_bottom = player_row_top - 22
     crib_h = 136
     crib_y = max(gap_top, min((gap_top + gap_bottom - crib_h) // 2, gap_bottom - crib_h))
-    crib_w = min(620, sw - 190)
-    return pygame.Rect(sw // 2 - crib_w // 2, crib_y, crib_w, crib_h)
+
+    # Keep a dedicated lane on the right for the score panel so it does not
+    # overlap the crib/starter panel.
+    board_rect = pygame.Rect(24, 24, sw - 48, sh - 48)
+    inner_rect = board_rect.inflate(-26, -26)
+    playfield = inner_rect.inflate(-28, -28)
+    reserve_right = 296  # score panel width + margins + breathing room
+    usable_left = playfield.left + 18
+    usable_right = playfield.right - reserve_right
+
+    # Fall back gracefully on small windows.
+    if usable_right - usable_left < 420:
+        usable_right = playfield.right - 18
+
+    usable_width = max(320, usable_right - usable_left)
+    crib_w = min(620, usable_width)
+    crib_x = usable_left + max(0, (usable_width - crib_w) // 2)
+    return pygame.Rect(crib_x, crib_y, crib_w, crib_h)
 
 
 def _scale_polygon_points(points, target_rect, padding=0.12):
@@ -542,30 +691,54 @@ def _draw_card_back(screen, rect):
 def _draw_score_panel(screen, dealer, player_scores, dad_ai_level, player_name):
     dealer_name = _dealer_display_name(dad_ai_level)
     playfield = _playfield_rect(screen)
-    panel_rect = pygame.Rect(playfield.right - 266, playfield.bottom - 186, 252, 172)
-    _draw_shadowed_panel(screen, panel_rect, (26, 38, 31), (201, 174, 108), radius=26)
+    panel_w, panel_h = 252, 172
+    panel_margin = 20
+    dealer_row_bottom = 170 + 159
+    # Keep the score box below dealer cards and fully inside the felt area.
+    panel_x = playfield.right - panel_w - panel_margin
+    panel_y = max(playfield.top + panel_margin, dealer_row_bottom + 16)
+    panel_y = min(panel_y, playfield.bottom - panel_h - panel_margin)
+    panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+    if _UI_STYLE == "competitive_minimal":
+        _draw_shadowed_panel(screen, panel_rect, (18, 22, 30), (104, 120, 150), radius=20)
+    elif _UI_STYLE == "broadcast_table":
+        _draw_shadowed_panel(screen, panel_rect, (14, 33, 25), (189, 167, 112), radius=22)
+    elif _UI_STYLE == "premium_tabletop":
+        _draw_shadowed_panel(screen, panel_rect, (24, 54, 40), (230, 200, 144), radius=24)
+    else:
+        _draw_shadowed_panel(screen, panel_rect, (26, 38, 31), (201, 174, 108), radius=26)
 
     title_font = pygame.font.SysFont("cambria", 24, bold=True)
     body_font = pygame.font.SysFont("segoe ui", 16, bold=True)
     small_font = pygame.font.SysFont("segoe ui", 13)
 
     _draw_label(
-        screen, "Cribbage", (panel_rect.x + 18, panel_rect.y + 12), title_font, (240, 227, 188)
+        screen,
+        "Cribbage",
+        (panel_rect.x + 18, panel_rect.y + 12),
+        title_font,
+        (220, 230, 250) if _UI_STYLE == "competitive_minimal" else (240, 227, 188),
     )
     _draw_label(
         screen,
         f"Dealer: {'You' if dealer == 0 else dealer_name}",
         (panel_rect.x + 18, panel_rect.y + 46),
         body_font,
-        (213, 202, 174),
+        (173, 186, 212) if _UI_STYLE == "competitive_minimal" else (213, 202, 174),
     )
 
     player_chip = pygame.Rect(panel_rect.x + 14, panel_rect.y + 74, panel_rect.width - 28, 32)
     dad_chip = pygame.Rect(panel_rect.x + 14, panel_rect.y + 112, panel_rect.width - 28, 32)
-    pygame.draw.rect(screen, (20, 53, 76), player_chip, border_radius=16)
-    pygame.draw.rect(screen, (37, 22, 20), dad_chip, border_radius=16)
-    pygame.draw.rect(screen, (153, 205, 255), player_chip, width=1, border_radius=16)
-    pygame.draw.rect(screen, (255, 159, 141), dad_chip, width=1, border_radius=16)
+    if _UI_STYLE == "competitive_minimal":
+        pygame.draw.rect(screen, (26, 38, 56), player_chip, border_radius=16)
+        pygame.draw.rect(screen, (45, 32, 44), dad_chip, border_radius=16)
+        pygame.draw.rect(screen, (120, 150, 196), player_chip, width=1, border_radius=16)
+        pygame.draw.rect(screen, (176, 130, 168), dad_chip, width=1, border_radius=16)
+    else:
+        pygame.draw.rect(screen, (20, 53, 76), player_chip, border_radius=16)
+        pygame.draw.rect(screen, (37, 22, 20), dad_chip, border_radius=16)
+        pygame.draw.rect(screen, (153, 205, 255), player_chip, width=1, border_radius=16)
+        pygame.draw.rect(screen, (255, 159, 141), dad_chip, width=1, border_radius=16)
 
     player_surf = body_font.render(f"{player_name}: {player_scores[0]}", True, (185, 222, 255))
     dad_surf = body_font.render(f"{dealer_name} Score: {player_scores[1]}", True, (255, 176, 160))
@@ -586,10 +759,10 @@ def _draw_score_panel(screen, dealer, player_scores, dad_ai_level, player_name):
 
     _draw_label(
         screen,
-        f"AI: {AI_LEVELS[dad_ai_level]}",
+        f"AI Difficulty: {AI_LEVELS[dad_ai_level]}",
         (panel_rect.x + 18, panel_rect.y + 150),
         small_font,
-        (173, 166, 146),
+        (164, 177, 208) if _UI_STYLE == "competitive_minimal" else (214, 203, 174),
     )
 
 
@@ -737,44 +910,66 @@ def _draw_game_header(screen, message):
 
     box_w = min(860, sw - 140)
     msg_box = pygame.Rect(sw // 2 - box_w // 2, 22, box_w, 58)
-    pygame.draw.rect(screen, (0, 0, 0, 78), msg_box.move(3, 5), border_radius=29)
-    pygame.draw.rect(screen, (24, 36, 29, 240), msg_box, border_radius=29)
-    pygame.draw.rect(screen, (212, 183, 114), msg_box, width=2, border_radius=29)
-    pygame.draw.line(
-        screen,
-        (255, 234, 183),
-        (msg_box.left + 24, msg_box.top + 11),
-        (msg_box.right - 24, msg_box.top + 11),
-        1,
-    )
-    msg_surf = body_font.render(header_text, True, (238, 225, 191))
+    if _UI_STYLE == "competitive_minimal":
+        pygame.draw.rect(screen, (16, 20, 28), msg_box, border_radius=20)
+        pygame.draw.rect(screen, (108, 126, 156), msg_box, width=1, border_radius=20)
+        msg_surf = body_font.render(header_text, True, (222, 232, 248))
+    elif _UI_STYLE == "broadcast_table":
+        pygame.draw.rect(screen, (10, 32, 24), msg_box, border_radius=24)
+        pygame.draw.rect(screen, (209, 184, 122), msg_box, width=2, border_radius=24)
+        msg_surf = body_font.render(header_text, True, (240, 231, 198))
+    elif _UI_STYLE == "premium_tabletop":
+        pygame.draw.rect(screen, (19, 56, 40), msg_box, border_radius=30)
+        pygame.draw.rect(screen, (236, 206, 147), msg_box, width=2, border_radius=30)
+        msg_surf = body_font.render(header_text, True, (248, 236, 209))
+    else:
+        pygame.draw.rect(screen, (0, 0, 0, 78), msg_box.move(3, 5), border_radius=29)
+        pygame.draw.rect(screen, (24, 36, 29, 240), msg_box, border_radius=29)
+        pygame.draw.rect(screen, (212, 183, 114), msg_box, width=2, border_radius=29)
+        pygame.draw.line(
+            screen,
+            (255, 234, 183),
+            (msg_box.left + 24, msg_box.top + 11),
+            (msg_box.right - 24, msg_box.top + 11),
+            1,
+        )
+        msg_surf = body_font.render(header_text, True, (238, 225, 191))
     screen.blit(
         msg_surf,
         (msg_box.centerx - msg_surf.get_width() // 2, msg_box.centery - msg_surf.get_height() // 2),
     )
 
 
-def _draw_crib_area(screen, crib_count, starter_card, card_images):
+def _draw_crib_area(screen, crib_count, starter_card, card_images, dealer, phase):
     sw, sh = screen.get_width(), screen.get_height()
     label_font = pygame.font.SysFont("segoe ui", 18, bold=True)
     small_font = pygame.font.SysFont("segoe ui", 15)
 
     crib_panel = _crib_panel_rect(sw, sh)
-    _draw_shadowed_panel(screen, crib_panel, (20, 66, 45), (206, 176, 108), radius=24)
+    if _UI_STYLE == "competitive_minimal":
+        _draw_shadowed_panel(screen, crib_panel, (18, 24, 34), (104, 120, 150), radius=20)
+    elif _UI_STYLE == "broadcast_table":
+        _draw_shadowed_panel(screen, crib_panel, (14, 54, 38), (194, 171, 113), radius=22)
+    elif _UI_STYLE == "premium_tabletop":
+        _draw_shadowed_panel(screen, crib_panel, (21, 74, 49), (232, 202, 147), radius=24)
+    else:
+        _draw_shadowed_panel(screen, crib_panel, (20, 66, 45), (206, 176, 108), radius=24)
+    crib_owner_label = "Your Crib" if dealer == 0 else "Opponent's Crib"
     _draw_label(
         screen,
-        "Opponent's Crib",
+        crib_owner_label,
         (crib_panel.x + 22, crib_panel.y + 14),
         label_font,
-        (240, 227, 188),
+        (208, 222, 248) if _UI_STYLE == "competitive_minimal" else (240, 227, 188),
     )
-    _draw_label(
-        screen,
-        "Drop 2 cards here",
-        (crib_panel.x + 22, crib_panel.y + 38),
-        small_font,
-        (221, 192, 129),
-    )
+    if phase == "discard" and crib_count < 4:
+        _draw_label(
+            screen,
+            "Drop 2 cards here",
+            (crib_panel.x + 22, crib_panel.y + 38),
+            small_font,
+            (164, 177, 208) if _UI_STYLE == "competitive_minimal" else (221, 192, 129),
+        )
 
     card_w, card_h = 66, 98
     card_group_left = crib_panel.centerx - 90
@@ -846,6 +1041,7 @@ def _choose_dad_discards():
         dealer_is_dad=(_CLASSIC_SESSION.dealer == 1),
         canonical_deck_labels=_canonical_deck_labels(),
         score_labels_hand=_score_labels_hand,
+        game_state=_CLASSIC_SESSION,
     )
 
 
@@ -865,6 +1061,7 @@ def _choose_dad_pegging_index(current_total):
         own_score=_CLASSIC_SESSION.scores[1],
         opp_score=_CLASSIC_SESSION.scores[0],
         own_cards_remaining=len(_CLASSIC_SESSION.ai_hand),
+        game_state=_CLASSIC_SESSION,
     )
 
 
@@ -876,6 +1073,7 @@ def _choose_auto_player_discard_indices():
         dealer_is_dad=(_CLASSIC_SESSION.dealer == 0),
         canonical_deck_labels=_canonical_deck_labels(),
         score_labels_hand=_score_labels_hand,
+        game_state=_CLASSIC_SESSION,
     )
 
 
@@ -987,6 +1185,7 @@ def _finalize_pegging_if_complete():
             s.message = "Last card for 1 point. Counting hands."
         else:
             s.message = f"{_current_dealer_name()} gets last card for 1 point. Counting hands."
+            _speak_bert_event("last_card")
     else:
         s.message = "Counting hands."
 
@@ -1010,6 +1209,7 @@ def _handle_go(player_idx):
                 s.message = "Go for you (+1). New count."
             else:
                 s.message = f"Go for {_current_dealer_name()} (+1). New count."
+                _speak_bert_event("go_point")
         else:
             s.message = "No plays. New count."
         s.pegging_pile.clear()
@@ -1022,6 +1222,8 @@ def _handle_go(player_idx):
         s.message = "Go. " + (
             f"{_current_dealer_name()}'s turn." if other == 1 else "Your turn."
         )
+        if other == 1:
+            _speak_bert_event("go_called")
 
     _sync_runtime_from_classic_session()
 
@@ -1060,12 +1262,16 @@ def _play_pegging_card(player_idx, idx):
         s.message = f"{name} played 31{point_note}. New count."
         if _EFFECTS is not None and _SETTINGS.animations_enabled:
             _EFFECTS.trigger_shake(intensity=7, duration_ms=220)
+        if player_idx == 1:
+            _speak_bert_event("pegging_31")
         s.pegging_pile.clear()
         s.player_turn = 1 - player_idx
     else:
         s.message = f"{name} pegs{point_note}. " + (
             f"{_current_dealer_name()}'s turn." if player_idx == 0 else "Your turn."
         )
+        if player_idx == 1 and points > 0:
+            _speak_bert_event("pegging_score")
         s.player_turn = 1 - player_idx
 
     s.last_pegging_player = player_idx
@@ -1096,6 +1302,7 @@ def handle_discard(event):
                         _ENGINE.handle_discard(s.selected_cards)
                         _ADAPTER.update_globals_from_engine()
                         _sync_classic_session_from_runtime()
+                        _speak_bert_event("cards_dealt")
                     else:
                         # Fallback legacy path
                         for i in sorted(s.selected_cards, reverse=True):
@@ -1114,6 +1321,7 @@ def handle_discard(event):
                         s.pegging_passes[1] = False
                         s.last_pegging_player = None
                         s.message = "Pegging phase begins!"
+                        _speak_bert_event("cards_dealt")
 
                     s.selected_cards = []
                     _sync_runtime_from_classic_session()
@@ -1221,11 +1429,14 @@ def handle_counting():
     if (p1_points + p2_points + crib_points) > 0 and _AUDIO is not None:
         _AUDIO.play("score")
 
+    _record_single_player_hand_stats(p1_points, p2_points, s.dealer)
+
     w = _check_for_winner()
     if w is None:
         s.message = "Round counted. Review the scoring popup and press R for next round."
         _transition_phase("end")
     else:
+        _record_single_player_game_result(w)
         if _AUDIO is not None:
             _AUDIO.play("win")
         if w == -1:
@@ -1235,11 +1446,13 @@ def handle_counting():
                 f"Game Over! {player_name} wins with {s.scores[0]} points. "
                 "Press R to return to the intro."
             )
+            _speak_bert_event("player_won", force=True)
         else:
             s.message = (
                 f"Game Over! {_current_dealer_name()} wins with {s.scores[1]} points. "
                 "Press R to return to the intro."
             )
+            _speak_bert_event("bert_won", force=True)
         _transition_phase("game_over")
 
     _sync_runtime_from_classic_session()
@@ -1247,8 +1460,8 @@ def handle_counting():
 
 # --- Main Entry ---
 def main():
-    global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, winner_index, dad_ai_level, last_pegging_player, discard_analysis_message
-    global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE, _CARD_BACK_CACHE, _AUDIO, _SETTINGS
+    global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, winner_index, dad_ai_level, last_pegging_player, discard_analysis_message, _UI_STYLE
+    global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE, _CARD_BACK_CACHE, _AUDIO, _VOICE, _SETTINGS
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--online-url", dest="online_url", default="http://127.0.0.1:8787")
     parser.add_argument("--online-ws-url", dest="online_ws_url", default="ws://127.0.0.1:8790")
@@ -1259,6 +1472,13 @@ def main():
     parser.add_argument("--capture-discard", dest="capture_discard", default=None)
     parser.add_argument("--capture-gameplay", dest="capture_gameplay", default=None)
     parser.add_argument("--capture-video", dest="capture_video", default=None)
+    parser.add_argument(
+        "--ui-style",
+        dest="ui_style",
+        choices=_UI_STYLES,
+        default=None,
+        help="Optional gameplay style override. If omitted, saved settings style is used.",
+    )
     parser.add_argument("--capture-video-fps", dest="capture_video_fps", type=int, default=30)
     parser.add_argument(
         "--capture-video-intro-seconds", dest="capture_video_intro_seconds", type=float, default=1.4
@@ -1277,13 +1497,18 @@ def main():
     capture_video_pending = bool(args.capture_video)
 
     _SETTINGS = load_settings()
+    _UI_STYLE = _SETTINGS.ui_style
     if args.volume is not None:
         _SETTINGS.volume = args.volume
     if args.animations is not None:
         _SETTINGS.animations_enabled = args.animations == "on"
     if args.online_ai_level is not None:
         _SETTINGS.online_ai_level = args.online_ai_level
+    if args.ui_style is not None:
+        _SETTINGS.ui_style = args.ui_style
+    _UI_STYLE = _SETTINGS.ui_style
     _SETTINGS.clamp()
+    _UI_STYLE = _SETTINGS.ui_style
     save_settings(_SETTINGS)
 
     capture_video_path = Path(args.capture_video).resolve() if capture_video_pending else None
@@ -1355,6 +1580,17 @@ def main():
     pygame.display.set_caption("Upta - The Camp Cribbage Game")
     clock = pygame.time.Clock()
     _AUDIO = AudioManager(volume=_SETTINGS.volume)
+    _VOICE = VoiceManager(
+        enabled=_SETTINGS.bert_voice_enabled,
+        backend=_SETTINGS.bert_voice_backend,
+        local_ai_model_path=_SETTINGS.bert_local_model_path,
+        local_ai_exe_path=_SETTINGS.bert_local_exe_path,
+        rvc_enabled=_SETTINGS.bert_rvc_enabled,
+        rvc_exe_path=_SETTINGS.bert_rvc_exe_path,
+        rvc_model_path=_SETTINGS.bert_rvc_model_path,
+        rvc_index_path=_SETTINGS.bert_rvc_index_path,
+        rvc_pitch_shift=_SETTINGS.bert_rvc_pitch_shift,
+    )
 
     _ENGINE = CribbageEngine()
     _ADAPTER = EngineAdapter(_ENGINE, sys.modules[__name__])
@@ -1438,6 +1674,9 @@ def main():
             if _ADAPTER is not None:
                 _ADAPTER.update_globals_from_engine()
 
+        if dad_ai_level in (4, 5):
+            _speak_bert_event("cards_dealt", force=True)
+
         # Start at discard phase
         message = "Select 2 cards to discard to the crib."
         return dealer, starter_card, message
@@ -1480,6 +1719,9 @@ def main():
             _ENGINE.start_next_round(player1_hand, player2_hand, _stock_labels)
             if _ADAPTER is not None:
                 _ADAPTER.update_globals_from_engine()
+
+        if dad_ai_level in (4, 5):
+            _speak_bert_event("round_start", force=True)
 
         return nonlocal_dealer, nonlocal_starter, "New Round. Select 2 cards to discard."
 
@@ -1534,11 +1776,26 @@ def main():
     settings_anim_rect = None
     settings_ai_left_rect = None
     settings_ai_right_rect = None
+    settings_style_left_rect = None
+    settings_style_right_rect = None
+    settings_voice_style_rect = None
+    settings_voice_backend_rect = None
+    settings_rvc_toggle_rect = None
+    settings_rvc_pitch_left_rect = None
+    settings_rvc_pitch_right_rect = None
+    settings_voice_test_rect = None
+    settings_local_exe_rect = None
+    settings_local_model_rect = None
+    settings_rvc_exe_rect = None
+    settings_rvc_model_rect = None
+    settings_rvc_index_rect = None
+    settings_text_active = None
     difficulty_descriptions = {
         1: "Random play\nEasy wins",
         2: "Monte Carlo\nMixed strategy",
         3: "Risk simulation\nHard opponent",
         4: "Gumption\nMode",
+        5: "Learns from play\nAdaptive style",
     }
 
     def _launch_online_client() -> None:
@@ -1564,6 +1821,119 @@ def main():
         save_settings(_SETTINGS)
         if _AUDIO is not None:
             _AUDIO.set_volume(_SETTINGS.volume)
+        if _VOICE is not None:
+            _VOICE.set_enabled(_SETTINGS.bert_voice_enabled)
+            _VOICE.configure_backend(
+                _SETTINGS.bert_voice_backend,
+                _SETTINGS.bert_local_model_path,
+                _SETTINGS.bert_local_exe_path,
+                _SETTINGS.bert_rvc_enabled,
+                _SETTINGS.bert_rvc_exe_path,
+                _SETTINGS.bert_rvc_model_path,
+                _SETTINGS.bert_rvc_index_path,
+                _SETTINGS.bert_rvc_pitch_shift,
+            )
+
+    def _voice_startup_warning_text() -> str:
+        if _SETTINGS.bert_voice_backend != "local_ai":
+            return ""
+
+        model_path = _SETTINGS.bert_local_model_path.strip()
+        exe_path = _SETTINGS.bert_local_exe_path.strip() or "piper"
+        model_ok = bool(model_path) and Path(model_path).exists()
+        exe_ok = shutil.which(exe_path) is not None or Path(exe_path).exists()
+
+        if not model_ok:
+            return "Local AI voice is selected but Piper model path is missing/invalid. SAPI fallback active."
+        if not exe_ok:
+            return "Local AI voice is selected but Piper executable was not found. SAPI fallback active."
+        if _SETTINGS.bert_rvc_enabled:
+            rvc_model_ok = bool(_SETTINGS.bert_rvc_model_path.strip()) and Path(
+                _SETTINGS.bert_rvc_model_path.strip()
+            ).exists()
+            rvc_exe_path = _SETTINGS.bert_rvc_exe_path.strip() or "rvc_infer"
+            rvc_exe_ok = shutil.which(rvc_exe_path) is not None or Path(rvc_exe_path).exists()
+            if not rvc_model_ok or not rvc_exe_ok:
+                return "RVC is enabled but not fully configured. Voice runs without RVC until paths are fixed."
+        return ""
+
+    def _preview_bert_voice() -> None:
+        if _VOICE is None:
+            return
+        preview_level = dad_ai_level if dad_ai_level in (4, 5) else 4
+        line = bert_persona.choose_line(
+            event="level_selected",
+            style=_SETTINGS.bert_voice_style,
+            dad_ai_level=preview_level,
+        )
+        if not line:
+            line = "Ayuh. Bert voice test." if _SETTINGS.bert_voice_style == "downeast" else "BERT VOICE TEST."
+        _VOICE.speak_bert(
+            line,
+            dad_ai_level=preview_level,
+            bypass_cooldown=True,
+            voice_style=_SETTINGS.bert_voice_style,
+        )
+
+    def _path_preview(value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            return "<not set>"
+        if len(cleaned) <= 62:
+            return cleaned
+        return "..." + cleaned[-59:]
+
+    def _get_text_field_value(field: str) -> str:
+        if field == "local_exe":
+            return _SETTINGS.bert_local_exe_path
+        if field == "local_model":
+            return _SETTINGS.bert_local_model_path
+        if field == "rvc_exe":
+            return _SETTINGS.bert_rvc_exe_path
+        if field == "rvc_model":
+            return _SETTINGS.bert_rvc_model_path
+        if field == "rvc_index":
+            return _SETTINGS.bert_rvc_index_path
+        return ""
+
+    def _set_text_field_value(field: str, value: str) -> None:
+        if field == "local_exe":
+            _SETTINGS.bert_local_exe_path = value
+        elif field == "local_model":
+            _SETTINGS.bert_local_model_path = value
+        elif field == "rvc_exe":
+            _SETTINGS.bert_rvc_exe_path = value
+        elif field == "rvc_model":
+            _SETTINGS.bert_rvc_model_path = value
+        elif field == "rvc_index":
+            _SETTINGS.bert_rvc_index_path = value
+
+    def _handle_settings_text_key(event: pygame.event.Event) -> bool:
+        nonlocal settings_text_active
+        if settings_text_active is None:
+            return False
+
+        current = _get_text_field_value(settings_text_active)
+
+        if event.key == pygame.K_ESCAPE:
+            settings_text_active = None
+            return True
+        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            settings_text_active = None
+            _persist_settings()
+            return True
+        if event.key == pygame.K_BACKSPACE:
+            _set_text_field_value(settings_text_active, current[:-1])
+            _persist_settings()
+            return True
+
+        char = event.unicode
+        if char and char.isprintable() and len(current) < 300:
+            _set_text_field_value(settings_text_active, current + char)
+            _persist_settings()
+            return True
+
+        return False
 
     def _cycle_online_ai(delta: int) -> None:
         levels = [1, 2, 3]
@@ -1571,13 +1941,28 @@ def main():
         _SETTINGS.online_ai_level = levels[(current_idx + delta) % len(levels)]
         _persist_settings()
 
+    def _cycle_ui_style(delta: int) -> None:
+        global _UI_STYLE
+        idx = _UI_STYLES.index(_SETTINGS.ui_style)
+        _SETTINGS.ui_style = _UI_STYLES[(idx + delta) % len(_UI_STYLES)]
+        _UI_STYLE = _SETTINGS.ui_style
+        _persist_settings()
+
     def _draw_settings_modal(sw: int, sh: int) -> None:
         nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
+        nonlocal settings_style_left_rect, settings_style_right_rect
+        nonlocal settings_voice_style_rect
+        nonlocal settings_voice_backend_rect
+        nonlocal settings_rvc_toggle_rect, settings_rvc_pitch_left_rect
+        nonlocal settings_rvc_pitch_right_rect, settings_voice_test_rect
+        nonlocal settings_local_exe_rect, settings_local_model_rect
+        nonlocal settings_rvc_exe_rect, settings_rvc_model_rect, settings_rvc_index_rect
+        nonlocal settings_text_active
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 150))
         screen.blit(overlay, (0, 0))
 
-        modal = pygame.Rect(sw // 2 - 240, sh // 2 - 150, 480, 300)
+        modal = pygame.Rect(sw // 2 - 280, max(10, sh // 2 - 430), 560, 860)
         shadow = modal.move(0, 10)
         pygame.draw.rect(screen, (0, 0, 0, 120), shadow, border_radius=28)
         pygame.draw.rect(screen, (24, 20, 18), modal, border_radius=28)
@@ -1653,10 +2038,232 @@ def main():
             ),
         )
 
-        hint = small_font.render(
-            "Press S or click outside to close. The volume rail is clickable.", True, (210, 198, 176)
+        style_label = body_font.render("Playfield Style:", True, (245, 236, 218))
+        screen.blit(style_label, (modal.x + 28, modal.y + 244))
+        settings_style_left_rect = pygame.Rect(modal.x + 28, modal.y + 272, 46, 44)
+        settings_style_right_rect = pygame.Rect(modal.x + 402, modal.y + 272, 46, 44)
+        style_mid_rect = pygame.Rect(modal.x + 84, modal.y + 272, 312, 44)
+        for rect, label in ((settings_style_left_rect, "<"), (settings_style_right_rect, ">")):
+            pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
+            pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
+            txt = body_font.render(label, True, (255, 255, 255))
+            screen.blit(
+                txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2)
+            )
+        pygame.draw.rect(screen, (55, 48, 42), style_mid_rect, border_radius=18)
+        pygame.draw.rect(screen, (233, 205, 153), style_mid_rect, width=2, border_radius=18)
+        style_text = small_font.render(_UI_STYLE_LABELS[_SETTINGS.ui_style], True, (255, 255, 255))
+        screen.blit(
+            style_text,
+            (
+                style_mid_rect.centerx - style_text.get_width() // 2,
+                style_mid_rect.centery - style_text.get_height() // 2,
+            ),
         )
-        screen.blit(hint, (modal.centerx - hint.get_width() // 2, modal.bottom - 28))
+
+        voice_style_label = body_font.render("Bert Voice Style:", True, (245, 236, 218))
+        screen.blit(voice_style_label, (modal.x + 28, modal.y + 324))
+        settings_voice_style_rect = pygame.Rect(modal.x + 216, modal.y + 324, 196, 44)
+        pygame.draw.rect(screen, (66, 94, 132), settings_voice_style_rect, border_radius=18)
+        pygame.draw.rect(screen, (224, 234, 244), settings_voice_style_rect, width=2, border_radius=18)
+        voice_text = small_font.render(
+            f"{_SETTINGS.bert_voice_style.title()} (click)", True, (255, 255, 255)
+        )
+        screen.blit(
+            voice_text,
+            (
+                settings_voice_style_rect.centerx - voice_text.get_width() // 2,
+                settings_voice_style_rect.centery - voice_text.get_height() // 2,
+            ),
+        )
+
+        backend_label = body_font.render("Bert Voice Backend:", True, (245, 236, 218))
+        screen.blit(backend_label, (modal.x + 28, modal.y + 378))
+        settings_voice_backend_rect = pygame.Rect(modal.x + 216, modal.y + 378, 196, 44)
+        pygame.draw.rect(screen, (88, 94, 66), settings_voice_backend_rect, border_radius=18)
+        pygame.draw.rect(screen, (244, 239, 188), settings_voice_backend_rect, width=2, border_radius=18)
+        backend_text = "Local AI" if _SETTINGS.bert_voice_backend == "local_ai" else "Windows SAPI"
+        backend_note = small_font.render(f"{backend_text} (click)", True, (255, 255, 255))
+        screen.blit(
+            backend_note,
+            (
+                settings_voice_backend_rect.centerx - backend_note.get_width() // 2,
+                settings_voice_backend_rect.centery - backend_note.get_height() // 2,
+            ),
+        )
+
+        rvc_label = body_font.render("RVC Accent Pass:", True, (245, 236, 218))
+        screen.blit(rvc_label, (modal.x + 28, modal.y + 432))
+        settings_rvc_toggle_rect = pygame.Rect(modal.x + 216, modal.y + 432, 196, 44)
+        rvc_fill = (62, 101, 74) if _SETTINGS.bert_rvc_enabled else (121, 72, 66)
+        pygame.draw.rect(screen, rvc_fill, settings_rvc_toggle_rect, border_radius=18)
+        pygame.draw.rect(screen, (244, 239, 188), settings_rvc_toggle_rect, width=2, border_radius=18)
+        rvc_text = "Enabled (click)" if _SETTINGS.bert_rvc_enabled else "Disabled (click)"
+        rvc_note = small_font.render(rvc_text, True, (255, 255, 255))
+        screen.blit(
+            rvc_note,
+            (
+                settings_rvc_toggle_rect.centerx - rvc_note.get_width() // 2,
+                settings_rvc_toggle_rect.centery - rvc_note.get_height() // 2,
+            ),
+        )
+
+        pitch_label = body_font.render("RVC Pitch Shift:", True, (245, 236, 218))
+        screen.blit(pitch_label, (modal.x + 28, modal.y + 486))
+        settings_rvc_pitch_left_rect = pygame.Rect(modal.x + 216, modal.y + 486, 46, 44)
+        settings_rvc_pitch_right_rect = pygame.Rect(modal.x + 366, modal.y + 486, 46, 44)
+        pitch_mid_rect = pygame.Rect(modal.x + 272, modal.y + 486, 84, 44)
+        for rect, label in (
+            (settings_rvc_pitch_left_rect, "<"),
+            (settings_rvc_pitch_right_rect, ">"),
+        ):
+            pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
+            pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
+            txt = body_font.render(label, True, (255, 255, 255))
+            screen.blit(
+                txt,
+                (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2),
+            )
+        pygame.draw.rect(screen, (55, 48, 42), pitch_mid_rect, border_radius=18)
+        pygame.draw.rect(screen, (233, 205, 153), pitch_mid_rect, width=2, border_radius=18)
+        pitch_text = body_font.render(str(_SETTINGS.bert_rvc_pitch_shift), True, (255, 255, 255))
+        screen.blit(
+            pitch_text,
+            (
+                pitch_mid_rect.centerx - pitch_text.get_width() // 2,
+                pitch_mid_rect.centery - pitch_text.get_height() // 2,
+            ),
+        )
+
+        settings_voice_test_rect = pygame.Rect(modal.x + 116, modal.y + 542, 248, 44)
+        pygame.draw.rect(screen, (90, 74, 142), settings_voice_test_rect, border_radius=18)
+        pygame.draw.rect(screen, (222, 212, 248), settings_voice_test_rect, width=2, border_radius=18)
+        test_text = body_font.render("Test Bert Voice", True, (255, 255, 255))
+        screen.blit(
+            test_text,
+            (
+                settings_voice_test_rect.centerx - test_text.get_width() // 2,
+                settings_voice_test_rect.centery - test_text.get_height() // 2,
+            ),
+        )
+
+        field_font = pygame.font.SysFont("consolas", 16)
+
+        local_exe_label = body_font.render("Piper Executable:", True, (245, 236, 218))
+        screen.blit(local_exe_label, (modal.x + 28, modal.y + 488))
+        settings_local_exe_rect = pygame.Rect(modal.x + 28, modal.y + 518, modal.width - 56, 30)
+        local_exe_active = settings_text_active == "local_exe"
+        pygame.draw.rect(
+            screen,
+            (58, 52, 45) if not local_exe_active else (68, 60, 52),
+            settings_local_exe_rect,
+            border_radius=10,
+        )
+        pygame.draw.rect(
+            screen,
+            (222, 212, 188) if not local_exe_active else (255, 237, 172),
+            settings_local_exe_rect,
+            width=2,
+            border_radius=10,
+        )
+        local_exe_text = field_font.render(_path_preview(_SETTINGS.bert_local_exe_path), True, (239, 234, 222))
+        screen.blit(local_exe_text, (settings_local_exe_rect.x + 10, settings_local_exe_rect.y + 6))
+
+        local_model_label = body_font.render("Piper Model Path:", True, (245, 236, 218))
+        screen.blit(local_model_label, (modal.x + 28, modal.y + 560))
+        settings_local_model_rect = pygame.Rect(modal.x + 28, modal.y + 590, modal.width - 56, 30)
+        local_model_active = settings_text_active == "local_model"
+        pygame.draw.rect(
+            screen,
+            (58, 52, 45) if not local_model_active else (68, 60, 52),
+            settings_local_model_rect,
+            border_radius=10,
+        )
+        pygame.draw.rect(
+            screen,
+            (222, 212, 188) if not local_model_active else (255, 237, 172),
+            settings_local_model_rect,
+            width=2,
+            border_radius=10,
+        )
+        local_model_text = field_font.render(
+            _path_preview(_SETTINGS.bert_local_model_path), True, (239, 234, 222)
+        )
+        screen.blit(local_model_text, (settings_local_model_rect.x + 10, settings_local_model_rect.y + 6))
+
+        rvc_exe_label = body_font.render("RVC Executable:", True, (245, 236, 218))
+        screen.blit(rvc_exe_label, (modal.x + 28, modal.y + 632))
+        settings_rvc_exe_rect = pygame.Rect(modal.x + 28, modal.y + 662, modal.width - 56, 30)
+        rvc_exe_active = settings_text_active == "rvc_exe"
+        pygame.draw.rect(
+            screen,
+            (58, 52, 45) if not rvc_exe_active else (68, 60, 52),
+            settings_rvc_exe_rect,
+            border_radius=10,
+        )
+        pygame.draw.rect(
+            screen,
+            (222, 212, 188) if not rvc_exe_active else (255, 237, 172),
+            settings_rvc_exe_rect,
+            width=2,
+            border_radius=10,
+        )
+        rvc_exe_text = field_font.render(_path_preview(_SETTINGS.bert_rvc_exe_path), True, (239, 234, 222))
+        screen.blit(rvc_exe_text, (settings_rvc_exe_rect.x + 10, settings_rvc_exe_rect.y + 6))
+
+        rvc_model_label = body_font.render("RVC Model Path:", True, (245, 236, 218))
+        screen.blit(rvc_model_label, (modal.x + 28, modal.y + 704))
+        settings_rvc_model_rect = pygame.Rect(modal.x + 28, modal.y + 734, modal.width - 56, 30)
+        rvc_model_active = settings_text_active == "rvc_model"
+        pygame.draw.rect(
+            screen,
+            (58, 52, 45) if not rvc_model_active else (68, 60, 52),
+            settings_rvc_model_rect,
+            border_radius=10,
+        )
+        pygame.draw.rect(
+            screen,
+            (222, 212, 188) if not rvc_model_active else (255, 237, 172),
+            settings_rvc_model_rect,
+            width=2,
+            border_radius=10,
+        )
+        rvc_model_text = field_font.render(
+            _path_preview(_SETTINGS.bert_rvc_model_path), True, (239, 234, 222)
+        )
+        screen.blit(rvc_model_text, (settings_rvc_model_rect.x + 10, settings_rvc_model_rect.y + 6))
+
+        rvc_index_label = body_font.render("RVC Index Path:", True, (245, 236, 218))
+        screen.blit(rvc_index_label, (modal.x + 28, modal.y + 776))
+        settings_rvc_index_rect = pygame.Rect(modal.x + 28, modal.y + 806, modal.width - 56, 30)
+        rvc_index_active = settings_text_active == "rvc_index"
+        pygame.draw.rect(
+            screen,
+            (58, 52, 45) if not rvc_index_active else (68, 60, 52),
+            settings_rvc_index_rect,
+            border_radius=10,
+        )
+        pygame.draw.rect(
+            screen,
+            (222, 212, 188) if not rvc_index_active else (255, 237, 172),
+            settings_rvc_index_rect,
+            width=2,
+            border_radius=10,
+        )
+        rvc_index_text = field_font.render(
+            _path_preview(_SETTINGS.bert_rvc_index_path), True, (239, 234, 222)
+        )
+        screen.blit(rvc_index_text, (settings_rvc_index_rect.x + 10, settings_rvc_index_rect.y + 6))
+
+        warn_text = _voice_startup_warning_text()
+        if warn_text:
+            warn = small_font.render(warn_text, True, (235, 193, 136))
+            screen.blit(warn, (modal.x + 28, modal.y + 842))
+
+        hint = small_font.render(
+            "Click a path box to edit. Enter saves. Esc exits field.", True, (210, 198, 176)
+        )
+        screen.blit(hint, (modal.centerx - hint.get_width() // 2, modal.bottom - 22))
 
     if capture_gameplay_pending:
         _prepare_gameplay_preview_state()
@@ -1743,6 +2350,7 @@ def main():
             subtitle_small = subtitle_small_font.render(
                 "Maine camp cards, dressed like opening night.", True, (214, 194, 162)
             )
+            voice_warning = _voice_startup_warning_text()
 
             title_top = 88
             title_to_subtitle_gap = 8
@@ -1772,6 +2380,24 @@ def main():
             screen.blit(title_glint, (title_x, title_y), area=glint_clip)
             screen.blit(subtitle, (subtitle_x, subtitle_y))
             screen.blit(subtitle_small, (subtitle_small_x, subtitle_small_y))
+            if voice_warning:
+                warn_font = pygame.font.SysFont("segoe ui", 16, bold=True)
+                warn_surface = warn_font.render(voice_warning, True, (255, 216, 198))
+                warn_rect = pygame.Rect(
+                    sw // 2 - warn_surface.get_width() // 2 - 16,
+                    subtitle_small_y + subtitle_small.get_height() + 10,
+                    warn_surface.get_width() + 32,
+                    34,
+                )
+                pygame.draw.rect(screen, (99, 36, 32), warn_rect, border_radius=12)
+                pygame.draw.rect(screen, (214, 120, 100), warn_rect, width=2, border_radius=12)
+                screen.blit(
+                    warn_surface,
+                    (
+                        warn_rect.centerx - warn_surface.get_width() // 2,
+                        warn_rect.centery - warn_surface.get_height() // 2,
+                    ),
+                )
 
             panel_w = min(980, max(640, sw - 120))
             panel_h = min(430, max(330, sh - 250))
@@ -1789,12 +2415,39 @@ def main():
             screen.blit(_rim, panel_rect.topleft)
 
             panel_pad = 28
-            button_spacing = 16
-            available_w = panel_rect.width - panel_pad * 2 - button_spacing * 3
-            button_width = max(108, min(164, available_w // 4))
+            difficulty_options = [
+                (1, "Easy"),
+                (2, "Medium"),
+                (3, "Hard"),
+                (4, "Bert"),
+                (5, "Bert+"),
+            ]
+            button_count = len(difficulty_options)
+            available_w = panel_rect.width - panel_pad * 2
+            button_spacing = 14
+            button_width = max(
+                96,
+                min(
+                    152,
+                    (available_w - button_spacing * (button_count - 1)) // max(1, button_count),
+                ),
+            )
             button_height = 132
-            total_width = 4 * button_width + 3 * button_spacing
-            start_x = panel_rect.x + (panel_rect.width - total_width) // 2
+            total_width = button_count * button_width + (button_count - 1) * button_spacing
+            if total_width > available_w:
+                button_spacing = max(
+                    8,
+                    (available_w - button_count * button_width) // max(1, button_count - 1),
+                )
+                total_width = button_count * button_width + (button_count - 1) * button_spacing
+            if total_width > available_w:
+                button_width = max(
+                    84,
+                    (available_w - button_spacing * (button_count - 1)) // max(1, button_count),
+                )
+                total_width = button_count * button_width + (button_count - 1) * button_spacing
+
+            start_x = panel_rect.x + panel_pad + max(0, (available_w - total_width) // 2)
             cta_row_y = panel_rect.bottom - 88
             button_y = cta_row_y - button_height - 26
 
@@ -1861,9 +2514,7 @@ def main():
 
             difficulty_buttons = {}
 
-            for i, (level, name) in enumerate(
-                [(1, "Easy"), (2, "Medium"), (3, "Hard"), (4, "Bert")]
-            ):
+            for i, (level, name) in enumerate(difficulty_options):
                 btn_x = start_x + i * (button_width + button_spacing)
                 btn_rect = pygame.Rect(btn_x, button_y, button_width, button_height)
                 difficulty_buttons[level] = btn_rect
@@ -1875,7 +2526,7 @@ def main():
                     raise_px = max(raise_px, 5)
                 draw_rect = btn_rect.move(0, -raise_px)
 
-                is_bert_selected = level == 4 and level == dad_ai_level
+                is_bert_selected = level in (4, 5) and level == dad_ai_level
                 is_hunter_selected = level in (1, 2, 3) and level == dad_ai_level
 
                 if is_hunter_selected:
@@ -1983,7 +2634,13 @@ def main():
                         x += font.size(c)[0] + spacing
 
                 # ── Badge pill (solid, tracked all-caps) ─────────────────────
-                _badge_labels = {1: "Introductory", 2: "From Away", 3: "Native Mainer", 4: "The Wharf"}
+                _badge_labels = {
+                    1: "Introductory",
+                    2: "From Away",
+                    3: "Native Mainer",
+                    4: "The Wharf",
+                    5: "Learning",
+                }
                 _badge_str = _badge_labels[level]
                 _bw = _tracked_w(card_badge_font, _badge_str, 4)
                 _bh = card_badge_font.get_height()
@@ -2145,16 +2802,27 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+                elif (
+                    event.type == pygame.KEYDOWN
+                    and event.key == pygame.K_s
+                    and not (settings_open and settings_text_active is not None)
+                ):
                     settings_open = not settings_open
+                    if not settings_open:
+                        settings_text_active = None
+                elif event.type == pygame.KEYDOWN and settings_open and _handle_settings_text_key(event):
+                    continue
                 elif event.type == pygame.KEYDOWN and event.key in (
                     pygame.K_1,
                     pygame.K_2,
                     pygame.K_3,
                     pygame.K_4,
+                    pygame.K_5,
                 ):
                     if not settings_open:
                         dad_ai_level = int(event.unicode)
+                        if dad_ai_level in (4, 5):
+                            _speak_bert_event("level_selected", force=True)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_o:
                     if not settings_open:
                         _launch_online_client()
@@ -2170,6 +2838,7 @@ def main():
                         starter_card = sc
                         message = msg
                         _transition_phase("discard")
+                        _speak_bert_event("game_start", force=True)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if settings_open:
                         if settings_volume_rect is not None and settings_volume_rect.collidepoint(
@@ -2197,7 +2866,89 @@ def main():
                             and settings_ai_right_rect.collidepoint(event.pos)
                         ):
                             _cycle_online_ai(1)
+                        elif (
+                            settings_style_left_rect is not None
+                            and settings_style_left_rect.collidepoint(event.pos)
+                        ):
+                            _cycle_ui_style(-1)
+                        elif (
+                            settings_style_right_rect is not None
+                            and settings_style_right_rect.collidepoint(event.pos)
+                        ):
+                            _cycle_ui_style(1)
+                        elif (
+                            settings_voice_style_rect is not None
+                            and settings_voice_style_rect.collidepoint(event.pos)
+                        ):
+                            _SETTINGS.bert_voice_style = (
+                                "robot" if _SETTINGS.bert_voice_style == "downeast" else "downeast"
+                            )
+                            _persist_settings()
+                            _speak_bert_event("level_selected", force=True)
+                        elif (
+                            settings_voice_backend_rect is not None
+                            and settings_voice_backend_rect.collidepoint(event.pos)
+                        ):
+                            _SETTINGS.bert_voice_backend = (
+                                "local_ai"
+                                if _SETTINGS.bert_voice_backend == "sapi"
+                                else "sapi"
+                            )
+                            _persist_settings()
+                            _speak_bert_event("level_selected", force=True)
+                        elif (
+                            settings_rvc_toggle_rect is not None
+                            and settings_rvc_toggle_rect.collidepoint(event.pos)
+                        ):
+                            _SETTINGS.bert_rvc_enabled = not _SETTINGS.bert_rvc_enabled
+                            _persist_settings()
+                            _preview_bert_voice()
+                        elif (
+                            settings_rvc_pitch_left_rect is not None
+                            and settings_rvc_pitch_left_rect.collidepoint(event.pos)
+                        ):
+                            _SETTINGS.bert_rvc_pitch_shift = max(-24, _SETTINGS.bert_rvc_pitch_shift - 1)
+                            _persist_settings()
+                            _preview_bert_voice()
+                        elif (
+                            settings_rvc_pitch_right_rect is not None
+                            and settings_rvc_pitch_right_rect.collidepoint(event.pos)
+                        ):
+                            _SETTINGS.bert_rvc_pitch_shift = min(24, _SETTINGS.bert_rvc_pitch_shift + 1)
+                            _persist_settings()
+                            _preview_bert_voice()
+                        elif (
+                            settings_voice_test_rect is not None
+                            and settings_voice_test_rect.collidepoint(event.pos)
+                        ):
+                            _preview_bert_voice()
+                        elif (
+                            settings_local_exe_rect is not None
+                            and settings_local_exe_rect.collidepoint(event.pos)
+                        ):
+                            settings_text_active = "local_exe"
+                        elif (
+                            settings_local_model_rect is not None
+                            and settings_local_model_rect.collidepoint(event.pos)
+                        ):
+                            settings_text_active = "local_model"
+                        elif (
+                            settings_rvc_exe_rect is not None
+                            and settings_rvc_exe_rect.collidepoint(event.pos)
+                        ):
+                            settings_text_active = "rvc_exe"
+                        elif (
+                            settings_rvc_model_rect is not None
+                            and settings_rvc_model_rect.collidepoint(event.pos)
+                        ):
+                            settings_text_active = "rvc_model"
+                        elif (
+                            settings_rvc_index_rect is not None
+                            and settings_rvc_index_rect.collidepoint(event.pos)
+                        ):
+                            settings_text_active = "rvc_index"
                         else:
+                            settings_text_active = None
                             settings_open = False
                         continue
 
@@ -2205,6 +2956,8 @@ def main():
                     for level, btn_rect in difficulty_buttons.items():
                         if btn_rect.collidepoint(mouse_pos):
                             dad_ai_level = level
+                            if dad_ai_level in (4, 5):
+                                _speak_bert_event("level_selected", force=True)
 
                     # Check if start button clicked
                     if start_btn_rect.collidepoint(mouse_pos):
@@ -2213,6 +2966,7 @@ def main():
                         starter_card = sc
                         message = msg
                         _transition_phase("discard")
+                        _speak_bert_event("game_start", force=True)
                     elif online_btn_rect is not None and online_btn_rect.collidepoint(mouse_pos):
                         _launch_online_client()
                         return
@@ -2220,11 +2974,14 @@ def main():
                         mouse_pos
                     ):
                         settings_open = True
+                        settings_text_active = None
             continue
 
         sw, sh = screen.get_width(), screen.get_height()
         _LAST_SCREEN_SIZE = (sw, sh)
-        if gameplay_background is not None:
+        if _UI_STYLE != "classic":
+            _draw_board_frame(screen)
+        elif gameplay_background is not None:
             bg = pygame.transform.smoothscale(gameplay_background, (sw, sh))
             screen.blit(bg, (0, 0))
 
@@ -2266,9 +3023,10 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
-                dad_ai_level = 1 if dad_ai_level == 4 else dad_ai_level + 1
-                if dad_ai_level == 4:
-                    message = "AI level set to Bert. Opponent is now Bert."
+                dad_ai_level = 1 if dad_ai_level == 5 else dad_ai_level + 1
+                if dad_ai_level in (4, 5):
+                    message = f"AI level set to {AI_LEVELS[dad_ai_level]}. Opponent is now Bert."
+                    _speak_bert_event("level_selected", force=True)
                 else:
                     message = f"AI level set to {AI_LEVELS[dad_ai_level]}."
 
@@ -2322,6 +3080,8 @@ def main():
             len(_CLASSIC_SESSION.crib),
             _CLASSIC_SESSION.starter_card,
             card_images,
+            _CLASSIC_SESSION.dealer,
+            _CLASSIC_SESSION.phase,
         )
 
         # Update Card Positions for rendering
@@ -2351,6 +3111,12 @@ def main():
 
         p2_size = (106, 159)
         p2_pos = _row_positions(len(_CLASSIC_SESSION.ai_hand), sw, 170, p2_size[0], margin=60)
+        if _CLASSIC_SESSION.ai_hand:
+            opp_font = pygame.font.SysFont("segoe ui", 18, bold=True)
+            opp_label = opp_font.render("Opponent Hand", True, (218, 206, 174))
+            row_center_x = p2_pos[0][0] + ((p2_pos[-1][0] + p2_size[0]) - p2_pos[0][0]) // 2
+            label_y = max(124, p2_pos[0][1] - 34)
+            screen.blit(opp_label, opp_label.get_rect(center=(row_center_x, label_y)))
         for i, card in enumerate(_CLASSIC_SESSION.ai_hand):
             card.rect = pygame.Rect(p2_pos[i][0], p2_pos[i][1], p2_size[0], p2_size[1])
             shadow = pygame.Rect(
@@ -2396,21 +3162,22 @@ def main():
                 screen.fill((0, 0, 0))
                 screen.blit(shaken, (shake_x, shake_y))
 
-        total_font = pygame.font.SysFont("segoe ui", 20, bold=True)
-        total_chip = pygame.Rect(sw // 2 - 154, pegging_y + pegging_card_size[1] + 10, 308, 46)
-        _draw_shadowed_panel(
-            screen, total_chip, (24, 36, 29), (197, 170, 108), radius=23, shadow=(4, 5)
-        )
-        total_surf = total_font.render(
-            f"Pegging Total: {get_pegging_total()}", True, (238, 224, 188)
-        )
-        screen.blit(
-            total_surf,
-            (
-                total_chip.centerx - total_surf.get_width() // 2,
-                total_chip.centery - total_surf.get_height() // 2,
-            ),
-        )
+        if _CLASSIC_SESSION.phase == "pegging":
+            total_font = pygame.font.SysFont("segoe ui", 20, bold=True)
+            total_chip = pygame.Rect(sw // 2 - 154, pegging_y + pegging_card_size[1] - 4, 308, 46)
+            _draw_shadowed_panel(
+                screen, total_chip, (24, 36, 29), (197, 170, 108), radius=23, shadow=(4, 5)
+            )
+            total_surf = total_font.render(
+                f"Pegging Total: {get_pegging_total()}", True, (238, 224, 188)
+            )
+            screen.blit(
+                total_surf,
+                (
+                    total_chip.centerx - total_surf.get_width() // 2,
+                    total_chip.centery - total_surf.get_height() // 2,
+                ),
+            )
 
         # Display scoring breakdown during end-of-hand phase
         if _CLASSIC_SESSION.phase == "end":

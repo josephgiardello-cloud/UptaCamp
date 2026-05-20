@@ -156,10 +156,12 @@ def test_ai_strategy_delegates(monkeypatch):
 
     def _fake_discard(**kwargs):
         assert kwargs["dad_ai_level"] == engine.state.dad_ai_level
+        assert kwargs["game_state"] is engine.state
         return [0, 1]
 
     def _fake_pegging(**kwargs):
         assert "hand_labels" in kwargs
+        assert kwargs["game_state"] is engine.state
         return 0
 
     monkeypatch.setattr(ai_strategy, "choose_discard_indices", _fake_discard)
@@ -176,3 +178,43 @@ def test_ai_strategy_delegates(monkeypatch):
         )
         == 0
     )
+
+
+def test_level5_count_hands_updates_and_saves_bert(monkeypatch):
+    engine = CribbageEngine()
+    engine.state.dad_ai_level = 5
+    engine.state.player_kept = [
+        _LabeledCard("5_of_hearts"),
+        _LabeledCard("5_of_clubs"),
+        _LabeledCard("6_of_diamonds"),
+        _LabeledCard("7_of_spades"),
+    ]
+    engine.state.ai_kept = [
+        _LabeledCard("ace_of_hearts"),
+        _LabeledCard("2_of_clubs"),
+        _LabeledCard("3_of_diamonds"),
+        _LabeledCard("4_of_spades"),
+    ]
+    engine.state.crib = [
+        _LabeledCard("9_of_hearts"),
+        _LabeledCard("9_of_clubs"),
+        _LabeledCard("king_of_diamonds"),
+        _LabeledCard("6_of_spades"),
+    ]
+    engine.state.starter_card = "5_of_spades"
+    engine.state.dealer = 1
+
+    called = {"update": 0, "save": 0}
+
+    class _FakeBert:
+        def end_of_hand_update(self, reward):
+            called["update"] += 1
+            assert isinstance(reward, float)
+
+    monkeypatch.setattr(ai_strategy, "get_bert_agent", lambda: _FakeBert())
+    monkeypatch.setattr(ai_strategy, "save_bert_agent", lambda: called.__setitem__("save", 1))
+
+    engine.count_hands(_label_to_model)
+
+    assert called["update"] == 1
+    assert called["save"] == 1

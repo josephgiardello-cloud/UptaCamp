@@ -54,6 +54,7 @@ Repository = "https://github.com/josephgiardello-cloud/UptaCamp.git"
 uptacamp = "main:main"
 uptacamp-online-api = "online_api_server:main"
 uptacamp-online-ws = "online_ws_server:main"
+uptacamp-train-bert = "train_bert:main"
 
 [tool.setuptools]
 py-modules = [
@@ -63,6 +64,8 @@ py-modules = [
     "app_context",
     "asset_manager",
     "audio_manager",
+    "bert_agent",
+    "bert_persona",
     "cards",
     "cribbage_engine",
     "cribbage_pygame",
@@ -76,6 +79,8 @@ py-modules = [
     "phase_states",
     "stats_manager",
     "settings_manager",
+    "train_bert",
+    "voice_manager",
 ]
 
 [tool.setuptools.packages.find]

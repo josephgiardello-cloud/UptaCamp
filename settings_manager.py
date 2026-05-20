@@ -12,12 +12,42 @@ class GameSettings:
     volume: float = 0.6
     animations_enabled: bool = True
     online_ai_level: int = 2
+    ui_style: str = "classic"
+    bert_voice_enabled: bool = True
+    bert_voice_style: str = "downeast"
+    bert_voice_backend: str = "sapi"
+    bert_local_model_path: str = ""
+    bert_local_exe_path: str = "piper"
+    bert_rvc_enabled: bool = False
+    bert_rvc_exe_path: str = "rvc_infer"
+    bert_rvc_model_path: str = ""
+    bert_rvc_index_path: str = ""
+    bert_rvc_pitch_shift: int = 0
 
     def clamp(self) -> GameSettings:
         self.volume = max(0.0, min(1.0, float(self.volume)))
         if self.online_ai_level not in (1, 2, 3):
             self.online_ai_level = 2
         self.animations_enabled = bool(self.animations_enabled)
+        if self.ui_style not in (
+            "classic",
+            "competitive_minimal",
+            "broadcast_table",
+            "premium_tabletop",
+        ):
+            self.ui_style = "classic"
+        self.bert_voice_enabled = bool(self.bert_voice_enabled)
+        if self.bert_voice_style not in ("robot", "downeast"):
+            self.bert_voice_style = "downeast"
+        if self.bert_voice_backend not in ("sapi", "local_ai"):
+            self.bert_voice_backend = "sapi"
+        self.bert_local_model_path = str(self.bert_local_model_path or "").strip()
+        self.bert_local_exe_path = str(self.bert_local_exe_path or "piper").strip() or "piper"
+        self.bert_rvc_enabled = bool(self.bert_rvc_enabled)
+        self.bert_rvc_exe_path = str(self.bert_rvc_exe_path or "rvc_infer").strip() or "rvc_infer"
+        self.bert_rvc_model_path = str(self.bert_rvc_model_path or "").strip()
+        self.bert_rvc_index_path = str(self.bert_rvc_index_path or "").strip()
+        self.bert_rvc_pitch_shift = int(max(-24, min(24, int(self.bert_rvc_pitch_shift))))
         return self
 
 
@@ -34,6 +64,17 @@ def load_settings(path: Path | None = None) -> GameSettings:
         volume=raw.get("volume", 0.6),
         animations_enabled=raw.get("animations_enabled", True),
         online_ai_level=raw.get("online_ai_level", 2),
+        ui_style=raw.get("ui_style", "classic"),
+        bert_voice_enabled=raw.get("bert_voice_enabled", True),
+        bert_voice_style=raw.get("bert_voice_style", "downeast"),
+        bert_voice_backend=raw.get("bert_voice_backend", "sapi"),
+        bert_local_model_path=raw.get("bert_local_model_path", ""),
+        bert_local_exe_path=raw.get("bert_local_exe_path", "piper"),
+        bert_rvc_enabled=raw.get("bert_rvc_enabled", False),
+        bert_rvc_exe_path=raw.get("bert_rvc_exe_path", "rvc_infer"),
+        bert_rvc_model_path=raw.get("bert_rvc_model_path", ""),
+        bert_rvc_index_path=raw.get("bert_rvc_index_path", ""),
+        bert_rvc_pitch_shift=raw.get("bert_rvc_pitch_shift", 0),
     )
     return settings.clamp()
 

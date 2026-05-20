@@ -21,7 +21,7 @@ class CribbageEngine:
         return [self._label(c) for c in cards]
 
     def _dealer_name(self) -> str:
-        return "Bert" if self.state.dad_ai_level == 4 else "AI"
+        return "Bert" if self.state.dad_ai_level in (4, 5) else "AI"
 
     def start_new_game(
         self,
@@ -140,6 +140,7 @@ class CribbageEngine:
             dealer_is_dad=(self.state.dealer == 1),
             canonical_deck_labels=self._canonical_deck_labels(),
             score_labels_hand=self._score_labels_hand,
+            game_state=self.state,
         )
 
     def ai_pegging_move(
@@ -161,6 +162,7 @@ class CribbageEngine:
             label_card_factory=label_card_factory,
             current_pegging_labels=self._labels(self.state.pegging_pile),
             estimate_opponent_reply_risk=estimate_opponent_reply_risk,
+            game_state=self.state,
         )
 
     def finalize_pegging_if_complete(
@@ -207,6 +209,17 @@ class CribbageEngine:
         self.state.scores[0] += p1_total
         self.state.scores[1] += p2_total
         self.state.scores[self.state.dealer] += crib_total
+
+        if self.state.dad_ai_level == 5:
+            # Reward is net hand value from AI's perspective.
+            ai_reward = float(p2_total - p1_total)
+            ai_reward += float(crib_total if self.state.dealer == 1 else -crib_total)
+            ai_strategy.get_bert_agent().end_of_hand_update(ai_reward)
+            try:
+                ai_strategy.save_bert_agent()
+            except OSError:
+                # Gameplay should continue even if model persistence fails.
+                pass
 
         return {
             "player": p1_total,

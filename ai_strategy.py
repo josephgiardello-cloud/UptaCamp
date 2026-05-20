@@ -3,6 +3,42 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import combinations
+from pathlib import Path
+
+from bert_agent import BertAgent
+from game_state import GameState
+
+_BERT_AGENT: BertAgent | None = None
+_DEFAULT_BERT_MODEL = Path("bert_model.pkl")
+
+
+def set_bert_agent(agent: BertAgent) -> None:
+    global _BERT_AGENT
+    _BERT_AGENT = agent
+
+
+def get_bert_agent() -> BertAgent:
+    global _BERT_AGENT
+    if _BERT_AGENT is None:
+        _BERT_AGENT = BertAgent()
+        if _DEFAULT_BERT_MODEL.exists():
+            try:
+                _BERT_AGENT.load(_DEFAULT_BERT_MODEL)
+            except Exception:
+                pass
+    return _BERT_AGENT
+
+
+def load_bert_agent(path: str | Path = _DEFAULT_BERT_MODEL) -> BertAgent:
+    agent = BertAgent()
+    agent.load(path)
+    set_bert_agent(agent)
+    return agent
+
+
+def save_bert_agent(path: str | Path = _DEFAULT_BERT_MODEL) -> None:
+    agent = get_bert_agent()
+    agent.save(path)
 
 
 @dataclass(frozen=True)
@@ -135,12 +171,18 @@ def choose_discard_indices(
     dealer_is_dad: bool,
     canonical_deck_labels: Sequence[str],
     score_labels_hand: Callable[[list[str], str, bool], int],
+    game_state: GameState | None = None,
 ) -> list[int]:
     if len(dad_labels) != 6:
         return [0, 1]
 
     if dad_ai_level == 1:
         return random.sample(range(6), 2)
+
+    if dad_ai_level == 5:
+        state = game_state or GameState()
+        idx1, idx2 = get_bert_agent().choose_discard(dad_labels, state)
+        return [idx1, idx2]
 
     unseen_pool = list(set(canonical_deck_labels) - set(dad_labels))
     if not unseen_pool:
@@ -279,6 +321,7 @@ def choose_pegging_index(
     own_score: int | None = None,
     opp_score: int | None = None,
     own_cards_remaining: int | None = None,
+    game_state: GameState | None = None,
 ) -> int | None:
     legal = [
         i
@@ -290,6 +333,10 @@ def choose_pegging_index(
 
     if dad_ai_level == 1:
         return random.choice(legal)
+
+    if dad_ai_level == 5:
+        state = game_state or GameState()
+        return get_bert_agent().choose_pegging(hand_labels, current_total, state)
 
     best_idx = legal[0]
     best_score = float("-inf")

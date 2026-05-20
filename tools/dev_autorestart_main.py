@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 import time
@@ -40,8 +41,8 @@ def snapshot() -> dict[str, float]:
     return files
 
 
-def start_game() -> subprocess.Popen[bytes]:
-    cmd = [sys.executable, "main.py"]
+def start_game(game_args: list[str]) -> subprocess.Popen[bytes]:
+    cmd = [sys.executable, "main.py", *game_args]
     return subprocess.Popen(cmd, cwd=str(ROOT))
 
 
@@ -57,10 +58,24 @@ def stop_game(proc: subprocess.Popen[bytes]) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--game-args",
+        nargs=argparse.REMAINDER,
+        default=[],
+        help="Optional args forwarded to main.py (e.g. --ui-style competitive_minimal).",
+    )
+    args, _ = parser.parse_known_args()
+    game_args = list(args.game_args)
+    if game_args[:1] == ["--"]:
+        game_args = game_args[1:]
+
     print("[watch] Starting Upta auto-restart watcher")
     print(f"[watch] Root: {ROOT}")
+    if game_args:
+        print(f"[watch] Forwarding game args: {' '.join(game_args)}")
 
-    proc = start_game()
+    proc = start_game(game_args)
     print(f"[watch] Game PID: {proc.pid}")
 
     last = snapshot()
@@ -70,7 +85,7 @@ def main() -> int:
             time.sleep(1.0)
 
             if proc.poll() is not None:
-                proc = start_game()
+                proc = start_game(game_args)
                 print(f"[watch] Game restarted (exited). New PID: {proc.pid}")
                 last = snapshot()
                 continue
@@ -83,7 +98,7 @@ def main() -> int:
                     continue
                 print("[watch] Source change detected, restarting game...")
                 stop_game(proc)
-                proc = start_game()
+                proc = start_game(game_args)
                 print(f"[watch] Game PID: {proc.pid}")
                 last_restart = now
                 last = current
