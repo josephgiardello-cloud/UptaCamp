@@ -6,6 +6,7 @@ extracted from cribbage_pygame.py.
 
 from typing import Any
 
+from src.input import EventHandler
 from src.renderer import BoardRenderer, RenderingContext
 
 
@@ -58,7 +59,7 @@ class GameApplication:
 
         # Controllers and handlers
         self.game_controller: GameController | None = None
-        self.event_handler: Any = None
+        self.event_handler: EventHandler | None = None
 
         # Settings and state
         self.settings: Any = None
@@ -81,6 +82,22 @@ class GameApplication:
                 ui_style=self.ui_style,
             )
             self.renderer = BoardRenderer(self.rendering_context)
+        # Initialize event handler (doesn't need screen, just processes pygame events)
+        self.event_handler = EventHandler()
+
+    def handle_input(self) -> bool:
+        """Process input events.
+
+        Returns:
+            False if quit requested, True otherwise
+        """
+        if not self.event_handler:
+            return True
+        if self.event_handler.should_quit():
+            return False
+        _ = self.event_handler.poll_events()
+        # TODO: Dispatch actions to game controller
+        return True
 
     def update(self) -> None:
         """Update application state for current frame."""
