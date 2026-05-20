@@ -1,0 +1,47 @@
+{
+  "online": {},
+  "single_player": {
+    "AI": {
+      "best_game_score": 0,
+      "games_played": 0,
+      "hands_as_dealer": 19,
+      "hands_as_pone": 7,
+      "high_hand": 14,
+      "losses": 0,
+      "skunks_against": 0,
+      "skunks_for": 0,
+      "total_hand_points_as_dealer": 150,
+      "total_hand_points_as_pone": 67,
+      "total_pegging_points": 53,
+      "wins": 0
+    },
+    "Bert": {
+      "best_game_score": 0,
+      "games_played": 0,
+      "hands_as_dealer": 6,
+      "hands_as_pone": 7,
+      "high_hand": 10,
+      "losses": 0,
+      "skunks_against": 0,
+      "skunks_for": 0,
+      "total_hand_points_as_dealer": 21,
+      "total_hand_points_as_pone": 40,
+      "total_pegging_points": 34,
+      "wins": 0
+    },
+    "Player": {
+      "best_game_score": 0,
+      "games_played": 0,
+      "hands_as_dealer": 14,
+      "hands_as_pone": 25,
+      "high_hand": 20,
+      "losses": 0,
+      "skunks_against": 0,
+      "skunks_for": 0,
+      "total_hand_points_as_dealer": 74,
+      "total_hand_points_as_pone": 252,
+      "total_pegging_points": 76,
+      "wins": 0
+    }
+  }
+}

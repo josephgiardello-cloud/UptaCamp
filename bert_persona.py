@@ -65,6 +65,16 @@ _DOWNEAST_LINES: dict[str, list[str]] = {
         "That's game for Bert. Shuffle up.",
         "Bert's got it. Nothin fancy, just clean play.",
     ],
+    "hand_scored": [
+        "Counted the hand. See them points add up?",
+        "Ayuh, them cahds tallied up nicely.",
+        "Hand's counted. That's the way of it.",
+    ],
+    "crib_scored": [
+        "Crib's in. Bert likes what he sees.",
+        "Ayuh, them crib cahds done their job.",
+        "Counted the crib. Every point earns.",
+    ],
 }
 
 _ROBOT_LINES: dict[str, list[str]] = {
@@ -79,6 +89,8 @@ _ROBOT_LINES: dict[str, list[str]] = {
     "pegging_31": ["THIRTY-ONE REACHED."],
     "player_won": ["RESULT: PLAYER VICTORY."],
     "bert_won": ["RESULT: BERT VICTORY."],
+    "hand_scored": ["HAND COUNT FINALIZED.", "SCORING COMPLETE."],
+    "crib_scored": ["CRIB EVALUATION COMPLETE.", "CRIB SCORED."],
 }
 
 

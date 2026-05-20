@@ -27,7 +27,7 @@ from engine import CribbageEngine
 from game_state import GameState
 from phase_states import PhaseStateMachine
 from settings_manager import GameSettings, load_settings, save_settings
-from stats_manager import record_game_result, record_hand_stats
+from stats_manager import get_player_profile, record_game_result, record_hand_stats
 from voice_manager import VoiceManager
 
 # --- Constants ---
@@ -1434,6 +1434,7 @@ def handle_counting():
     w = _check_for_winner()
     if w is None:
         s.message = "Round counted. Review the scoring popup and press R for next round."
+        _speak_bert_event("hand_scored")
         _transition_phase("end")
     else:
         _record_single_player_game_result(w)
@@ -1510,6 +1511,7 @@ def main():
     _SETTINGS.clamp()
     _UI_STYLE = _SETTINGS.ui_style
     save_settings(_SETTINGS)
+    player_name = _SETTINGS.player_name or "Player"
 
     capture_video_path = Path(args.capture_video).resolve() if capture_video_pending else None
     capture_video_frames_dir = None
@@ -1789,6 +1791,7 @@ def main():
     settings_rvc_exe_rect = None
     settings_rvc_model_rect = None
     settings_rvc_index_rect = None
+    settings_player_name_rect = None
     settings_text_active = None
     difficulty_descriptions = {
         1: "Random play\nEasy wins",
@@ -1818,7 +1821,10 @@ def main():
         subprocess.Popen(cmd, cwd=str(_ROOT_DIR))
 
     def _persist_settings() -> None:
+        global player_name
+        _SETTINGS.player_name = _SETTINGS.player_name or "Player"
         save_settings(_SETTINGS)
+        player_name = _SETTINGS.player_name
         if _AUDIO is not None:
             _AUDIO.set_volume(_SETTINGS.volume)
         if _VOICE is not None:
@@ -1884,6 +1890,8 @@ def main():
         return "..." + cleaned[-59:]
 
     def _get_text_field_value(field: str) -> str:
+        if field == "player_name":
+            return _SETTINGS.player_name
         if field == "local_exe":
             return _SETTINGS.bert_local_exe_path
         if field == "local_model":
@@ -1897,7 +1905,9 @@ def main():
         return ""
 
     def _set_text_field_value(field: str, value: str) -> None:
-        if field == "local_exe":
+        if field == "player_name":
+            _SETTINGS.player_name = value[:24]
+        elif field == "local_exe":
             _SETTINGS.bert_local_exe_path = value
         elif field == "local_model":
             _SETTINGS.bert_local_model_path = value
@@ -1957,6 +1967,7 @@ def main():
         nonlocal settings_rvc_pitch_right_rect, settings_voice_test_rect
         nonlocal settings_local_exe_rect, settings_local_model_rect
         nonlocal settings_rvc_exe_rect, settings_rvc_model_rect, settings_rvc_index_rect
+        nonlocal settings_player_name_rect
         nonlocal settings_text_active
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 150))
@@ -1978,6 +1989,33 @@ def main():
 
         strap = small_font.render("Tune the table before the next hand.", True, (216, 198, 171))
         screen.blit(strap, (modal.centerx - strap.get_width() // 2, modal.y + 56))
+
+        name_label = small_font.render("Your Name:", True, (216, 198, 171))
+        screen.blit(name_label, (modal.x + 28, modal.y + 82))
+        settings_player_name_rect = pygame.Rect(modal.x + 122, modal.y + 76, 196, 28)
+        _name_active = settings_text_active == "player_name"
+        pygame.draw.rect(
+            screen,
+            (68, 60, 52) if _name_active else (48, 42, 36),
+            settings_player_name_rect,
+            border_radius=10,
+        )
+        pygame.draw.rect(
+            screen,
+            (255, 237, 172) if _name_active else (180, 162, 130),
+            settings_player_name_rect,
+            width=2,
+            border_radius=10,
+        )
+        _name_disp = small_font.render(
+            (_SETTINGS.player_name or "Player") + ("|" if _name_active else ""),
+            True,
+            (239, 234, 222),
+        )
+        screen.blit(
+            _name_disp,
+            (settings_player_name_rect.x + 8, settings_player_name_rect.centery - _name_disp.get_height() // 2),
+        )
 
         vol_label = body_font.render(
             f"Volume: {int(_SETTINGS.volume * 100)}%", True, (245, 236, 218)
@@ -2398,6 +2436,25 @@ def main():
                         warn_rect.centery - warn_surface.get_height() // 2,
                     ),
                 )
+
+            # Player W/L stats badge (always shown above the panel)
+            _profile = get_player_profile(player_name)
+            _badge_font = pygame.font.SysFont("segoe ui", 15)
+            _stats_y = subtitle_small_y + subtitle_small.get_height() + (54 if voice_warning else 14)
+            _name_surf = _badge_font.render(player_name, True, (239, 229, 205))
+            _wl_surf = _badge_font.render(
+                f"  \u2014  {_profile['wins']}W / {_profile['losses']}L", True, (162, 202, 168)
+            )
+            _badge_total_w = _name_surf.get_width() + _wl_surf.get_width() + 24
+            _badge_rect = pygame.Rect(sw // 2 - _badge_total_w // 2, _stats_y, _badge_total_w, 26)
+            _badge_surf = pygame.Surface(_badge_rect.size, pygame.SRCALPHA)
+            _badge_surf.fill((14, 34, 20, 180))
+            screen.blit(_badge_surf, _badge_rect.topleft)
+            pygame.draw.rect(screen, (84, 130, 92), _badge_rect, width=1, border_radius=8)
+            _bx = _badge_rect.x + 12
+            _by = _badge_rect.centery - _name_surf.get_height() // 2
+            screen.blit(_name_surf, (_bx, _by))
+            screen.blit(_wl_surf, (_bx + _name_surf.get_width(), _by))
 
             panel_w = min(980, max(640, sw - 120))
             panel_h = min(430, max(330, sh - 250))
@@ -2947,6 +3004,11 @@ def main():
                             and settings_rvc_index_rect.collidepoint(event.pos)
                         ):
                             settings_text_active = "rvc_index"
+                        elif (
+                            settings_player_name_rect is not None
+                            and settings_player_name_rect.collidepoint(event.pos)
+                        ):
+                            settings_text_active = "player_name"
                         else:
                             settings_text_active = None
                             settings_open = False
