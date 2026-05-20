@@ -4,13 +4,13 @@
     "AI": {
       "best_game_score": 0,
       "games_played": 0,
-      "hands_as_dealer": 21,
+      "hands_as_dealer": 23,
       "hands_as_pone": 7,
       "high_hand": 14,
       "losses": 0,
       "skunks_against": 0,
       "skunks_for": 0,
-      "total_hand_points_as_dealer": 168,
+      "total_hand_points_as_dealer": 186,
       "total_hand_points_as_pone": 67,
       "total_pegging_points": 53,
       "wins": 0
@@ -33,14 +33,14 @@
       "best_game_score": 0,
       "games_played": 0,
       "hands_as_dealer": 14,
-      "hands_as_pone": 27,
+      "hands_as_pone": 29,
       "high_hand": 20,
       "losses": 0,
       "skunks_against": 0,
       "skunks_for": 0,
       "total_hand_points_as_dealer": 74,
-      "total_hand_points_as_pone": 276,
-      "total_pegging_points": 80,
+      "total_hand_points_as_pone": 300,
+      "total_pegging_points": 84,
       "wins": 0
     }
   }

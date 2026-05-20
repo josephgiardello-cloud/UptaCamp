@@ -102,6 +102,41 @@ class BertAgent:
             self.q_table[(state_key, action)] = old + self.lr * (td_target - old)
         self._trajectory.clear()
 
+    def update(
+        self,
+        state_key: str,
+        action: tuple[int, int] | int,
+        reward: float,
+        next_state_key: str | None = None,
+        done: bool = False,
+    ) -> None:
+        """Temporal-difference (TD) learning update for single step.
+
+        Uses standard 1-step TD(0) update: Q(s,a) = Q(s,a) + lr * (r + gamma * max_a' Q(s',a') - Q(s,a))
+
+        Args:
+            state_key: Current state key
+            action: Action taken (discard tuple or pegging index)
+            reward: Immediate reward received
+            next_state_key: Next state key (None if terminal)
+            done: Whether episode is complete
+        """
+        old_q = self.q_table[(state_key, action)]
+
+        if done or next_state_key is None:
+            td_target = float(reward)
+        else:
+            # Find max Q-value for any action in next state
+            next_actions = [k for k, _ in self.q_table.keys() if k == next_state_key] if next_state_key else []
+            if next_actions:
+                max_next_q = max(self.q_table[(next_state_key, a)] for a in next_actions)
+            else:
+                max_next_q = 0.0
+            td_target = float(reward) + self.gamma * max_next_q
+
+        td_error = td_target - old_q
+        self.q_table[(state_key, action)] = old_q + self.lr * td_error
+
     def reset_hand_memory(self) -> None:
         self._trajectory.clear()
 

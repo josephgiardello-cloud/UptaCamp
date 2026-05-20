@@ -1,4 +1,5 @@
 import random
+import threading
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -96,6 +97,109 @@ def load_bert_agent(path: str | Path = _DEFAULT_BERT_MODEL) -> BertAgent:
 def save_bert_agent(path: str | Path = _DEFAULT_BERT_MODEL) -> None:
     agent = get_bert_agent()
     agent.save(path)
+
+
+def get_reward(
+    points: int,
+    opponent_points_lost: int,
+    action_type: str = "general",
+    game_context: dict | None = None,
+) -> float:
+    """Calculate shaped reward for learning agent.
+
+    Reward function balances immediate points with strategic value.
+    Positive for favorable outcomes, negative for poor decisions.
+
+    Args:
+        points: Points scored by AI in this action/step
+        opponent_points_lost: Opportunity cost (points opponent could have scored)
+        action_type: "discard", "pegging", or "general"
+        game_context: Optional dict with "own_score", "opp_score" for endgame scaling
+
+    Returns:
+        Float reward value for TD update
+    """
+    reward = float(points)
+
+    # Reward avoiding opponent scoring
+    reward += 0.3 * float(opponent_points_lost)
+
+    # Action-type modulation
+    if action_type == "discard":
+        # Discard is critical; weight more heavily
+        reward *= 1.2
+    elif action_type == "pegging":
+        # Pegging is fine-grained; reduce variance
+        reward *= 0.8
+
+    # Endgame scaling: boost immediate points when close to 121
+    if game_context:
+        own_score = game_context.get("own_score", 0)
+        if own_score >= 112:
+            reward *= 1.5
+
+    return reward
+
+
+def _run_discard_with_timeout(
+    dad_labels: Sequence[str],
+    dad_ai_level: int,
+    dealer_is_dad: bool,
+    canonical_deck_labels: Sequence[str],
+    score_labels_hand: Callable[[list[str], str, bool], int],
+    game_state: GameState | None,
+    timeout_seconds: float = 2.0,
+) -> list[int]:
+    """Run discard selection with timeout (Windows-safe threading.Timer).
+
+    If timeout expires, returns random valid discard.
+
+    Args:
+        dad_labels: AI's 6 cards
+        dad_ai_level: Difficulty level 1-5
+        dealer_is_dad: Whether AI is dealer
+        canonical_deck_labels: Full deck labels
+        score_labels_hand: Scoring function
+        game_state: Current game state
+        timeout_seconds: Max seconds to allow for discard (default 2.0)
+
+    Returns:
+        List of 2 card indices to discard
+    """
+    result: list[int] = [0, 1]  # Default if timeout
+    result_lock = threading.Lock()
+    result_computed = threading.Event()
+
+    def compute_discard() -> None:
+        nonlocal result
+        try:
+            computed = choose_discard_indices(
+                dad_labels=dad_labels,
+                dad_ai_level=dad_ai_level,
+                dealer_is_dad=dealer_is_dad,
+                canonical_deck_labels=canonical_deck_labels,
+                score_labels_hand=score_labels_hand,
+                game_state=game_state,
+            )
+            with result_lock:
+                result = computed
+        except Exception:
+            # On error, use safe default
+            pass
+        finally:
+            result_computed.set()
+
+    # Start computation in background thread
+    thread = threading.Thread(target=compute_discard, daemon=True)
+    thread.start()
+
+    # Wait for completion or timeout
+    if result_computed.wait(timeout=timeout_seconds):
+        with result_lock:
+            return result
+    else:
+        # Timeout: return safe default
+        return [0, 1]
 
 
 @dataclass(frozen=True)
@@ -223,6 +327,52 @@ def _pegging_shape_adjustment(
 
 
 def choose_discard_indices(
+    dad_labels: Sequence[str],
+    dad_ai_level: int,
+    dealer_is_dad: bool,
+    canonical_deck_labels: Sequence[str],
+    score_labels_hand: Callable[[list[str], str, bool], int],
+    game_state: GameState | None = None,
+    timeout_seconds: float | None = None,
+) -> list[int]:
+    """Choose which 2 cards to discard (main entry point with optional timeout).
+
+    Args:
+        dad_labels: AI's 6 cards
+        dad_ai_level: Difficulty level 1-5
+        dealer_is_dad: Whether AI is dealer
+        canonical_deck_labels: Full deck labels
+        score_labels_hand: Scoring function
+        game_state: Current game state
+        timeout_seconds: Optional timeout in seconds for levels 3-4
+
+    Returns:
+        List of 2 card indices [i, j] to discard
+    """
+    # Apply timeout wrapper for expensive levels if requested
+    if timeout_seconds and dad_ai_level >= 3:
+        return _run_discard_with_timeout(
+            dad_labels=dad_labels,
+            dad_ai_level=dad_ai_level,
+            dealer_is_dad=dealer_is_dad,
+            canonical_deck_labels=canonical_deck_labels,
+            score_labels_hand=score_labels_hand,
+            game_state=game_state,
+            timeout_seconds=timeout_seconds,
+        )
+
+    # Standard path without timeout
+    return _choose_discard_indices_impl(
+        dad_labels=dad_labels,
+        dad_ai_level=dad_ai_level,
+        dealer_is_dad=dealer_is_dad,
+        canonical_deck_labels=canonical_deck_labels,
+        score_labels_hand=score_labels_hand,
+        game_state=game_state,
+    )
+
+
+def _choose_discard_indices_impl(
     dad_labels: Sequence[str],
     dad_ai_level: int,
     dealer_is_dad: bool,
