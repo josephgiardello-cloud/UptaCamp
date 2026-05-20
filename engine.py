@@ -23,6 +23,34 @@ class CribbageEngine:
     def _dealer_name(self) -> str:
         return "Bert" if self.state.dad_ai_level in (4, 5) else "AI"
 
+    def _validate_state(self) -> None:
+        """Debug-mode validation of game state consistency.
+
+        Raises AssertionError if state violates expected invariants.
+        Used for testing and development; safe to call repeatedly.
+        """
+        assert isinstance(self.state.scores, (list, tuple)), "Scores must be a sequence"
+        assert len(self.state.scores) == 2, "Must have exactly 2 players"
+        assert all(isinstance(s, int) for s in self.state.scores), "All scores must be integers"
+        assert 0 <= self.state.dealer <= 1, "Dealer must be player 0 or 1"
+
+        assert isinstance(self.state.player_hand, list), "Player hand must be a list"
+        assert isinstance(self.state.ai_hand, list), "AI hand must be a list"
+        assert len(self.state.player_hand) <= 6, "Player hand cannot exceed 6 cards"
+        assert len(self.state.ai_hand) <= 6, "AI hand cannot exceed 6 cards"
+
+        assert isinstance(self.state.crib, list), "Crib must be a list"
+        assert len(self.state.crib) <= 4, "Crib cannot exceed 4 cards"
+
+        assert self.state.phase in (
+            "discard", "pegging", "counting", "end", "online_login", "online_match"
+        ), f"Invalid phase: {self.state.phase}"
+
+        if self.state.phase == "pegging":
+            assert isinstance(self.state.pegging_pile, list), "Pegging pile must be a list"
+            assert isinstance(self.state.pegging_passes, list), "Pegging passes must be a list"
+            assert len(self.state.pegging_passes) == 2, "Must track passes for both players"
+
     def start_new_game(
         self,
         player_hand: Sequence[Any],
@@ -104,33 +132,56 @@ class CribbageEngine:
         parse_label: Callable[[str], tuple[str, str]],
         player_name: str = "Player",
     ) -> int:
-        hand = self.state.player_hand if player_idx == 0 else self.state.ai_hand
-        if card_index < 0 or card_index >= len(hand):
+        """Play a card during pegging phase with error handling.
+
+        Args:
+            player_idx: 0 for player, 1 for AI
+            card_index: Index of card to play in hand
+            score_pegging_play: Function to score pegging pile
+            value_for_15: Function to get card value for 15s
+            parse_label: Function to parse card label
+            player_name: Player's display name
+
+        Returns:
+            Points scored (0 if invalid play or error)
+        """
+        try:
+            hand = self.state.player_hand if player_idx == 0 else self.state.ai_hand
+
+            # Bounds validation
+            if not isinstance(card_index, int) or card_index < 0 or card_index >= len(hand):
+                return 0
+
+            if not hand:
+                return 0
+
+            card = hand.pop(card_index)
+            self.state.pegging_pile.append(card)
+            self.state.pegging_passes = [False, False]
+
+            points = score_pegging_play(self.state.pegging_pile)
+            self.state.scores[player_idx] += points
+
+            name = player_name if player_idx == 0 else self._dealer_name()
+            point_note = f" (+{points})" if points else ""
+
+            total = sum(value_for_15(parse_label(self._label(c))[0]) for c in self.state.pegging_pile)
+            if total == 31:
+                self.state.message = f"{name} played 31{point_note}. New count."
+                self.state.pegging_pile.clear()
+                self.state.player_turn = 1 - player_idx
+            else:
+                self.state.message = f"{name} pegs{point_note}. " + (
+                    f"{self._dealer_name()}'s turn." if player_idx == 0 else "Your turn."
+                )
+                self.state.player_turn = 1 - player_idx
+
+            self.state.last_pegging_player = player_idx
+            return points
+        except (IndexError, KeyError, AttributeError, TypeError) as e:
+            # Log error but allow game to continue with safe default
+            print(f"Warning: play_pegging_card error: {type(e).__name__}: {e}")
             return 0
-
-        card = hand.pop(card_index)
-        self.state.pegging_pile.append(card)
-        self.state.pegging_passes = [False, False]
-
-        points = score_pegging_play(self.state.pegging_pile)
-        self.state.scores[player_idx] += points
-
-        name = player_name if player_idx == 0 else self._dealer_name()
-        point_note = f" (+{points})" if points else ""
-
-        total = sum(value_for_15(parse_label(self._label(c))[0]) for c in self.state.pegging_pile)
-        if total == 31:
-            self.state.message = f"{name} played 31{point_note}. New count."
-            self.state.pegging_pile.clear()
-            self.state.player_turn = 1 - player_idx
-        else:
-            self.state.message = f"{name} pegs{point_note}. " + (
-                f"{self._dealer_name()}'s turn." if player_idx == 0 else "Your turn."
-            )
-            self.state.player_turn = 1 - player_idx
-
-        self.state.last_pegging_player = player_idx
-        return points
 
     def ai_discard(self) -> list[int]:
         dad_labels = self._labels(self.state.ai_hand)
