@@ -5,6 +5,7 @@ This module remains for compatibility with existing tests and migration tooling.
 """
 
 import argparse
+import math
 import random
 import shutil
 import subprocess
@@ -19,6 +20,7 @@ import cards as cribbage_cards
 from adapter import EngineAdapter
 from animations import EffectsManager
 from app_context import AppContext
+from assets.maine_shape import maine_shape as MAINE_SHAPE
 from audio_manager import AudioManager
 from engine import CribbageEngine
 from game_state import GameState
@@ -31,7 +33,9 @@ CARD_HEIGHT = 180
 FPS = 60
 TABLE_COLOR = (34, 139, 34)
 MAX_SCORE = 121
-AI_LEVELS = {1: "Easy", 2: "Medium", 3: "Hard", 4: "Brutal"}
+PEGGING_Y = 440
+AI_LEVELS = {1: "Easy", 2: "Medium", 3: "Hard", 4: "Bert"}
+PLAYFIELD_ALPHA = 128  # 50% transparent (50% opacity)
 
 THEME = {
     "outer_bg": (50, 30, 14),
@@ -59,7 +63,7 @@ MAINE_COLORS = {
 
 # --- Global Game State ---
 game_phase = "intro"
-dealer = 0  # 0 for Player, 1 for Dad
+dealer = 0  # 0 for Player, 1 for Dealer
 crib: list[Any] = []
 selected_cards: list[int] = []
 player1_hand: list[Any] = []
@@ -79,7 +83,7 @@ _stock_labels: list[str] = []
 player1_kept: list[Any] = []
 player2_kept: list[Any] = []
 
-winner_index = None  # 0 = player, 1 = dad, None = no winner yet
+winner_index = None  # 0 = player, 1 = dealer, None = no winner yet
 dad_ai_level = 2
 pegging_passes = [False, False]
 last_pegging_player = None
@@ -102,6 +106,7 @@ _PHASE_SM = None
 _EFFECTS = None
 _LAST_SCREEN_SIZE = (1280, 900)
 _MAINE_BACK_SURFACE = None
+_CARD_BACK_CACHE: dict[tuple[int, int], pygame.Surface] = {}
 _AUDIO = None
 _SETTINGS = GameSettings()
 ctx = AppContext()
@@ -137,6 +142,14 @@ _value_for_15 = cribbage_cards.value_for_fifteen
 _label_to_model_card = cribbage_cards.label_to_card
 
 
+def _dealer_display_name(ai_level: int) -> str:
+    return "Bert" if ai_level == 4 else "AI"
+
+
+def _current_dealer_name() -> str:
+    return _dealer_display_name(dad_ai_level)
+
+
 def _transition_phase(target_phase: str, *, force: bool = False) -> None:
     global game_phase
     _CLASSIC_SESSION.phase = target_phase
@@ -170,6 +183,7 @@ def _sync_classic_session_from_runtime() -> None:
     _CLASSIC_SESSION.last_pegging_player = last_pegging_player
     _CLASSIC_SESSION.player_kept = list(player1_kept)
     _CLASSIC_SESSION.ai_kept = list(player2_kept)
+    _CLASSIC_SESSION.dad_ai_level = dad_ai_level
 
 
 def _sync_runtime_from_classic_session() -> None:
@@ -313,9 +327,14 @@ def _row_positions(n, screen_width, y, card_width, margin=60):
 
 def _draw_shadowed_panel(screen, rect, fill, border, radius=18, shadow=(6, 7)):
     shadow_rect = rect.move(shadow)
-    pygame.draw.rect(screen, (0, 0, 0, 85), shadow_rect, border_radius=radius)
+    pygame.draw.rect(screen, (0, 0, 0, 35), shadow_rect.inflate(10, 10), border_radius=radius + 8)
+    pygame.draw.rect(screen, (0, 0, 0, 70), shadow_rect.inflate(4, 4), border_radius=radius + 4)
+    pygame.draw.rect(screen, (0, 0, 0, 95), shadow_rect, border_radius=radius)
     pygame.draw.rect(screen, fill, rect, border_radius=radius)
     pygame.draw.rect(screen, border, rect, width=2, border_radius=radius)
+    pygame.draw.rect(
+        screen, (255, 255, 255, 40), rect.inflate(-6, -6), width=1, border_radius=max(4, radius - 4)
+    )
 
 
 def _draw_board_frame(screen):
@@ -323,21 +342,183 @@ def _draw_board_frame(screen):
     screen.fill(THEME["outer_bg"])
 
     board_rect = pygame.Rect(24, 24, sw - 48, sh - 48)
-    pygame.draw.rect(screen, THEME["wood_light"], board_rect, border_radius=34)
+    pygame.draw.rect(screen, (158, 106, 64), board_rect, border_radius=34)
 
     inner_rect = board_rect.inflate(-26, -26)
-    pygame.draw.rect(screen, THEME["wood"], inner_rect, border_radius=28)
+    pygame.draw.rect(screen, (92, 60, 34), inner_rect, border_radius=28)
 
     felt_rect = inner_rect.inflate(-28, -28)
-    pygame.draw.rect(screen, THEME["felt"], felt_rect, border_radius=22)
+    felt_surface = pygame.Surface((felt_rect.width, felt_rect.height), pygame.SRCALPHA)
+    pygame.draw.rect(felt_surface, (18, 82, 54), felt_surface.get_rect(), border_radius=22)
 
     band_w = max(18, felt_rect.width // 18)
     for x in range(felt_rect.left, felt_rect.right, band_w):
-        shade = THEME["felt_dark"] if ((x - felt_rect.left) // band_w) % 2 == 0 else THEME["felt"]
-        band = pygame.Rect(x, felt_rect.top, band_w, felt_rect.height)
-        pygame.draw.rect(screen, shade, band.clip(felt_rect))
+        shade = (14, 68, 45) if ((x - felt_rect.left) // band_w) % 2 == 0 else (20, 90, 58)
+        local_band = pygame.Rect(x - felt_rect.left, 0, band_w, felt_rect.height)
+        pygame.draw.rect(felt_surface, shade, local_band.clip(felt_surface.get_rect()))
 
-    pygame.draw.rect(screen, THEME["wood_light"], felt_rect, width=2, border_radius=18)
+    glow = pygame.Surface((felt_rect.width, felt_rect.height), pygame.SRCALPHA)
+    for i in range(5):
+        alpha = 22 - i * 4
+        pygame.draw.rect(
+            glow,
+            (226, 198, 122, alpha),
+            pygame.Rect(
+                12 + i * 2, 12 + i * 2, felt_rect.width - 24 - i * 4, felt_rect.height - 24 - i * 4
+            ),
+            width=2,
+            border_radius=18,
+        )
+    felt_surface.blit(glow, (0, 0))
+
+    vignette = pygame.Surface((felt_rect.width, felt_rect.height), pygame.SRCALPHA)
+    pygame.draw.rect(vignette, (0, 0, 0, 0), vignette.get_rect(), border_radius=22)
+    pygame.draw.rect(vignette, (0, 0, 0, 58), vignette.get_rect(), width=26, border_radius=22)
+    felt_surface.blit(vignette, (0, 0))
+    felt_surface.set_alpha(PLAYFIELD_ALPHA)
+    screen.blit(felt_surface, felt_rect.topleft)
+
+
+def _playfield_rect(screen):
+    """Return the felt playfield bounds used by gameplay overlays."""
+    sw, sh = screen.get_width(), screen.get_height()
+    board_rect = pygame.Rect(24, 24, sw - 48, sh - 48)
+    inner_rect = board_rect.inflate(-26, -26)
+    return inner_rect.inflate(-28, -28)
+
+
+def _crib_panel_rect(sw, sh):
+    ai_row_bottom = 170 + 135
+    player_row_top = max(510, sh - CARD_HEIGHT - 70)
+    gap_top = ai_row_bottom + 22
+    gap_bottom = player_row_top - 22
+    crib_h = 136
+    crib_y = max(gap_top, min((gap_top + gap_bottom - crib_h) // 2, gap_bottom - crib_h))
+    crib_w = min(620, sw - 190)
+    return pygame.Rect(sw // 2 - crib_w // 2, crib_y, crib_w, crib_h)
+
+
+def _scale_polygon_points(points, target_rect, padding=0.12):
+    min_x = min(p[0] for p in points)
+    max_x = max(p[0] for p in points)
+    min_y = min(p[1] for p in points)
+    max_y = max(p[1] for p in points)
+    width = max_x - min_x
+    height = max_y - min_y
+    usable_w = target_rect.width * (1.0 - padding * 2)
+    usable_h = target_rect.height * (1.0 - padding * 2)
+    scale = min(usable_w / width, usable_h / height)
+    offset_x = target_rect.x + (target_rect.width - width * scale) / 2
+    offset_y = target_rect.y + (target_rect.height - height * scale) / 2
+    return [
+        (int(offset_x + (x - min_x) * scale), int(offset_y + (y - min_y) * scale))
+        for x, y in points
+    ]
+
+
+def _build_card_back_surface(size):
+    w, h = size
+    scale = 2
+    W, H = w * scale, h * scale
+    surf_hi = pygame.Surface((W, H), pygame.SRCALPHA)
+
+    outer = pygame.Rect(0, 0, W, H)
+    pygame.draw.rect(surf_hi, (247, 242, 231), outer, border_radius=26)
+    pygame.draw.rect(surf_hi, (118, 95, 64), outer, width=4, border_radius=26)
+
+    inset = outer.inflate(-20, -20)
+    back = pygame.Surface((inset.width, inset.height), pygame.SRCALPHA)
+    pygame.draw.rect(back, (20, 66, 54), back.get_rect(), border_radius=20)
+
+    # Ink depth gradient.
+    for y in range(back.get_height()):
+        t = y / max(1, back.get_height() - 1)
+        r = int(15 + 8 * t)
+        g = int(58 + 16 * t)
+        b = int(48 + 10 * t)
+        pygame.draw.line(back, (r, g, b, 52), (0, y), (back.get_width(), y), 1)
+
+    # Guilloche-style security curves for a realistic deck-back look.
+    cx, cy = back.get_width() // 2, back.get_height() // 2
+    min_dim = min(back.get_width(), back.get_height())
+    rings = max(6, min_dim // 32)
+    for i in range(1, rings + 1):
+        base_r = int(min_dim * (0.11 + i * 0.045))
+        amp = max(3, int(base_r * 0.06))
+        pts = []
+        for deg in range(0, 361, 3):
+            t = math.radians(deg)
+            rr = base_r + amp * math.sin(8 * t)
+            x = cx + rr * math.cos(t)
+            y = cy + rr * math.sin(t)
+            pts.append((int(x), int(y)))
+        tone = 176 + (i % 2) * 14
+        pygame.draw.aalines(back, (tone, tone - 18, tone - 66, 72), True, pts)
+
+    step = max(12, w // 6)
+    for d in range(-back.get_height(), back.get_width(), step):
+        pygame.draw.line(back, (230, 218, 187, 22), (d, 0), (d + back.get_height(), back.get_height()), 1)
+        pygame.draw.line(back, (22, 50, 44, 20), (d, back.get_height()), (d + back.get_height(), 0), 1)
+
+    if _MAINE_BACK_SURFACE is not None:
+        tex = pygame.transform.smoothscale(_MAINE_BACK_SURFACE, (back.get_width(), back.get_height())).convert_alpha()
+        tex.set_alpha(44)
+        back.blit(tex, (0, 0))
+
+    # Multi-ring border lines common in premium decks.
+    frame = back.get_rect().inflate(-14, -14)
+    pygame.draw.rect(back, (216, 194, 136, 185), frame, width=2, border_radius=16)
+    pygame.draw.rect(back, (242, 231, 205, 124), frame.inflate(-10, -10), width=2, border_radius=14)
+    pygame.draw.rect(back, (16, 50, 41, 95), frame.inflate(-20, -20), width=2, border_radius=12)
+
+    medallion = pygame.Rect(0, 0, int(back.get_width() * 0.44), int(back.get_height() * 0.32))
+    medallion.center = (cx, cy)
+    pygame.draw.ellipse(back, (0, 0, 0, 72), medallion.move(2, 3))
+    pygame.draw.ellipse(back, (24, 80, 66), medallion)
+    pygame.draw.ellipse(back, (226, 202, 146, 192), medallion, width=2)
+    pygame.draw.ellipse(back, (249, 238, 211, 132), medallion.inflate(-12, -12), width=1)
+
+    state_poly = _scale_polygon_points(MAINE_SHAPE, medallion.inflate(-34, -24), padding=0.08)
+    pygame.draw.polygon(back, (0, 0, 0, 96), [(x + 2, y + 2) for x, y in state_poly])
+    pygame.draw.polygon(back, (240, 218, 161), state_poly)
+    pygame.draw.lines(back, (92, 70, 39), True, state_poly, 2)
+
+    # Small engraved-style label.
+    plaque = pygame.Rect(0, 0, int(back.get_width() * 0.34), int(back.get_height() * 0.08))
+    plaque.centerx = cx
+    plaque.top = medallion.bottom + 10
+    pygame.draw.rect(back, (17, 58, 47), plaque, border_radius=8)
+    pygame.draw.rect(back, (218, 194, 136, 165), plaque, width=1, border_radius=8)
+    label_font = pygame.font.SysFont("cambria", max(14, int(h * 0.11)), bold=True)
+    lbl = label_font.render("MAINE", True, (239, 225, 186))
+    lbl_shadow = label_font.render("MAINE", True, (34, 24, 14))
+    lx = plaque.centerx - lbl.get_width() // 2
+    ly = plaque.centery - lbl.get_height() // 2
+    back.blit(lbl_shadow, (lx + 1, ly + 1))
+    back.blit(lbl, (lx, ly))
+
+    # Fine corner ornaments.
+    r = max(8, int(min_dim * 0.035))
+    corners = (
+        (22, 22),
+        (back.get_width() - 22, 22),
+        (22, back.get_height() - 22),
+        (back.get_width() - 22, back.get_height() - 22),
+    )
+    for cx0, cy0 in corners:
+        pygame.draw.circle(back, (218, 194, 136, 180), (cx0, cy0), r, width=2)
+        pygame.draw.circle(back, (246, 234, 205, 132), (cx0, cy0), max(2, r - 5), width=1)
+
+    sheen = pygame.Surface((back.get_width(), max(1, int(back.get_height() * 0.18))), pygame.SRCALPHA)
+    for y in range(sheen.get_height()):
+        a = max(0, 26 - y * 2)
+        pygame.draw.line(sheen, (255, 255, 255, a), (0, y), (sheen.get_width(), y), 1)
+    back.blit(sheen, (0, 4))
+
+    surf_hi.blit(back, inset.topleft)
+
+    # Downsample from high-res canvas to reduce digital pixelation.
+    return pygame.transform.smoothscale(surf_hi, (w, h))
 
 
 def _draw_label(screen, text, pos, font, color, shadow=(0, 0), align_left=True):
@@ -352,114 +533,221 @@ def _draw_label(screen, text, pos, font, color, shadow=(0, 0), align_left=True):
 
 
 def _draw_card_back(screen, rect):
-    if _MAINE_BACK_SURFACE is not None:
-        textured = pygame.transform.smoothscale(_MAINE_BACK_SURFACE, (rect.width, rect.height))
-        screen.blit(textured, rect.topleft)
-        pygame.draw.rect(screen, (232, 208, 146), rect, width=3, border_radius=12)
-        return
-
-    pygame.draw.rect(screen, (235, 228, 214), rect, border_radius=12)
-    inner = rect.inflate(-14, -14)
-    pygame.draw.rect(screen, (56, 79, 115), inner, border_radius=10)
-    pygame.draw.rect(screen, (232, 208, 146), inner.inflate(-12, -12), width=3, border_radius=8)
+    key = (rect.width, rect.height)
+    if key not in _CARD_BACK_CACHE:
+        _CARD_BACK_CACHE[key] = _build_card_back_surface(key)
+    screen.blit(_CARD_BACK_CACHE[key], rect.topleft)
 
 
 def _draw_score_panel(screen, dealer, player_scores, dad_ai_level, player_name):
-    sw, sh = screen.get_width(), screen.get_height()
-    panel_rect = pygame.Rect(sw - 250, sh - 176, 214, 138)
-    _draw_shadowed_panel(screen, panel_rect, THEME["panel"], THEME["panel_edge"], radius=20)
+    dealer_name = _dealer_display_name(dad_ai_level)
+    playfield = _playfield_rect(screen)
+    panel_rect = pygame.Rect(playfield.right - 266, playfield.bottom - 186, 252, 172)
+    _draw_shadowed_panel(screen, panel_rect, (26, 38, 31), (201, 174, 108), radius=26)
 
-    title_font = pygame.font.SysFont("georgia", 26, bold=True)
-    body_font = pygame.font.SysFont("arial", 18, bold=True)
-    small_font = pygame.font.SysFont("arial", 15)
+    title_font = pygame.font.SysFont("cambria", 24, bold=True)
+    body_font = pygame.font.SysFont("segoe ui", 16, bold=True)
+    small_font = pygame.font.SysFont("segoe ui", 13)
 
     _draw_label(
-        screen, "Cribbage", (panel_rect.x + 16, panel_rect.y + 12), title_font, THEME["ink"]
+        screen, "Cribbage", (panel_rect.x + 18, panel_rect.y + 12), title_font, (240, 227, 188)
     )
     _draw_label(
         screen,
-        f"Dealer: {'You' if dealer == 0 else 'Dad'}",
-        (panel_rect.x + 16, panel_rect.y + 48),
+        f"Dealer: {'You' if dealer == 0 else dealer_name}",
+        (panel_rect.x + 18, panel_rect.y + 46),
         body_font,
-        THEME["ink"],
+        (213, 202, 174),
     )
-    _draw_label(
-        screen,
-        f"{player_name}: {player_scores[0]}",
-        (panel_rect.x + 16, panel_rect.y + 78),
-        body_font,
-        THEME["blue"],
+
+    player_chip = pygame.Rect(panel_rect.x + 14, panel_rect.y + 74, panel_rect.width - 28, 32)
+    dad_chip = pygame.Rect(panel_rect.x + 14, panel_rect.y + 112, panel_rect.width - 28, 32)
+    pygame.draw.rect(screen, (20, 53, 76), player_chip, border_radius=16)
+    pygame.draw.rect(screen, (37, 22, 20), dad_chip, border_radius=16)
+    pygame.draw.rect(screen, (153, 205, 255), player_chip, width=1, border_radius=16)
+    pygame.draw.rect(screen, (255, 159, 141), dad_chip, width=1, border_radius=16)
+
+    player_surf = body_font.render(f"{player_name}: {player_scores[0]}", True, (185, 222, 255))
+    dad_surf = body_font.render(f"{dealer_name} Score: {player_scores[1]}", True, (255, 176, 160))
+    screen.blit(
+        player_surf,
+        (
+            player_chip.centerx - player_surf.get_width() // 2,
+            player_chip.centery - player_surf.get_height() // 2,
+        ),
     )
-    _draw_label(
-        screen,
-        f"Dad: {player_scores[1]}",
-        (panel_rect.x + 16, panel_rect.y + 104),
-        body_font,
-        THEME["red"],
+    screen.blit(
+        dad_surf,
+        (
+            dad_chip.centerx - dad_surf.get_width() // 2,
+            dad_chip.centery - dad_surf.get_height() // 2,
+        ),
     )
+
     _draw_label(
         screen,
         f"AI: {AI_LEVELS[dad_ai_level]}",
-        (panel_rect.x + 16, panel_rect.y + 120),
+        (panel_rect.x + 18, panel_rect.y + 150),
         small_font,
-        THEME["muted"],
+        (173, 166, 146),
     )
 
 
 def _draw_scoring_breakdown(screen, player_idx, breakdown_list, total_points, player_name):
     """Draw a breakdown of scoring items for a player."""
-    sw, sh = screen.get_width(), screen.get_height()
+    sh = screen.get_height()
+    playfield = _playfield_rect(screen)
+    panel_w = 220
+    panel_h = 280
     if player_idx == 0:
-        panel_x = 24
+        panel_x = playfield.left + 14
     else:
-        panel_x = sw - 244
-    panel_y = sh // 2 - 140
-    panel_rect = pygame.Rect(panel_x, panel_y, 220, 280)
+        panel_x = playfield.right - panel_w - 14
+    panel_y = sh // 2 - panel_h // 2
+    panel_y = max(playfield.top + 14, min(panel_y, playfield.bottom - panel_h - 14))
+    panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
 
-    _draw_shadowed_panel(screen, panel_rect, THEME["panel"], THEME["panel_edge"], radius=18)
+    _draw_shadowed_panel(screen, panel_rect, (29, 42, 33), (193, 167, 109), radius=18)
 
-    header_font = pygame.font.SysFont("arial", 16, bold=True)
-    item_font = pygame.font.SysFont("arial", 13)
-    total_font = pygame.font.SysFont("arial", 14, bold=True)
+    header_font = pygame.font.SysFont("segoe ui", 16, bold=True)
+    item_font = pygame.font.SysFont("segoe ui", 13)
+    total_font = pygame.font.SysFont("segoe ui", 14, bold=True)
 
-    player_label = player_name if player_idx == 0 else "Dad"
+    player_label = player_name if player_idx == 0 else _current_dealer_name()
     _draw_label(
         screen,
         f"{player_label}'s Score",
         (panel_rect.x + 12, panel_rect.y + 10),
         header_font,
-        THEME["ink"],
+        (236, 222, 186),
     )
 
     y_offset = panel_rect.y + 38
     if breakdown_list:
         for desc, _cards, points in breakdown_list:
             score_str = f"{desc}: +{points}"
-            item_surf = item_font.render(score_str, True, THEME["ink"])
+            item_surf = item_font.render(score_str, True, (213, 202, 175))
             screen.blit(item_surf, (panel_rect.x + 12, y_offset))
             y_offset += 22
 
     pygame.draw.line(
-        screen, THEME["ink"], (panel_rect.x + 12, y_offset), (panel_rect.right - 12, y_offset), 1
+        screen,
+        (153, 132, 90),
+        (panel_rect.x + 12, y_offset),
+        (panel_rect.right - 12, y_offset),
+        1,
     )
     y_offset += 8
 
     total_str = f"Hand: +{total_points}"
     total_surf = total_font.render(
-        total_str, True, THEME["blue"] if player_idx == 0 else THEME["red"]
+        total_str, True, (120, 189, 255) if player_idx == 0 else (255, 148, 130)
     )
     screen.blit(total_surf, (panel_rect.x + 12, y_offset))
 
 
+def _draw_round_summary_popup(
+    screen,
+    player_points,
+    dealer_points,
+    crib_points,
+    dealer_idx,
+    player_name,
+    analysis_text="",
+):
+    """Draw a centered popup with this round's scoring totals."""
+
+    def _wrap_line(font, text, max_width, max_lines=3):
+        words = text.split()
+        if not words:
+            return []
+        lines = []
+        current = words[0]
+        for word in words[1:]:
+            trial = f"{current} {word}"
+            if font.size(trial)[0] <= max_width:
+                current = trial
+            else:
+                lines.append(current)
+                current = word
+                if len(lines) >= max_lines:
+                    return lines
+        lines.append(current)
+        return lines[:max_lines]
+
+    playfield = _playfield_rect(screen)
+    panel_w = min(560, playfield.width - 80)
+    panel_h = 260
+    panel_rect = pygame.Rect(
+        playfield.centerx - panel_w // 2,
+        playfield.centery - panel_h // 2,
+        panel_w,
+        panel_h,
+    )
+
+    dim = pygame.Surface((playfield.width, playfield.height), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 76))
+    screen.blit(dim, playfield.topleft)
+
+    _draw_shadowed_panel(screen, panel_rect, (23, 36, 31), (210, 182, 113), radius=22, shadow=(4, 6))
+
+    title_font = pygame.font.SysFont("cambria", 30, bold=True)
+    row_font = pygame.font.SysFont("segoe ui", 19, bold=True)
+    meta_font = pygame.font.SysFont("segoe ui", 15)
+
+    _draw_label(
+        screen,
+        "Round Summary",
+        (panel_rect.x + 22, panel_rect.y + 16),
+        title_font,
+        (242, 227, 188),
+    )
+
+    dealer_name = _current_dealer_name()
+    crib_owner = "Your Crib" if dealer_idx == 0 else f"{dealer_name} Crib"
+    rows = [
+        (f"{player_name}: +{player_points}", (174, 214, 255)),
+        (f"{dealer_name}: +{dealer_points}", (255, 176, 160)),
+        (f"{crib_owner}: +{crib_points}", (241, 206, 132)),
+        (f"Round Total: +{player_points + dealer_points + crib_points}", (229, 236, 204)),
+    ]
+
+    y = panel_rect.y + 66
+    for text, color in rows:
+        surf = row_font.render(text, True, color)
+        screen.blit(surf, (panel_rect.x + 24, y))
+        y += 34
+
+    analysis = analysis_text.strip()
+    if analysis:
+        wrapped = _wrap_line(meta_font, analysis, panel_rect.width - 48, max_lines=2)
+        for line in wrapped:
+            line_surf = meta_font.render(line, True, (211, 201, 175))
+            screen.blit(line_surf, (panel_rect.x + 24, y))
+            y += 22
+
+    prompt = meta_font.render("Press R for next round", True, (211, 201, 175))
+    screen.blit(prompt, (panel_rect.right - prompt.get_width() - 22, panel_rect.bottom - 28))
+
+
 def _draw_game_header(screen, message):
     sw = screen.get_width()
-    body_font = pygame.font.SysFont("arial", 23, bold=True)
+    body_font = pygame.font.SysFont("segoe ui", 22, bold=True)
+    header_text = message.strip() or "Play the hand. Mind the crib. Beat the table."
 
-    msg_box = pygame.Rect(sw // 2 - 360, 26, 720, 50)
-    pygame.draw.rect(screen, (0, 0, 0, 95), msg_box.move(4, 5), border_radius=16)
-    pygame.draw.rect(screen, THEME["panel"], msg_box, border_radius=16)
-    pygame.draw.rect(screen, THEME["panel_edge"], msg_box, width=2, border_radius=16)
-    msg_surf = body_font.render(message, True, THEME["ink"])
+    box_w = min(860, sw - 140)
+    msg_box = pygame.Rect(sw // 2 - box_w // 2, 22, box_w, 58)
+    pygame.draw.rect(screen, (0, 0, 0, 78), msg_box.move(3, 5), border_radius=29)
+    pygame.draw.rect(screen, (24, 36, 29, 240), msg_box, border_radius=29)
+    pygame.draw.rect(screen, (212, 183, 114), msg_box, width=2, border_radius=29)
+    pygame.draw.line(
+        screen,
+        (255, 234, 183),
+        (msg_box.left + 24, msg_box.top + 11),
+        (msg_box.right - 24, msg_box.top + 11),
+        1,
+    )
+    msg_surf = body_font.render(header_text, True, (238, 225, 191))
     screen.blit(
         msg_surf,
         (msg_box.centerx - msg_surf.get_width() // 2, msg_box.centery - msg_surf.get_height() // 2),
@@ -467,39 +755,47 @@ def _draw_game_header(screen, message):
 
 
 def _draw_crib_area(screen, crib_count, starter_card, card_images):
-    sw = screen.get_width()
-    label_font = pygame.font.SysFont("arial", 18, bold=True)
-    small_font = pygame.font.SysFont("arial", 16)
+    sw, sh = screen.get_width(), screen.get_height()
+    label_font = pygame.font.SysFont("segoe ui", 18, bold=True)
+    small_font = pygame.font.SysFont("segoe ui", 15)
 
-    crib_panel = pygame.Rect(sw // 2 - 250, 316, 500, 118)
-    _draw_shadowed_panel(screen, crib_panel, (32, 85, 52), THEME["wood_light"], radius=20)
+    crib_panel = _crib_panel_rect(sw, sh)
+    _draw_shadowed_panel(screen, crib_panel, (20, 66, 45), (206, 176, 108), radius=24)
     _draw_label(
-        screen, "Opponent's Crib", (crib_panel.x + 18, crib_panel.y + 12), label_font, THEME["text"]
+        screen,
+        "Opponent's Crib",
+        (crib_panel.x + 22, crib_panel.y + 14),
+        label_font,
+        (240, 227, 188),
     )
     _draw_label(
         screen,
         "Drop 2 cards here",
-        (crib_panel.x + 18, crib_panel.y + 34),
+        (crib_panel.x + 22, crib_panel.y + 38),
         small_font,
-        THEME["gold"],
+        (221, 192, 129),
     )
 
-    card_w, card_h = 64, 96
+    card_w, card_h = 66, 98
+    card_group_left = crib_panel.centerx - 90
     for i in range(2):
-        card_rect = pygame.Rect(crib_panel.x + 180 + i * 74, crib_panel.y + 12, card_w, card_h)
+        card_rect = pygame.Rect(card_group_left + i * 84, crib_panel.y + 20, card_w, card_h)
         if i < crib_count:
             _draw_card_back(screen, card_rect)
         else:
-            pygame.draw.rect(screen, (255, 255, 255, 24), card_rect, width=2, border_radius=12)
+            pygame.draw.rect(screen, (250, 241, 221, 38), card_rect, width=2, border_radius=12)
+            pygame.draw.rect(
+                screen, (166, 144, 98, 46), card_rect.inflate(-8, -8), width=1, border_radius=9
+            )
 
-    starter_box = pygame.Rect(crib_panel.right - 104, crib_panel.y + 9, 94, 100)
-    pygame.draw.rect(screen, THEME["panel"], starter_box, border_radius=14)
-    pygame.draw.rect(screen, THEME["panel_edge"], starter_box, width=2, border_radius=14)
+    starter_box = pygame.Rect(crib_panel.right - 118, crib_panel.y + 17, 100, 106)
+    pygame.draw.rect(screen, (31, 43, 35), starter_box, border_radius=18)
+    pygame.draw.rect(screen, (214, 184, 114), starter_box, width=2, border_radius=18)
     _draw_label(
-        screen, "Starter", (starter_box.x + 16, starter_box.y + 6), small_font, THEME["ink"]
+        screen, "Starter", (starter_box.x + 21, starter_box.y + 8), small_font, (238, 223, 186)
     )
     if starter_card is not None:
-        starter_surf = pygame.transform.smoothscale(card_images[starter_card], (56, 82))
+        starter_surf = pygame.transform.smoothscale(card_images[starter_card], (62, 88))
         screen.blit(starter_surf, (starter_box.x + 19, starter_box.y + 16))
 
 
@@ -509,9 +805,11 @@ def _draw_scaled_card(screen, surface, rect, size):
 
 
 def _pegging_target_center(slot_index):
-    sw, _ = _LAST_SCREEN_SIZE
+    sw, sh = _LAST_SCREEN_SIZE
     x = sw // 2 - 220 + slot_index * 26 + 46
-    y = 458 + 69
+    _player_row_top = max(510, sh - CARD_HEIGHT - 70)
+    _peg_y = min(PEGGING_Y, _player_row_top - 138 - 62)
+    y = _peg_y + 69
     return (x, y)
 
 
@@ -688,7 +986,7 @@ def _finalize_pegging_if_complete():
         if s.last_pegging_player == 0:
             s.message = "Last card for 1 point. Counting hands."
         else:
-            s.message = "Dad gets last card for 1 point. Counting hands."
+            s.message = f"{_current_dealer_name()} gets last card for 1 point. Counting hands."
     else:
         s.message = "Counting hands."
 
@@ -711,7 +1009,7 @@ def _handle_go(player_idx):
             if s.last_pegging_player == 0:
                 s.message = "Go for you (+1). New count."
             else:
-                s.message = "Go for Dad (+1). New count."
+                s.message = f"Go for {_current_dealer_name()} (+1). New count."
         else:
             s.message = "No plays. New count."
         s.pegging_pile.clear()
@@ -721,7 +1019,9 @@ def _handle_go(player_idx):
             s.player_turn = 1 - s.last_pegging_player
     else:
         s.player_turn = other
-        s.message = "Go. " + ("Dad's turn." if other == 1 else "Your turn.")
+        s.message = "Go. " + (
+            f"{_current_dealer_name()}'s turn." if other == 1 else "Your turn."
+        )
 
     _sync_runtime_from_classic_session()
 
@@ -753,7 +1053,7 @@ def _play_pegging_card(player_idx, idx):
     if points > 0 and _AUDIO is not None:
         _AUDIO.play("score")
 
-    name = (s.player_name or player_name) if player_idx == 0 else "Dad"
+    name = (s.player_name or player_name) if player_idx == 0 else _current_dealer_name()
     point_note = f" (+{points})" if points else ""
 
     if get_pegging_total() == 31:
@@ -764,7 +1064,7 @@ def _play_pegging_card(player_idx, idx):
         s.player_turn = 1 - player_idx
     else:
         s.message = f"{name} pegs{point_note}. " + (
-            "Dad's turn." if player_idx == 0 else "Your turn."
+            f"{_current_dealer_name()}'s turn." if player_idx == 0 else "Your turn."
         )
         s.player_turn = 1 - player_idx
 
@@ -850,7 +1150,7 @@ def handle_pegging(event, auto_player=False):
                     _play_pegging_card(0, idx)
                     _check_for_winner()
                     break
-    else:  # Dad Turn (AI)
+    else:  # Dealer Turn (AI)
         dad_can_move = any(
             current_total + _value_for_15(_parse_label(c.label)[0]) <= 31 for c in s.ai_hand
         )
@@ -923,11 +1223,7 @@ def handle_counting():
 
     w = _check_for_winner()
     if w is None:
-        analyzer_line = f" {discard_analysis_message}" if discard_analysis_message else ""
-        s.message = (
-            f"Counted: You +{p1_points}, Dad +{p2_points}, Crib +{crib_points} (dealer). "
-            f"Press R for next round.{analyzer_line}"
-        )
+        s.message = "Round counted. Review the scoring popup and press R for next round."
         _transition_phase("end")
     else:
         if _AUDIO is not None:
@@ -941,7 +1237,8 @@ def handle_counting():
             )
         else:
             s.message = (
-                f"Game Over! Dad wins with {s.scores[1]} points. " "Press R to return to the intro."
+                f"Game Over! {_current_dealer_name()} wins with {s.scores[1]} points. "
+                "Press R to return to the intro."
             )
         _transition_phase("game_over")
 
@@ -951,7 +1248,7 @@ def handle_counting():
 # --- Main Entry ---
 def main():
     global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, winner_index, dad_ai_level, last_pegging_player, discard_analysis_message
-    global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE, _AUDIO, _SETTINGS
+    global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE, _CARD_BACK_CACHE, _AUDIO, _SETTINGS
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--online-url", dest="online_url", default="http://127.0.0.1:8787")
     parser.add_argument("--online-ws-url", dest="online_ws_url", default="ws://127.0.0.1:8790")
@@ -1097,8 +1394,10 @@ def main():
     if maine_back.exists():
         try:
             _MAINE_BACK_SURFACE = _load_image(maine_back)
+            _CARD_BACK_CACHE = {}
         except pygame.error:
             _MAINE_BACK_SURFACE = None
+            _CARD_BACK_CACHE = {}
 
     _ensure_card_pngs_from_svgs()
     card_images = load_card_images()
@@ -1216,6 +1515,7 @@ def main():
         player_turn = 1 - dealer
         _transition_phase("pegging")
         message = "Pegging phase preview."
+        _sync_classic_session_from_runtime()
 
     def _primary_button_rect(sw: int, sh: int) -> pygame.Rect:
         w, h = 260, 60
@@ -1238,7 +1538,7 @@ def main():
         1: "Random play\nEasy wins",
         2: "Monte Carlo\nMixed strategy",
         3: "Risk simulation\nHard opponent",
-        4: "Deep simulation\nBrutal table",
+        4: "Gumption\nMode",
     }
 
     def _launch_online_client() -> None:
@@ -1278,35 +1578,47 @@ def main():
         screen.blit(overlay, (0, 0))
 
         modal = pygame.Rect(sw // 2 - 240, sh // 2 - 150, 480, 300)
-        pygame.draw.rect(screen, (32, 28, 24), modal, border_radius=20)
-        pygame.draw.rect(screen, (230, 205, 154), modal, width=2, border_radius=20)
+        shadow = modal.move(0, 10)
+        pygame.draw.rect(screen, (0, 0, 0, 120), shadow, border_radius=28)
+        pygame.draw.rect(screen, (24, 20, 18), modal, border_radius=28)
+        pygame.draw.rect(screen, (78, 53, 30), modal.inflate(-12, -12), border_radius=22)
+        pygame.draw.rect(screen, (233, 205, 153), modal, width=2, border_radius=28)
+        pygame.draw.rect(screen, (255, 241, 205), modal.inflate(-18, -18), width=1, border_radius=22)
 
-        title_font = pygame.font.SysFont("arial", 30, bold=True)
-        body_font = pygame.font.SysFont("arial", 22)
-        small_font = pygame.font.SysFont("arial", 16)
-        title = title_font.render("Settings", True, (245, 235, 220))
+        title_font = pygame.font.SysFont("constantia", 34, bold=True)
+        body_font = pygame.font.SysFont("candara", 22, bold=True)
+        small_font = pygame.font.SysFont("segoe ui", 16)
+        title = title_font.render("Camp Settings", True, (249, 236, 207))
         screen.blit(title, (modal.centerx - title.get_width() // 2, modal.y + 16))
 
+        strap = small_font.render("Tune the table before the next hand.", True, (216, 198, 171))
+        screen.blit(strap, (modal.centerx - strap.get_width() // 2, modal.y + 56))
+
         vol_label = body_font.render(
-            f"Volume: {int(_SETTINGS.volume * 100)}%", True, (240, 234, 220)
+            f"Volume: {int(_SETTINGS.volume * 100)}%", True, (245, 236, 218)
         )
-        screen.blit(vol_label, (modal.x + 28, modal.y + 78))
-        settings_volume_rect = pygame.Rect(modal.x + 28, modal.y + 112, 420, 18)
-        pygame.draw.rect(screen, (82, 70, 58), settings_volume_rect, border_radius=9)
+        screen.blit(vol_label, (modal.x + 28, modal.y + 92))
+        settings_volume_rect = pygame.Rect(modal.x + 28, modal.y + 128, 420, 18)
+        pygame.draw.rect(screen, (69, 56, 43), settings_volume_rect, border_radius=9)
         fill = settings_volume_rect.copy()
         fill.width = max(8, int(settings_volume_rect.width * _SETTINGS.volume))
         pygame.draw.rect(screen, (214, 176, 91), fill, border_radius=9)
+        knob_x = settings_volume_rect.x + int(settings_volume_rect.width * _SETTINGS.volume)
+        knob_x = max(settings_volume_rect.left + 10, min(settings_volume_rect.right - 10, knob_x))
+        pygame.draw.circle(screen, (255, 244, 220), (knob_x, settings_volume_rect.centery), 11)
+        pygame.draw.circle(screen, (139, 96, 48), (knob_x, settings_volume_rect.centery), 11, 2)
 
         anim_text = "On" if _SETTINGS.animations_enabled else "Off"
-        settings_anim_rect = pygame.Rect(modal.x + 28, modal.y + 160, 150, 42)
-        anim_label = body_font.render(f"Animations: {anim_text}", True, (240, 234, 220))
-        screen.blit(anim_label, (modal.x + 28, modal.y + 136))
+        settings_anim_rect = pygame.Rect(modal.x + 28, modal.y + 184, 174, 44)
+        anim_label = body_font.render(f"Animations: {anim_text}", True, (245, 236, 218))
+        screen.blit(anim_label, (modal.x + 28, modal.y + 156))
         pygame.draw.rect(
             screen,
-            (70, 98, 72) if _SETTINGS.animations_enabled else (110, 70, 70),
+            (62, 101, 74) if _SETTINGS.animations_enabled else (121, 72, 66),
             settings_anim_rect,
-            border_radius=12,
+            border_radius=22,
         )
+        pygame.draw.rect(screen, (255, 239, 212), settings_anim_rect, width=2, border_radius=22)
         toggle_text = body_font.render("Toggle", True, (255, 255, 255))
         screen.blit(
             toggle_text,
@@ -1317,20 +1629,22 @@ def main():
         )
 
         ai_label = body_font.render(
-            f"Online AI Pref: {AI_LEVELS[_SETTINGS.online_ai_level]}", True, (240, 234, 220)
+            f"Online AI Pref: {AI_LEVELS[_SETTINGS.online_ai_level]}", True, (245, 236, 218)
         )
-        screen.blit(ai_label, (modal.x + 230, modal.y + 136))
-        settings_ai_left_rect = pygame.Rect(modal.x + 230, modal.y + 160, 42, 42)
-        settings_ai_right_rect = pygame.Rect(modal.x + 340, modal.y + 160, 42, 42)
-        mid_rect = pygame.Rect(modal.x + 282, modal.y + 160, 48, 42)
+        screen.blit(ai_label, (modal.x + 244, modal.y + 156))
+        settings_ai_left_rect = pygame.Rect(modal.x + 244, modal.y + 184, 46, 44)
+        settings_ai_right_rect = pygame.Rect(modal.x + 366, modal.y + 184, 46, 44)
+        mid_rect = pygame.Rect(modal.x + 300, modal.y + 184, 56, 44)
         for rect, label in ((settings_ai_left_rect, "<"), (settings_ai_right_rect, ">")):
-            pygame.draw.rect(screen, (84, 145, 225), rect, border_radius=10)
+            pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
+            pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
             txt = body_font.render(label, True, (255, 255, 255))
             screen.blit(
                 txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2)
             )
         ai_mid = body_font.render(str(_SETTINGS.online_ai_level), True, (255, 255, 255))
-        pygame.draw.rect(screen, (60, 60, 60), mid_rect, border_radius=10)
+        pygame.draw.rect(screen, (55, 48, 42), mid_rect, border_radius=18)
+        pygame.draw.rect(screen, (233, 205, 153), mid_rect, width=2, border_radius=18)
         screen.blit(
             ai_mid,
             (
@@ -1340,7 +1654,7 @@ def main():
         )
 
         hint = small_font.render(
-            "S or click outside to close. Volume bar is clickable.", True, (210, 198, 176)
+            "Press S or click outside to close. The volume rail is clickable.", True, (210, 198, 176)
         )
         screen.blit(hint, (modal.centerx - hint.get_width() // 2, modal.bottom - 28))
 
@@ -1388,35 +1702,63 @@ def main():
 
         if _CLASSIC_SESSION.phase == "intro":
             sw, sh = screen.get_width(), screen.get_height()
+            mouse_pos = pygame.mouse.get_pos()
             if intro_background is not None:
-                bg = pygame.transform.smoothscale(intro_background, (sw, sh))
-                screen.blit(bg, (0, 0))
+                scale = 1.06
+                bg_w, bg_h = int(sw * scale), int(sh * scale)
+                bg = pygame.transform.smoothscale(intro_background, (bg_w, bg_h))
+                drift_x = int((mouse_pos[0] / max(1, sw) - 0.5) * 24)
+                drift_y = int((mouse_pos[1] / max(1, sh) - 0.5) * 16)
+                bg_x = (sw - bg_w) // 2 - drift_x
+                bg_y = (sh - bg_h) // 2 - drift_y
+                screen.blit(bg, (bg_x, bg_y))
             else:
                 screen.fill(THEME["outer_bg"])
 
             overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 92))
+            overlay.fill((11, 9, 12, 126))
             screen.blit(overlay, (0, 0))
 
-            title_font = pygame.font.SysFont("georgia", 78, bold=True)
-            subtitle_font = pygame.font.SysFont("arial", 20, bold=True)
-            button_font = pygame.font.SysFont("arial", 24, bold=True)
-            desc_font = pygame.font.SysFont("arial", 15)
-            start_font = pygame.font.SysFont("arial", 26, bold=True)
+            vignette = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            pygame.draw.rect(vignette, (0, 0, 0, 90), pygame.Rect(0, 0, sw, sh), width=80)
+            screen.blit(vignette, (0, 0))
+
+            title_font = pygame.font.SysFont("constantia", 106, bold=True)
+            title_shadow_font = pygame.font.SysFont("constantia", 108, bold=True)
+            subtitle_font = pygame.font.SysFont("palatino linotype", 26, bold=True)
+            subtitle_small_font = pygame.font.SysFont("candara", 18, bold=True)
+            start_font = pygame.font.SysFont("bahnschrift", 24, bold=True)
+            glyph_font = pygame.font.SysFont("segoe ui symbol", 20, bold=True)
+            # Card typography — modern, 2026
+            card_name_font = pygame.font.SysFont("segoe ui variable", 29, bold=True)
+            card_badge_font = pygame.font.SysFont("segoe ui variable", 11)
+            card_desc_font = pygame.font.SysFont("segoe ui variable", 13)
 
             title = title_font.render("Upta", True, MAINE_COLORS["cream"])
-            title_outline = title_font.render("Upta", True, MAINE_COLORS["pine"])
-            title_warm_shadow = title_font.render("Upta", True, MAINE_COLORS["bark"])
+            title_outline = title_shadow_font.render("Upta", True, (40, 31, 18))
+            title_warm_shadow = title_shadow_font.render("Upta", True, (97, 59, 24))
             subtitle = subtitle_font.render(
-                "Play the hand. Mind the crib. Beat the table.", True, MAINE_COLORS["sand"]
+                "Play the Hand. Mind the Crib. Beat the Table.", True, (235, 216, 182)
+            )
+            subtitle_small = subtitle_small_font.render(
+                "Maine camp cards, dressed like opening night.", True, (214, 194, 162)
             )
 
-            title_top = 44
-            title_to_subtitle_gap = 12
+            title_top = 88
+            title_to_subtitle_gap = 8
             title_x = sw // 2 - title.get_width() // 2
             title_y = title_top
             subtitle_x = sw // 2 - subtitle.get_width() // 2
             subtitle_y = title_y + title.get_height() + title_to_subtitle_gap
+            subtitle_small_x = sw // 2 - subtitle_small.get_width() // 2
+            subtitle_small_y = subtitle_y + subtitle.get_height() + 10
+
+            crest_rect = pygame.Rect(sw // 2 - 138, 72, 276, 182)
+            crest_surface = pygame.Surface(crest_rect.size, pygame.SRCALPHA)
+            pygame.draw.ellipse(crest_surface, (0, 0, 0, 78), crest_surface.get_rect().inflate(-14, -18))
+            pygame.draw.ellipse(crest_surface, (25, 41, 33, 172), crest_surface.get_rect().inflate(-24, -30))
+            pygame.draw.ellipse(crest_surface, (224, 193, 122, 70), crest_surface.get_rect().inflate(-42, -58), 2)
+            screen.blit(crest_surface, crest_rect.topleft)
 
             for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2), (-2, -2), (2, 2), (-2, 2), (2, -2)):
                 screen.blit(title_outline, (title_x + dx, title_y + dy))
@@ -1429,109 +1771,339 @@ def main():
             )
             screen.blit(title_glint, (title_x, title_y), area=glint_clip)
             screen.blit(subtitle, (subtitle_x, subtitle_y))
+            screen.blit(subtitle_small, (subtitle_small_x, subtitle_small_y))
 
-            panel_rect = pygame.Rect(sw // 2 - 290, sh // 2 - 150, 580, 300)
+            panel_w = min(980, max(640, sw - 120))
+            panel_h = min(430, max(330, sh - 250))
+            panel_rect = pygame.Rect(
+                sw // 2 - panel_w // 2, sh // 2 - panel_h // 2 + 54, panel_w, panel_h
+            )
+
             panel_surface = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
-            panel_surface.fill((15, 15, 15, 110))
+            panel_surface.fill((10, 28, 14, 160))
             screen.blit(panel_surface, panel_rect.topleft)
-            pygame.draw.rect(screen, (236, 219, 184), panel_rect, width=2, border_radius=24)
+            pygame.draw.rect(screen, (84, 152, 92), panel_rect, width=2, border_radius=18)
+            # inner highlight rim
+            _rim = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(_rim, (140, 200, 148, 40), _rim.get_rect().inflate(-4, -4), width=1, border_radius=16)
+            screen.blit(_rim, panel_rect.topleft)
 
-            diff_label = subtitle_font.render("Choose difficulty", True, (245, 238, 220))
-            screen.blit(diff_label, (sw // 2 - diff_label.get_width() // 2, panel_rect.y + 18))
+            panel_pad = 28
+            button_spacing = 16
+            available_w = panel_rect.width - panel_pad * 2 - button_spacing * 3
+            button_width = max(108, min(164, available_w // 4))
+            button_height = 132
+            total_width = 4 * button_width + 3 * button_spacing
+            start_x = panel_rect.x + (panel_rect.width - total_width) // 2
+            cta_row_y = panel_rect.bottom - 88
+            button_y = cta_row_y - button_height - 26
 
-            button_width, button_height = 128, 86
-            button_spacing = 18
-            total_width = 3 * button_width + 2 * button_spacing
-            start_x = (sw - total_width) // 2
-            button_y = panel_rect.y + 58
+            yankee_font = pygame.font.SysFont("constantia", 22, bold=True, italic=True)
+            yankee_line = yankee_font.render("\"Hurry up 'n' pick one there, bub.\"", True, (58, 40, 25))
+
+            speech_w = min(panel_rect.width - 120, yankee_line.get_width() + 42)
+            speech_h = 46
+            speech_rect = pygame.Rect(sw // 2 - speech_w // 2, panel_rect.y + 12, speech_w, speech_h)
+
+            # Traditional comic speech balloon: clean non-oval contour and crisp pointed tail.
+            bubble_scale = 3
+            bubble_x = speech_rect.x - 22
+            bubble_y = speech_rect.y - 12
+            bubble_w = speech_w + 64
+            bubble_h = speech_h + 62
+            bubble_surface = pygame.Surface((bubble_w * bubble_scale, bubble_h * bubble_scale), pygame.SRCALPHA)
+
+            speech_local = pygame.Rect(
+                (speech_rect.x - bubble_x) * bubble_scale,
+                (speech_rect.y - bubble_y) * bubble_scale,
+                speech_rect.width * bubble_scale,
+                speech_rect.height * bubble_scale,
+            )
+
+            s = bubble_scale
+            cx = speech_local.centerx
+            cy = speech_local.centery
+            a = speech_local.width // 2 + 20 * s
+            b = speech_local.height // 2 + 10 * s
+            n = 4.6  # superellipse exponent for a classic comic balloon contour
+
+            body_points = []
+            for i in range(72):
+                t = (2 * math.pi * i) / 72
+                ct = math.cos(t)
+                st = math.sin(t)
+                x = cx + a * (1 if ct >= 0 else -1) * (abs(ct) ** (2 / n))
+                y = cy + b * (1 if st >= 0 else -1) * (abs(st) ** (2 / n))
+                body_points.append((int(x), int(y)))
+
+            shadow_points = [(x, y + 5 * s) for x, y in body_points]
+            pygame.draw.polygon(bubble_surface, (0, 0, 0, 58), shadow_points)
+            pygame.draw.polygon(bubble_surface, (245, 239, 225), body_points)
+            pygame.draw.polygon(bubble_surface, (124, 96, 64), body_points, width=3 * s)
+            pygame.draw.aalines(bubble_surface, (124, 96, 64), True, body_points)
+
+            inner_points = []
+            ia = max(8, a - 14 * s)
+            ib = max(8, b - 12 * s)
+            for i in range(56):
+                t = (2 * math.pi * i) / 56
+                ct = math.cos(t)
+                st = math.sin(t)
+                x = cx + ia * (1 if ct >= 0 else -1) * (abs(ct) ** (2 / n))
+                y = cy + ib * (1 if st >= 0 else -1) * (abs(st) ** (2 / n))
+                inner_points.append((int(x), int(y)))
+            pygame.draw.aalines(bubble_surface, (255, 251, 241, 100), True, inner_points)
+
+            bubble_surface = pygame.transform.smoothscale(bubble_surface, (bubble_w, bubble_h))
+            screen.blit(bubble_surface, (bubble_x, bubble_y))
+
+            screen.blit(yankee_line, (speech_rect.centerx - yankee_line.get_width() // 2, speech_rect.centery - yankee_line.get_height() // 2))
+
             difficulty_buttons = {}
 
             for i, (level, name) in enumerate(
-                [(1, "Easy"), (2, "Medium"), (3, "Hard"), (4, "Brutal")]
+                [(1, "Easy"), (2, "Medium"), (3, "Hard"), (4, "Bert")]
             ):
                 btn_x = start_x + i * (button_width + button_spacing)
                 btn_rect = pygame.Rect(btn_x, button_y, button_width, button_height)
                 difficulty_buttons[level] = btn_rect
+                hovered = btn_rect.collidepoint(mouse_pos)
+                raise_px = 0
+                if hovered:
+                    raise_px = 3
+                if level == dad_ai_level:
+                    raise_px = max(raise_px, 5)
+                draw_rect = btn_rect.move(0, -raise_px)
+
+                is_bert_selected = level == 4 and level == dad_ai_level
+                is_hunter_selected = level in (1, 2, 3) and level == dad_ai_level
+
+                if is_hunter_selected:
+                    btn_color = (207, 112, 26)
+                    border_color = (240, 152, 58)
+                    badge_color = (232, 132, 42)
+                    badge_text_color = (60, 28, 6)
+                elif is_bert_selected:
+                    btn_color = (56, 10, 12)
+                    border_color = (206, 64, 68)
+                    badge_color = (172, 38, 42)
+                    badge_text_color = (245, 226, 220)
+                elif level == dad_ai_level:
+                    btn_color = (98, 20, 34)
+                    border_color = (158, 44, 60)
+                    badge_color = (158, 44, 60)
+                    badge_text_color = (16, 6, 8)
+                else:
+                    btn_color = (38, 84, 46)
+                    border_color = (96, 164, 104)
+                    badge_color = (58, 118, 66)
+                    badge_text_color = (224, 244, 222)
+                    if hovered:
+                        btn_color = (54, 108, 62)
+                        border_color = (128, 196, 136)
+                        badge_color = (74, 140, 82)
+
+                # Maine-shaped level cards (scaled from MAINE_SHAPE asset, aspect-ratio preserved)
+                shape_pad = 4
+                min_x = min(p[0] for p in MAINE_SHAPE)
+                max_x = max(p[0] for p in MAINE_SHAPE)
+                min_y = min(p[1] for p in MAINE_SHAPE)
+                max_y = max(p[1] for p in MAINE_SHAPE)
+                raw_sw = max(1, max_x - min_x)
+                raw_sh = max(1, max_y - min_y)
+                avail_w = draw_rect.width - shape_pad * 2
+                avail_h = draw_rect.height - shape_pad * 2
+                _ms = min(avail_w / raw_sw, avail_h / raw_sh)
+                _ox = draw_rect.x + shape_pad + (avail_w - raw_sw * _ms) / 2
+                _oy = draw_rect.y + shape_pad + (avail_h - raw_sh * _ms) / 2
+                maine_points = []
+                for px, py in MAINE_SHAPE:
+                    sx = int(_ox + (px - min_x) * _ms)
+                    sy = int(_oy + (py - min_y) * _ms)
+                    maine_points.append((sx, sy))
+
+                # Drop shadow (proper SRCALPHA surface so alpha blends)
+                _shad = pygame.Surface((draw_rect.width + 24, draw_rect.height + 24), pygame.SRCALPHA)
+                _shad_pts = [(x - draw_rect.x + 8, y - draw_rect.y + 10) for x, y in maine_points]
+                pygame.draw.polygon(_shad, (0, 0, 0, 110), _shad_pts)
+                screen.blit(_shad, (draw_rect.x - 4, draw_rect.y - 4))
+                pygame.draw.polygon(screen, btn_color, maine_points)
+
+                if is_bert_selected:
+                    plaid = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
+                    tile = 12
+                    for py in range(0, draw_rect.height, tile):
+                        for px in range(0, draw_rect.width, tile):
+                            is_dark_cell = ((px // tile) + (py // tile)) % 2 == 0
+                            cell_color = (18, 16, 16, 165) if is_dark_cell else (142, 22, 28, 165)
+                            pygame.draw.rect(plaid, cell_color, (px, py, tile, tile))
+
+                    for px in range(0, draw_rect.width, tile * 2):
+                        pygame.draw.rect(plaid, (0, 0, 0, 42), (px, 0, 3, draw_rect.height))
+                    for py in range(0, draw_rect.height, tile * 2):
+                        pygame.draw.rect(plaid, (120, 22, 24, 42), (0, py, draw_rect.width, 3))
+
+                    local_points = [(x - draw_rect.x, y - draw_rect.y) for x, y in maine_points]
+                    clip_surface = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
+                    pygame.draw.polygon(clip_surface, (255, 255, 255, 255), local_points)
+                    plaid.blit(clip_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                    screen.blit(plaid, draw_rect.topleft)
+
+                # Glowing border: outer soft halo → solid 2px → bright aaline highlight
+                _glow = pygame.Surface((draw_rect.width + 20, draw_rect.height + 20), pygame.SRCALPHA)
+                _g_pts = [(x - draw_rect.x + 10, y - draw_rect.y + 10) for x, y in maine_points]
+                pygame.draw.polygon(_glow, (*border_color, 55), _g_pts, width=7)
+                pygame.draw.polygon(_glow, (*border_color, 90), _g_pts, width=4)
+                screen.blit(_glow, (draw_rect.x - 10, draw_rect.y - 10))
+                pygame.draw.polygon(screen, border_color, maine_points, width=2)
+                _hi_border = tuple(min(255, c + 60) for c in border_color)
+                pygame.draw.aalines(screen, _hi_border, True, maine_points)
 
                 if level == dad_ai_level:
-                    btn_color = (164, 110, 58)
-                    border_color = (240, 204, 114)
-                    text_color = (255, 255, 255)
-                else:
-                    btn_color = (236, 228, 214)
-                    border_color = (180, 160, 130)
-                    text_color = (34, 26, 19)
+                    pass  # selected state handled by color/border only
 
-                pygame.draw.rect(screen, btn_color, btn_rect, width=0, border_radius=16)
-                pygame.draw.rect(screen, border_color, btn_rect, width=2, border_radius=16)
+                def _outlined(surf, font, text, color, ox, oy, outline=2):
+                    """8-direction outlined text for legibility on textured/photo bg."""
+                    _s = font.render(text, True, (0, 0, 0))
+                    for _dx in range(-outline, outline + 1):
+                        for _dy in range(-outline, outline + 1):
+                            if _dx == 0 and _dy == 0:
+                                continue
+                            surf.blit(_s, (ox + _dx, oy + _dy))
+                    surf.blit(font.render(text, True, color), (ox, oy))
 
-                level_text = button_font.render(name, True, text_color)
-                screen.blit(
-                    level_text,
-                    (btn_x + button_width // 2 - level_text.get_width() // 2, button_y + 12),
-                )
+                def _tracked_w(font, text, spacing=4):
+                    return sum(font.size(c)[0] for c in text.upper()) + spacing * max(0, len(text) - 1)
 
+                def _tracked(surf, font, text, color, cx, y, spacing=4):
+                    """ALL-CAPS tracked text on a solid bg — no outline needed."""
+                    x = cx - _tracked_w(font, text, spacing) // 2
+                    for c in text.upper():
+                        surf.blit(font.render(c, True, color), (x, y))
+                        x += font.size(c)[0] + spacing
+
+                # ── Badge pill (solid, tracked all-caps) ─────────────────────
+                _badge_labels = {1: "Introductory", 2: "From Away", 3: "Native Mainer", 4: "The Wharf"}
+                _badge_str = _badge_labels[level]
+                _bw = _tracked_w(card_badge_font, _badge_str, 4)
+                _bh = card_badge_font.get_height()
+                _pill_w, _pill_h = _bw + 24, _bh + 10
+                _pill = pygame.Surface((_pill_w, _pill_h), pygame.SRCALPHA)
+                pygame.draw.rect(_pill, (*badge_color, 255), _pill.get_rect(), border_radius=10)
+                _label_cx = draw_rect.centerx
+                _label_y = draw_rect.y - _pill_h - 8
+                screen.blit(_pill, (_label_cx - _pill_w // 2, _label_y))
+                _tracked(screen, card_badge_font, _badge_str, badge_text_color,
+                         _label_cx, _label_y + (_pill_h - _bh) // 2, spacing=4)
+
+                # ── Level name (hero text, top-lit shimmer) ───────────────────
+                _lname_color = (255, 252, 235) if level == dad_ai_level else (255, 245, 215)
+                _name_up = name.upper()
+                _ltx = draw_rect.x + button_width // 2 - card_name_font.size(_name_up)[0] // 2
+                _lty = draw_rect.y + 36
+                _outlined(screen, card_name_font, _name_up, _lname_color, _ltx, _lty, outline=2)
+
+                # ── Desc text ─────────────────────────────────────────────────
+                desc_color = (255, 245, 210) if level == dad_ai_level else (210, 238, 210)
                 desc_lines = difficulty_descriptions[level].split("\n")
+                _desc_y0 = _lty + card_name_font.get_height() + 5
                 for j, line in enumerate(desc_lines):
-                    desc = desc_font.render(line, True, (221, 206, 176))
-                    screen.blit(
-                        desc,
-                        (btn_x + button_width // 2 - desc.get_width() // 2, button_y + 44 + j * 16),
-                    )
+                    _dcx = draw_rect.centerx - card_desc_font.size(line)[0] // 2
+                    _dcy = _desc_y0 + j * 15
+                    _outlined(screen, card_desc_font, line, desc_color, _dcx, _dcy, outline=1)
 
-            start_button_width, start_button_height = 214, 58
+            start_button_width, start_button_height = min(320, max(240, panel_rect.width // 3)), 60
             start_btn_rect = pygame.Rect(
-                sw // 2 - start_button_width - 10,
-                panel_rect.bottom - 74,
+                panel_rect.centerx - start_button_width // 2,
+                panel_rect.bottom - start_button_height - 24,
                 start_button_width,
                 start_button_height,
             )
-            pygame.draw.rect(screen, (120, 77, 39), start_btn_rect, width=0, border_radius=18)
-            pygame.draw.rect(screen, (240, 204, 114), start_btn_rect, width=2, border_radius=18)
+            start_hover = start_btn_rect.collidepoint(mouse_pos)
+            start_draw = start_btn_rect.move(0, -2 if start_hover else 0)
+            pygame.draw.rect(screen, (0, 0, 0, 80), start_draw.move(0, 5), border_radius=10)
+            pygame.draw.rect(
+                screen,
+                (32, 70, 36) if not start_hover else (42, 88, 48),
+                start_draw,
+                border_radius=10,
+            )
+            pygame.draw.rect(screen, (96, 152, 102), start_draw, width=1, border_radius=10)
 
-            start_text = start_font.render("START GAME", True, (255, 255, 255))
+            start_text = start_font.render("START GAME", True, (238, 232, 214))
+            start_icon = glyph_font.render("\u25b6", True, (206, 188, 152))
+            icon_gap = 10
             screen.blit(
                 start_text,
                 (
-                    start_btn_rect.centerx - start_text.get_width() // 2,
-                    start_btn_rect.centery - start_text.get_height() // 2,
+                    start_btn_rect.centerx - (start_text.get_width() + icon_gap + start_icon.get_width()) // 2 + start_icon.get_width() + icon_gap,
+                    start_draw.centery - start_text.get_height() // 2,
+                ),
+            )
+            screen.blit(
+                start_icon,
+                (
+                    start_btn_rect.centerx - (start_text.get_width() + icon_gap + start_icon.get_width()) // 2,
+                    start_draw.centery - start_icon.get_height() // 2 - 1,
                 ),
             )
 
+            online_button_width, online_button_height = min(230, max(180, panel_rect.width // 4)), 46
             online_btn_rect = pygame.Rect(
-                sw // 2 + 10, panel_rect.bottom - 74, start_button_width, start_button_height
+                panel_rect.right - online_button_width,
+                panel_rect.bottom + 14,
+                online_button_width,
+                online_button_height,
             )
-            pygame.draw.rect(screen, (48, 86, 122), online_btn_rect, width=0, border_radius=18)
-            pygame.draw.rect(screen, (160, 212, 245), online_btn_rect, width=2, border_radius=18)
+            online_hover = online_btn_rect.collidepoint(mouse_pos)
+            online_draw = online_btn_rect.move(0, -2 if online_hover else 0)
+            pygame.draw.rect(screen, (0, 0, 0, 80), online_draw.move(0, 5), border_radius=10)
+            pygame.draw.rect(
+                screen,
+                (44, 72, 108) if not online_hover else (56, 88, 128),
+                online_draw,
+                border_radius=10,
+            )
+            pygame.draw.rect(screen, (92, 142, 192), online_draw, width=1, border_radius=10)
 
-            online_text = start_font.render("ONLINE MODE", True, (255, 255, 255))
+            online_text = start_font.render("ONLINE MODE", True, (218, 230, 244))
+            online_icon = glyph_font.render("\u2606", True, (180, 206, 234))
             screen.blit(
                 online_text,
                 (
-                    online_btn_rect.centerx - online_text.get_width() // 2,
-                    online_btn_rect.centery - online_text.get_height() // 2,
+                    online_btn_rect.centerx - (online_text.get_width() + icon_gap + online_icon.get_width()) // 2 + online_icon.get_width() + icon_gap,
+                    online_draw.centery - online_text.get_height() // 2,
+                ),
+            )
+            screen.blit(
+                online_icon,
+                (
+                    online_btn_rect.centerx - (online_text.get_width() + icon_gap + online_icon.get_width()) // 2,
+                    online_draw.centery - online_icon.get_height() // 2 - 1,
                 ),
             )
 
-            settings_btn_rect = pygame.Rect(panel_rect.right - 126, panel_rect.y + 16, 104, 36)
-            pygame.draw.rect(screen, (64, 64, 64), settings_btn_rect, border_radius=12)
-            pygame.draw.rect(screen, (190, 190, 190), settings_btn_rect, width=2, border_radius=12)
-            settings_text = subtitle_font.render("SETTINGS", True, (245, 245, 245))
+            settings_btn_rect = pygame.Rect(panel_rect.right - 144, panel_rect.y + 13, 124, 32)
+            settings_hover = settings_btn_rect.collidepoint(mouse_pos)
+            settings_fill = (16, 36, 18) if not settings_hover else (26, 52, 30)
+            pygame.draw.rect(screen, settings_fill, settings_btn_rect, border_radius=8)
+            pygame.draw.rect(screen, (62, 102, 66), settings_btn_rect, width=1, border_radius=8)
+            gear = glyph_font.render("\u2699", True, (200, 186, 152))
+            settings_text = subtitle_small_font.render("SETTINGS", True, (245, 245, 245))
             screen.blit(
                 settings_text,
                 (
-                    settings_btn_rect.centerx - settings_text.get_width() // 2,
+                    settings_btn_rect.centerx - (settings_text.get_width() + 8 + gear.get_width()) // 2 + gear.get_width() + 8,
                     settings_btn_rect.centery - settings_text.get_height() // 2,
                 ),
             )
-
-            instructions_font = pygame.font.SysFont("arial", 16)
-            inst1 = instructions_font.render("Press 1/2/3 or click a button", True, (210, 198, 176))
-            inst2 = instructions_font.render(
-                "Press Enter for classic, O for online, S for settings", True, (210, 198, 176)
+            screen.blit(
+                gear,
+                (
+                    settings_btn_rect.centerx - (settings_text.get_width() + 8 + gear.get_width()) // 2,
+                    settings_btn_rect.centery - gear.get_height() // 2 - 1,
+                ),
             )
-            screen.blit(inst1, (sw // 2 - inst1.get_width() // 2, panel_rect.bottom + 12))
-            screen.blit(inst2, (sw // 2 - inst2.get_width() // 2, panel_rect.bottom + 32))
 
             if settings_open:
                 _draw_settings_modal(sw, sh)
@@ -1552,6 +2124,7 @@ def main():
                 starter_card = sc
                 message = msg
                 _transition_phase("discard")
+                _sync_classic_session_from_runtime()
 
             if capture_video_pending:
                 _save_video_frame()
@@ -1562,6 +2135,7 @@ def main():
                     starter_card = sc
                     message = msg
                     _transition_phase("discard")
+                    _sync_classic_session_from_runtime()
 
             pygame.display.flip()
             clock.tick(FPS)
@@ -1653,6 +2227,38 @@ def main():
         if gameplay_background is not None:
             bg = pygame.transform.smoothscale(gameplay_background, (sw, sh))
             screen.blit(bg, (0, 0))
+
+            atmosphere = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            atmosphere.fill((10, 22, 18, 44))
+            pygame.draw.ellipse(
+                atmosphere,
+                (220, 188, 118, 16),
+                pygame.Rect(sw // 2 - 420, sh // 2 - 220, 840, 500),
+            )
+            pygame.draw.ellipse(
+                atmosphere,
+                (0, 0, 0, 52),
+                pygame.Rect(14, 14, sw - 28, sh - 28),
+                width=34,
+            )
+            screen.blit(atmosphere, (0, 0))
+
+            table_zone = pygame.Rect(42, 88, sw - 84, sh - 136)
+            zone_overlay = pygame.Surface((table_zone.width, table_zone.height), pygame.SRCALPHA)
+            pygame.draw.rect(
+                zone_overlay,
+                (15, 45, 33, PLAYFIELD_ALPHA),
+                zone_overlay.get_rect(),
+                border_radius=26,
+            )
+            pygame.draw.rect(
+                zone_overlay,
+                (214, 184, 113, 95),
+                zone_overlay.get_rect(),
+                width=2,
+                border_radius=26,
+            )
+            screen.blit(zone_overlay, table_zone.topleft)
         else:
             _draw_board_frame(screen)
 
@@ -1661,7 +2267,10 @@ def main():
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
                 dad_ai_level = 1 if dad_ai_level == 4 else dad_ai_level + 1
-                message = f"Dad AI level set to {AI_LEVELS[dad_ai_level]}."
+                if dad_ai_level == 4:
+                    message = "AI level set to Bert. Opponent is now Bert."
+                else:
+                    message = f"AI level set to {AI_LEVELS[dad_ai_level]}."
 
             if _CLASSIC_SESSION.phase == "discard":
                 handle_discard(event)
@@ -1740,8 +2349,8 @@ def main():
             else:
                 card.draw(screen)
 
-        p2_pos = _row_positions(len(_CLASSIC_SESSION.ai_hand), sw, 170, 86)
-        p2_size = (90, 135)
+        p2_size = (106, 159)
+        p2_pos = _row_positions(len(_CLASSIC_SESSION.ai_hand), sw, 170, p2_size[0], margin=60)
         for i, card in enumerate(_CLASSIC_SESSION.ai_hand):
             card.rect = pygame.Rect(p2_pos[i][0], p2_pos[i][1], p2_size[0], p2_size[1])
             shadow = pygame.Rect(
@@ -1751,7 +2360,24 @@ def main():
             _draw_card_back(screen, card.rect)
 
         pegging_card_size = (92, 138)
-        pegging_y = 458
+        _player_row_top = max(510, sh - CARD_HEIGHT - 70)
+        pegging_y = min(PEGGING_Y, _player_row_top - pegging_card_size[1] - 62)
+        lane_width = min(620, max(220, 128 + len(_CLASSIC_SESSION.pegging_pile) * 30))
+        pegging_lane = pygame.Rect(
+            sw // 2 - lane_width // 2,
+            pegging_y - 14,
+            lane_width,
+            pegging_card_size[1] + 20,
+        )
+        if _CLASSIC_SESSION.pegging_pile:
+            _draw_shadowed_panel(
+                screen,
+                pegging_lane,
+                (21, 57, 42),
+                (182, 155, 100),
+                radius=28,
+                shadow=(3, 4),
+            )
         for i, card in enumerate(_CLASSIC_SESSION.pegging_pile):
             card.rect = pygame.Rect(
                 sw // 2 - 220 + i * 26, pegging_y, pegging_card_size[0], pegging_card_size[1]
@@ -1770,12 +2396,20 @@ def main():
                 screen.fill((0, 0, 0))
                 screen.blit(shaken, (shake_x, shake_y))
 
-        font = pygame.font.SysFont("arial", 22, bold=True)
-
-        total_surf = font.render(f"Pegging Total: {get_pegging_total()}", True, THEME["text"])
+        total_font = pygame.font.SysFont("segoe ui", 20, bold=True)
+        total_chip = pygame.Rect(sw // 2 - 154, pegging_y + pegging_card_size[1] + 10, 308, 46)
+        _draw_shadowed_panel(
+            screen, total_chip, (24, 36, 29), (197, 170, 108), radius=23, shadow=(4, 5)
+        )
+        total_surf = total_font.render(
+            f"Pegging Total: {get_pegging_total()}", True, (238, 224, 188)
+        )
         screen.blit(
             total_surf,
-            (sw // 2 - total_surf.get_width() // 2, pegging_y + pegging_card_size[1] + 10),
+            (
+                total_chip.centerx - total_surf.get_width() // 2,
+                total_chip.centery - total_surf.get_height() // 2,
+            ),
         )
 
         # Display scoring breakdown during end-of-hand phase
@@ -1790,49 +2424,75 @@ def main():
 
             # Show crib scoring in the center if dealer
             if crib_pts > 0 or crib_breakdown:
-                crib_panel_x = sw // 2 - 110
-                crib_panel_y = sh // 2 + 60
-                crib_rect = pygame.Rect(crib_panel_x, crib_panel_y, 220, 140)
-                _draw_shadowed_panel(
-                    screen, crib_rect, (32, 85, 52), THEME["wood_light"], radius=18
-                )
+                playfield = _playfield_rect(screen)
+                crib_panel = _crib_panel_rect(sw, sh)
+                crib_w = 240
+                crib_h = 140
+                crib_x = crib_panel.centerx - crib_w // 2
+                if _CLASSIC_SESSION.dealer == 0:
+                    # Opponent crib: place summary above the crib/starter box.
+                    crib_y = crib_panel.top - crib_h - 12
+                else:
+                    crib_y = crib_panel.bottom + 12
 
-                crib_font = pygame.font.SysFont("arial", 16, bold=True)
-                item_font = pygame.font.SysFont("arial", 13)
+                crib_x = max(playfield.left + 12, min(crib_x, playfield.right - crib_w - 12))
+                crib_y = max(playfield.top + 12, min(crib_y, playfield.bottom - crib_h - 12))
+                crib_rect = pygame.Rect(crib_x, crib_y, crib_w, crib_h)
+                _draw_shadowed_panel(screen, crib_rect, (21, 71, 48), (199, 169, 102), radius=18)
+
+                crib_font = pygame.font.SysFont("segoe ui", 16, bold=True)
+                item_font = pygame.font.SysFont("segoe ui", 13)
                 crib_label = "Crib" if _CLASSIC_SESSION.dealer == 1 else "Opponent's Crib"
                 _draw_label(
                     screen,
                     crib_label,
                     (crib_rect.x + 12, crib_rect.y + 10),
                     crib_font,
-                    THEME["text"],
+                    (240, 227, 188),
                 )
 
                 y = crib_rect.y + 38
                 for desc, _cards, points in crib_breakdown:
                     score_str = f"{desc}: +{points}"
-                    item_surf = item_font.render(score_str, True, THEME["text"])
+                    item_surf = item_font.render(score_str, True, (223, 211, 181))
                     screen.blit(item_surf, (crib_rect.x + 12, y))
                     y += 22
 
-                total_font = pygame.font.SysFont("arial", 14, bold=True)
+                total_font = pygame.font.SysFont("segoe ui", 14, bold=True)
                 total_str = f"Total: +{crib_pts}"
-                total_surf = total_font.render(total_str, True, THEME["gold"])
+                total_surf = total_font.render(total_str, True, (240, 205, 124))
                 screen.blit(total_surf, (crib_rect.x + 12, y + 8))
+
+            _draw_round_summary_popup(
+                screen,
+                p1_pts,
+                p2_pts,
+                crib_pts,
+                _CLASSIC_SESSION.dealer,
+                player_name,
+                discard_analysis_message,
+            )
 
         # End-of-hand / game-over clickable button (in addition to the R key).
         if _CLASSIC_SESSION.phase in ("end", "game_over"):
             sw, sh = screen.get_width(), screen.get_height()
             btn = _primary_button_rect(sw, sh)
-            btn_surface = pygame.Surface(btn.size, pygame.SRCALPHA)
-            btn_surface.fill((0, 0, 0, 110))
-            screen.blit(btn_surface, btn.topleft)
-            pygame.draw.rect(screen, THEME["panel"], btn, 2, border_radius=18)
+            is_hover = btn.collidepoint(pygame.mouse.get_pos())
+            if is_hover:
+                btn = btn.move(0, -2)
+            _draw_shadowed_panel(
+                screen,
+                btn,
+                (34, 50, 40) if is_hover else (28, 40, 33),
+                (223, 190, 115),
+                radius=18,
+                shadow=(5, 7),
+            )
 
             btn_text = "Next Round" if _CLASSIC_SESSION.phase == "end" else "Back to Intro"
-            btn_font = pygame.font.SysFont("arial", 28, bold=True)
+            btn_font = pygame.font.SysFont("cambria", 28, bold=True)
             btn_shadow = btn_font.render(btn_text, True, (0, 0, 0))
-            btn_label = btn_font.render(btn_text, True, THEME["panel"])
+            btn_label = btn_font.render(btn_text, True, (243, 227, 183))
             tx = btn.centerx - btn_label.get_width() // 2
             ty = btn.centery - btn_label.get_height() // 2
             screen.blit(btn_shadow, (tx + 2, ty + 2))

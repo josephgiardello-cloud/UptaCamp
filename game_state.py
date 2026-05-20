@@ -26,7 +26,7 @@ class GameState:
     winner: int | None = None
     ai_level: int = 1
     player_name: str = ""
-    ai_name: str = "Dad"
+    ai_name: str = "Dealer"
     history: list[Any] = field(default_factory=list)
     current_phase: Any | None = None
     phase_name: str = "intro"

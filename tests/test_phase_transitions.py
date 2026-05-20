@@ -113,4 +113,4 @@ def test_handle_counting_moves_to_end_when_no_winner():
     game.handle_counting()
 
     assert game.game_phase == "end"
-    assert "Counted:" in game.message
+    assert "Round counted" in game.message

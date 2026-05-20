@@ -7,6 +7,7 @@ class IntroState(GameStateBase):
     def __init__(self):
         self.start_button_rect = None
         self.online_button_rect = None
+        self.p2p_button_rect = None
 
     def handle_event(self, event, engine, assets, app):
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
@@ -17,17 +18,23 @@ class IntroState(GameStateBase):
             from .online_login import OnlineLoginState
 
             return OnlineLoginState()
-        if event.type == pygame.MOUSEBUTTONDOWN and self.start_button_rect is not None:
-            if self.start_button_rect.collidepoint(event.pos):
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
+            from .p2p_lobby import P2PLobbyState
+
+            return P2PLobbyState()
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.start_button_rect is not None and self.start_button_rect.collidepoint(event.pos):
                 from .deal import DealState
 
                 return DealState()
-            if self.online_button_rect is not None and self.online_button_rect.collidepoint(
-                event.pos
-            ):
+            if self.online_button_rect is not None and self.online_button_rect.collidepoint(event.pos):
                 from .online_login import OnlineLoginState
 
                 return OnlineLoginState()
+            if self.p2p_button_rect is not None and self.p2p_button_rect.collidepoint(event.pos):
+                from .p2p_lobby import P2PLobbyState
+
+                return P2PLobbyState()
         return self
 
     def update(self, engine, dt, app):
@@ -79,8 +86,26 @@ class IntroState(GameStateBase):
         online_rect = online_text.get_rect(center=self.online_button_rect.center)
         screen.blit(online_text, online_rect)
 
-        hint = help_font.render("Enter/Space = local, O or button = online", True, (255, 255, 255))
+        button_w, button_h = 260, 64
+        self.p2p_button_rect = pygame.Rect(
+            screen.get_width() // 2 - button_w // 2,
+            self.online_button_rect.bottom + 18,
+            button_w,
+            button_h,
+        )
+        pygame.draw.rect(screen, (56, 100, 56), self.p2p_button_rect, border_radius=12)
+        pygame.draw.rect(
+            screen, (140, 220, 140), self.p2p_button_rect, width=2, border_radius=12
+        )
+        p2p_text = help_font.render("Direct P2P", True, (255, 255, 255))
+        p2p_rect = p2p_text.get_rect(center=self.p2p_button_rect.center)
+        screen.blit(p2p_text, p2p_rect)
+
+        hint = help_font.render(
+            "Enter/Space = local  |  O = online server  |  P = direct P2P",
+            True, (255, 255, 255),
+        )
         hint_rect = hint.get_rect(
-            center=(screen.get_width() // 2, self.online_button_rect.bottom + 36)
+            center=(screen.get_width() // 2, self.p2p_button_rect.bottom + 36)
         )
         screen.blit(hint, hint_rect)

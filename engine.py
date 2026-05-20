@@ -20,6 +20,9 @@ class CribbageEngine:
     def _labels(self, cards: Sequence[Any]) -> list[str]:
         return [self._label(c) for c in cards]
 
+    def _dealer_name(self) -> str:
+        return "Bert" if self.state.dad_ai_level == 4 else "AI"
+
     def start_new_game(
         self,
         player_hand: Sequence[Any],
@@ -112,7 +115,7 @@ class CribbageEngine:
         points = score_pegging_play(self.state.pegging_pile)
         self.state.scores[player_idx] += points
 
-        name = player_name if player_idx == 0 else "Dad"
+        name = player_name if player_idx == 0 else self._dealer_name()
         point_note = f" (+{points})" if points else ""
 
         total = sum(value_for_15(parse_label(self._label(c))[0]) for c in self.state.pegging_pile)
@@ -122,7 +125,7 @@ class CribbageEngine:
             self.state.player_turn = 1 - player_idx
         else:
             self.state.message = f"{name} pegs{point_note}. " + (
-                "Dad's turn." if player_idx == 0 else "Your turn."
+                f"{self._dealer_name()}'s turn." if player_idx == 0 else "Your turn."
             )
             self.state.player_turn = 1 - player_idx
 
@@ -176,7 +179,7 @@ class CribbageEngine:
             self.state.message = (
                 "Last card for 1 point. Counting hands."
                 if self.state.last_pegging_player == 0
-                else "Dad gets last card for 1 point. Counting hands."
+                else f"{self._dealer_name()} gets last card for 1 point. Counting hands."
             )
         else:
             self.state.message = "Counting hands."

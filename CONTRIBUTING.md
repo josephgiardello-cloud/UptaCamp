@@ -26,13 +26,13 @@ Found a bug? Please open an [Issue](https://github.com/josephgiardello-cloud/Upt
 **Example**:
 ```
 Title: AI plays invalid cards at total 25
-Description: When pegging total is 25, Dad AI selects cards that would make 32+
+Description: When pegging total is 25, Dealer AI selects cards that would make 32+
 Steps to Reproduce:
 1. Start game on Hard difficulty
 2. Play to a pegging total of 25
-3. Watch Dad's move
-Expected: Dad should play a card ≤ 6
-Actual: Dad plays a 7 or higher
+3. Watch Dealer's move
+Expected: Dealer should play a card ≤ 6
+Actual: Dealer plays a 7 or higher
 ```
 
 ### Suggesting Features

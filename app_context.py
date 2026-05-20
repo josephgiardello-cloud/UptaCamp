@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from game_state import GameState
 from online_client import MatchEventStream, OnlineClient
@@ -22,6 +23,12 @@ class AppContext:
     status_message: str = ""
     game_state: GameState = field(default_factory=GameState)
 
+    # Direct P2P fields (no central server required)
+    p2p_host: Any = None   # p2p.P2PHost when this player is hosting
+    p2p_guest: Any = None  # p2p.P2PGuest when this player is joining
+    p2p_role: str = ""     # "host" | "guest" | ""
+    p2p_name: str = ""     # display name for this player in P2P match
+
     def __post_init__(self) -> None:
         self.client = OnlineClient(self.server_url)
         self.stream: MatchEventStream | None = None
@@ -30,3 +37,14 @@ class AppContext:
         if self.stream is not None:
             self.stream.stop()
         self.stream = None
+
+    def reset_p2p(self) -> None:
+        """Stop and clear any active P2P connection."""
+        if self.p2p_host is not None:
+            self.p2p_host.stop()
+            self.p2p_host = None
+        if self.p2p_guest is not None:
+            self.p2p_guest.stop()
+            self.p2p_guest = None
+        self.p2p_role = ""
+        self.p2p_name = ""

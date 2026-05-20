@@ -56,7 +56,7 @@ class DealState(GameStateBase):
         help_rect = help_text.get_rect(center=(screen.get_width() // 2, 95))
         screen.blit(help_text, help_rect)
 
-        # Draw Dad's hand (card backs)
+        # Draw Dealer hand (card backs)
         x = 100
         y = 120
         back_img = assets.get_card_image("back")
@@ -82,7 +82,7 @@ class DealState(GameStateBase):
 
         # Add labels for clarity
         small_font = pygame.font.SysFont(None, 32)
-        dad_label = small_font.render("Dad's Hand", True, (255, 255, 255))
+        dad_label = small_font.render("Dealer Hand", True, (255, 255, 255))
         player_label = small_font.render("Your Hand", True, (255, 255, 255))
         screen.blit(dad_label, (100, 90))
         screen.blit(player_label, (100, screen.get_height() - 250))
