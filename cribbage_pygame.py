@@ -22,6 +22,7 @@ from adapter import EngineAdapter
 from animations import EffectsManager
 from app_context import AppContext
 from assets.maine_shape import maine_shape as MAINE_SHAPE
+from assets.woodland_colors import WOODLAND_COLORS
 from audio_manager import AudioManager
 from engine import CribbageEngine
 from game_state import GameState
@@ -29,6 +30,7 @@ from phase_states import PhaseStateMachine
 from settings_manager import GameSettings, load_settings, save_settings
 from src.controllers import GameController
 from src.input import EventHandler
+from src.renderer import BoardRenderer, RenderingContext
 from stats_manager import get_player_profile, record_game_result, record_hand_stats
 from voice_manager import VoiceManager
 
@@ -36,6 +38,7 @@ from voice_manager import VoiceManager
 # --- Constants ---
 CARD_WIDTH = 120
 CARD_HEIGHT = 180
+FPS = 60
 
 # Legacy global variables for compatibility
 MAX_SCORE = 121
@@ -44,6 +47,11 @@ dealer = 0
 crib = []
 player1_hand = []
 selected_cards = []
+
+MAINE_COLORS = {
+    "cream": WOODLAND_COLORS.get("widget_font", (222, 184, 135)),
+    "gold": WOODLAND_COLORS.get("selection", (255, 215, 0)),
+}
 
 player2_hand: list[Any] = []
 pegging_pile: list[Any] = []
@@ -1577,6 +1585,7 @@ def main():
     _ADAPTER = EngineAdapter(_ENGINE, sys.modules[__name__])
     _PHASE_SM = PhaseStateMachine(_ENGINE)
     _EFFECTS = EffectsManager()
+    hud_renderer = BoardRenderer(RenderingContext(screen=screen, assets=None, ui_style=_UI_STYLE))
 
     intro_background = None
     for intro_candidate in (
@@ -3065,21 +3074,18 @@ def main():
                 _auto_discard_player_hand()
             game_controller.update(auto_player=capture_video_pending)
 
-        _draw_game_header(screen, _CLASSIC_SESSION.message)
-        _draw_score_panel(
-            screen,
-            _CLASSIC_SESSION.dealer,
-            _CLASSIC_SESSION.scores,
-            _CLASSIC_SESSION.dad_ai_level,
-            player_name,
-        )
-        _draw_crib_area(
-            screen,
-            len(_CLASSIC_SESSION.crib),
-            _CLASSIC_SESSION.starter_card,
-            card_images,
-            _CLASSIC_SESSION.dealer,
-            _CLASSIC_SESSION.phase,
+        hud_renderer.context.screen = screen
+        hud_renderer.context.ui_style = _UI_STYLE
+        hud_renderer.draw_classic_hud(
+            message=_CLASSIC_SESSION.message,
+            dealer=_CLASSIC_SESSION.dealer,
+            scores=_CLASSIC_SESSION.scores,
+            dad_ai_level=_CLASSIC_SESSION.dad_ai_level,
+            player_name=player_name,
+            crib_count=len(_CLASSIC_SESSION.crib),
+            starter_card=_CLASSIC_SESSION.starter_card,
+            card_images=card_images,
+            phase=_CLASSIC_SESSION.phase,
         )
 
         # Update Card Positions for rendering

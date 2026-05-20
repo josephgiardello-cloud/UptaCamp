@@ -82,7 +82,7 @@ class IntroState(GameStateBase):
         pygame.draw.rect(
             screen, (180, 210, 240), self.online_button_rect, width=2, border_radius=12
         )
-        online_text = help_font.render("Online Match", True, (255, 255, 255))
+        online_text = help_font.render("Play With Friend", True, (255, 255, 255))
         online_rect = online_text.get_rect(center=self.online_button_rect.center)
         screen.blit(online_text, online_rect)
 
@@ -102,8 +102,9 @@ class IntroState(GameStateBase):
         screen.blit(p2p_text, p2p_rect)
 
         hint = help_font.render(
-            "Enter/Space = local  |  O = online server  |  P = direct P2P",
-            True, (255, 255, 255),
+            "Enter/Space = local  |  O = play with friend online  |  P = direct P2P",
+            True,
+            (255, 255, 255),
         )
         hint_rect = hint.get_rect(
             center=(screen.get_width() // 2, self.p2p_button_rect.bottom + 36)

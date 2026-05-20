@@ -66,7 +66,30 @@ python main.py
 python main.py --new-client
 ```
 
-### Online client path
+### Play online with a friend (easy mode)
+
+1. Start the online services (API + websocket):
+
+```bash
+python online_api_server.py --host 127.0.0.1 --port 8787 --db online_state.db
+python online_ws_server.py --host 127.0.0.1 --port 8790 --db online_state.db
+```
+
+2. Start the client:
+
+```bash
+python main.py --new-client --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
+```
+
+3. In-game flow:
+- Choose `Play With Friend`
+- Enter your display name
+- Pick one:
+  - `Host Friend Match`: creates a share code for your friend
+  - `Join With Code`: enter your friend's code and press Enter
+  - `Quick Match`: auto-pair with available players
+
+### Online client path (advanced)
 
 ```bash
 python main.py --new-client --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790

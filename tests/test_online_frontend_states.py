@@ -86,10 +86,11 @@ def test_online_menu_join_flow_transitions_to_match():
     app.display_name = "Ali"
 
     state = OnlineMenuState()
+    state.handle_event(_key_event(pygame.K_2), None, None, app)
     for ch in "AB12":
         state.handle_event(_key_event(pygame.K_a, ch), None, None, app)
 
-    next_state = state.handle_event(_key_event(pygame.K_2), None, None, app)
+    next_state = state.handle_event(_key_event(pygame.K_RETURN), None, None, app)
 
     assert app.current_match_id == "match_joined"
     assert isinstance(next_state, OnlineMatchState)
@@ -102,7 +103,7 @@ def test_online_menu_quick_match_transitions_to_match():
     app.display_name = "Ali"
 
     state = OnlineMenuState()
-    next_state = state.handle_event(_key_event(pygame.K_3), None, None, app)
+    next_state = state.handle_event(_key_event(pygame.K_m, "m"), None, None, app)
 
     assert app.current_match_id == "match_quick"
     assert isinstance(next_state, OnlineMatchState)
@@ -123,3 +124,21 @@ def test_online_menu_adjusts_preferred_online_ai_level():
 
     state.handle_event(_key_event(pygame.K_LEFT), None, None, app)
     assert app.preferred_online_ai_level == 3
+
+
+def test_online_menu_copy_code_shortcut_sets_feedback(monkeypatch):
+    app = _FakeApp()
+    app.player_id = "p_test"
+    app.session_token = "tok"
+    app.display_name = "Ali"
+
+    state = OnlineMenuState()
+    state.handle_event(_key_event(pygame.K_h, "h"), None, None, app)
+
+    monkeypatch.setattr(state, "_copy_to_clipboard", lambda text: text == "ROOM1234")
+    state.handle_event(_key_event(pygame.K_c, "c"), None, None, app)
+
+    assert app.status_message == "Code copied: ROOM1234"
+    assert app.last_error == ""
+    assert state.copy_toast_text == "Copied!"
+    assert state.copy_toast_until_ms > 0
