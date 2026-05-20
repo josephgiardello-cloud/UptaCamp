@@ -1,0 +1,46 @@
+{
+  "phase": "counting",
+  "dealer": 1,
+  "scores": [
+    10,
+    12
+  ],
+  "player_hand": [],
+  "ai_hand": [],
+  "crib": [
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37BB81770>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37B993C80>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37BB85950>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37BB85A50>"
+  ],
+  "pegging_pile": [
+    "namespace(label='10_of_clubs')",
+    "namespace(label='9_of_hearts')"
+  ],
+  "player_kept": [
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37B9BB3F0>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37B9BB230>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37BB61980>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37B883E90>"
+  ],
+  "ai_kept": [
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37BA29010>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37B9FFEE0>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37BBA8100>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001D37BB81310>"
+  ],
+  "starter_card": "5_of_clubs",
+  "player_turn": 1,
+  "pegging_passes": [
+    false,
+    false
+  ],
+  "last_pegging_player": 0,
+  "message": "Last card for 1 point. Counting hands.",
+  "dad_ai_level": 2,
+  "ai_level": 1,
+  "player_name": "",
+  "ai_name": "Dealer",
+  "phase_name": "intro",
+  "winner": null
+}
