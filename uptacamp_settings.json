@@ -1,5 +1,17 @@
 {
-  "volume": 0.5357142857142857,
+  "volume": 0.6,
   "animations_enabled": true,
-  "online_ai_level": 3
+  "online_ai_level": 3,
+  "ui_style": "premium_tabletop",
+  "bert_voice_enabled": true,
+  "bert_voice_style": "downeast",
+  "bert_voice_backend": "sapi",
+  "bert_local_model_path": "",
+  "bert_local_exe_path": "piper",
+  "bert_rvc_enabled": false,
+  "bert_rvc_exe_path": "rvc_infer",
+  "bert_rvc_model_path": "",
+  "bert_rvc_index_path": "",
+  "bert_rvc_pitch_shift": 0,
+  "player_name": "Player"
 }

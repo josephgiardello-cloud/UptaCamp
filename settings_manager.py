@@ -23,6 +23,7 @@ class GameSettings:
     bert_rvc_model_path: str = ""
     bert_rvc_index_path: str = ""
     bert_rvc_pitch_shift: int = 0
+    player_name: str = "Player"
 
     def clamp(self) -> GameSettings:
         self.volume = max(0.0, min(1.0, float(self.volume)))
@@ -48,6 +49,7 @@ class GameSettings:
         self.bert_rvc_model_path = str(self.bert_rvc_model_path or "").strip()
         self.bert_rvc_index_path = str(self.bert_rvc_index_path or "").strip()
         self.bert_rvc_pitch_shift = int(max(-24, min(24, int(self.bert_rvc_pitch_shift))))
+        self.player_name = (str(self.player_name or "").strip() or "Player")[:24]
         return self
 
 
@@ -75,6 +77,7 @@ def load_settings(path: Path | None = None) -> GameSettings:
         bert_rvc_model_path=raw.get("bert_rvc_model_path", ""),
         bert_rvc_index_path=raw.get("bert_rvc_index_path", ""),
         bert_rvc_pitch_shift=raw.get("bert_rvc_pitch_shift", 0),
+        player_name=raw.get("player_name", "Player"),
     )
     return settings.clamp()
 

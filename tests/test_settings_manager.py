@@ -67,3 +67,30 @@ def test_settings_clamp_clips_rvc_pitch_shift():
     clamped = settings.clamp()
 
     assert clamped.bert_rvc_pitch_shift == 24
+
+
+def test_settings_round_trip_includes_player_name(tmp_path):
+    path = tmp_path / "settings.json"
+    settings = GameSettings(player_name="Alice")
+
+    save_settings(settings, path=path)
+    loaded = load_settings(path=path)
+
+    assert loaded.player_name == "Alice"
+
+
+def test_settings_clamp_normalizes_empty_player_name():
+    settings = GameSettings(player_name="")
+
+    clamped = settings.clamp()
+
+    assert clamped.player_name == "Player"
+
+
+def test_settings_clamp_trims_and_caps_player_name():
+    settings = GameSettings(player_name="  " + "A" * 30 + "  ")
+
+    clamped = settings.clamp()
+
+    assert len(clamped.player_name) == 24
+    assert clamped.player_name == "A" * 24

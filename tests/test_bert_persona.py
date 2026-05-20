@@ -27,3 +27,24 @@ def test_choose_line_bert_plus_downeast_gets_strategy_suffix_for_key_events():
     line = bert_persona.choose_line("bert_won", "downeast", dad_ai_level=5)
 
     assert "Bert Plus saw that line two plays ago." in line
+
+
+def test_choose_line_hand_scored_returns_content():
+    downeast = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=4)
+    robot = bert_persona.choose_line("hand_scored", "robot", dad_ai_level=4)
+
+    assert downeast
+    assert robot
+
+
+def test_choose_line_crib_scored_returns_content():
+    downeast = bert_persona.choose_line("crib_scored", "downeast", dad_ai_level=4)
+    robot = bert_persona.choose_line("crib_scored", "robot", dad_ai_level=4)
+
+    assert downeast
+    assert robot
+
+
+def test_choose_line_hand_and_crib_scored_require_bert_level():
+    assert bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=3) == ""
+    assert bert_persona.choose_line("crib_scored", "robot", dad_ai_level=2) == ""
