@@ -31,6 +31,7 @@ from settings_manager import GameSettings, load_settings, save_settings
 from src.controllers import GameController
 from src.input import EventHandler
 from src.renderer import BoardRenderer, RenderingContext
+from src.renderer.settings_modal_renderer import draw_settings_modal, voice_startup_warning_text
 from stats_manager import get_player_profile, record_game_result, record_hand_stats
 from voice_manager import VoiceManager
 
@@ -1456,24 +1457,7 @@ def main():
     online_btn_rect = None
     settings_btn_rect = None
     settings_open = False
-    settings_volume_rect = None
-    settings_anim_rect = None
-    settings_ai_left_rect = None
-    settings_ai_right_rect = None
-    settings_style_left_rect = None
-    settings_style_right_rect = None
-    settings_voice_style_rect = None
-    settings_voice_backend_rect = None
-    settings_rvc_toggle_rect = None
-    settings_rvc_pitch_left_rect = None
-    settings_rvc_pitch_right_rect = None
-    settings_voice_test_rect = None
-    settings_local_exe_rect = None
-    settings_local_model_rect = None
-    settings_rvc_exe_rect = None
-    settings_rvc_model_rect = None
-    settings_rvc_index_rect = None
-    settings_player_name_rect = None
+    settings_rects: dict[str, pygame.Rect] = {}
     settings_text_active = None
     difficulty_descriptions = {
         1: "Random play\nEasy wins",
@@ -1522,29 +1506,6 @@ def main():
                 _SETTINGS.bert_rvc_pitch_shift,
             )
 
-    def _voice_startup_warning_text() -> str:
-        if _SETTINGS.bert_voice_backend != "local_ai":
-            return ""
-
-        model_path = _SETTINGS.bert_local_model_path.strip()
-        exe_path = _SETTINGS.bert_local_exe_path.strip() or "piper"
-        model_ok = bool(model_path) and Path(model_path).exists()
-        exe_ok = shutil.which(exe_path) is not None or Path(exe_path).exists()
-
-        if not model_ok:
-            return "Local AI voice is selected but Piper model path is missing/invalid. SAPI fallback active."
-        if not exe_ok:
-            return "Local AI voice is selected but Piper executable was not found. SAPI fallback active."
-        if _SETTINGS.bert_rvc_enabled:
-            rvc_model_ok = bool(_SETTINGS.bert_rvc_model_path.strip()) and Path(
-                _SETTINGS.bert_rvc_model_path.strip()
-            ).exists()
-            rvc_exe_path = _SETTINGS.bert_rvc_exe_path.strip() or "rvc_infer"
-            rvc_exe_ok = shutil.which(rvc_exe_path) is not None or Path(rvc_exe_path).exists()
-            if not rvc_model_ok or not rvc_exe_ok:
-                return "RVC is enabled but not fully configured. Voice runs without RVC until paths are fixed."
-        return ""
-
     def _preview_bert_voice() -> None:
         if _VOICE is None:
             return
@@ -1562,14 +1523,6 @@ def main():
             bypass_cooldown=True,
             voice_style=_SETTINGS.bert_voice_style,
         )
-
-    def _path_preview(value: str) -> str:
-        cleaned = value.strip()
-        if not cleaned:
-            return "<not set>"
-        if len(cleaned) <= 62:
-            return cleaned
-        return "..." + cleaned[-59:]
 
     def _get_text_field_value(field: str) -> str:
         if field == "player_name":
@@ -1649,6 +1602,25 @@ def main():
 
     def _handle_settings_modal_click(pos: tuple[int, int]) -> None:
         nonlocal settings_open, settings_text_active
+
+        settings_volume_rect = settings_rects.get("settings_volume_rect")
+        settings_anim_rect = settings_rects.get("settings_anim_rect")
+        settings_ai_left_rect = settings_rects.get("settings_ai_left_rect")
+        settings_ai_right_rect = settings_rects.get("settings_ai_right_rect")
+        settings_style_left_rect = settings_rects.get("settings_style_left_rect")
+        settings_style_right_rect = settings_rects.get("settings_style_right_rect")
+        settings_voice_style_rect = settings_rects.get("settings_voice_style_rect")
+        settings_voice_backend_rect = settings_rects.get("settings_voice_backend_rect")
+        settings_rvc_toggle_rect = settings_rects.get("settings_rvc_toggle_rect")
+        settings_rvc_pitch_left_rect = settings_rects.get("settings_rvc_pitch_left_rect")
+        settings_rvc_pitch_right_rect = settings_rects.get("settings_rvc_pitch_right_rect")
+        settings_voice_test_rect = settings_rects.get("settings_voice_test_rect")
+        settings_local_exe_rect = settings_rects.get("settings_local_exe_rect")
+        settings_local_model_rect = settings_rects.get("settings_local_model_rect")
+        settings_rvc_exe_rect = settings_rects.get("settings_rvc_exe_rect")
+        settings_rvc_model_rect = settings_rects.get("settings_rvc_model_rect")
+        settings_rvc_index_rect = settings_rects.get("settings_rvc_index_rect")
+        settings_player_name_rect = settings_rects.get("settings_player_name_rect")
 
         if settings_volume_rect is not None and settings_volume_rect.collidepoint(pos):
             ratio = (pos[0] - settings_volume_rect.x) / max(1, settings_volume_rect.width)
@@ -1928,351 +1900,6 @@ def main():
 
         return False
 
-    def _draw_settings_modal(sw: int, sh: int) -> None:
-        nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
-        nonlocal settings_style_left_rect, settings_style_right_rect
-        nonlocal settings_voice_style_rect
-        nonlocal settings_voice_backend_rect
-        nonlocal settings_rvc_toggle_rect, settings_rvc_pitch_left_rect
-        nonlocal settings_rvc_pitch_right_rect, settings_voice_test_rect
-        nonlocal settings_local_exe_rect, settings_local_model_rect
-        nonlocal settings_rvc_exe_rect, settings_rvc_model_rect, settings_rvc_index_rect
-        nonlocal settings_player_name_rect
-        nonlocal settings_text_active
-        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        screen.blit(overlay, (0, 0))
-
-        modal = pygame.Rect(sw // 2 - 280, max(10, sh // 2 - 430), 560, 860)
-        shadow = modal.move(0, 10)
-        pygame.draw.rect(screen, (0, 0, 0, 120), shadow, border_radius=28)
-        pygame.draw.rect(screen, (24, 20, 18), modal, border_radius=28)
-        pygame.draw.rect(screen, (78, 53, 30), modal.inflate(-12, -12), border_radius=22)
-        pygame.draw.rect(screen, (233, 205, 153), modal, width=2, border_radius=28)
-        pygame.draw.rect(screen, (255, 241, 205), modal.inflate(-18, -18), width=1, border_radius=22)
-
-        title_font = pygame.font.SysFont("constantia", 34, bold=True)
-        body_font = pygame.font.SysFont("candara", 22, bold=True)
-        small_font = pygame.font.SysFont("segoe ui", 16)
-        title = title_font.render("Camp Settings", True, (249, 236, 207))
-        screen.blit(title, (modal.centerx - title.get_width() // 2, modal.y + 16))
-
-        strap = small_font.render("Tune the table before the next hand.", True, (216, 198, 171))
-        screen.blit(strap, (modal.centerx - strap.get_width() // 2, modal.y + 56))
-
-        name_label = small_font.render("Your Name:", True, (216, 198, 171))
-        screen.blit(name_label, (modal.x + 28, modal.y + 82))
-        settings_player_name_rect = pygame.Rect(modal.x + 122, modal.y + 76, 196, 28)
-        _name_active = settings_text_active == "player_name"
-        pygame.draw.rect(
-            screen,
-            (68, 60, 52) if _name_active else (48, 42, 36),
-            settings_player_name_rect,
-            border_radius=10,
-        )
-        pygame.draw.rect(
-            screen,
-            (255, 237, 172) if _name_active else (180, 162, 130),
-            settings_player_name_rect,
-            width=2,
-            border_radius=10,
-        )
-        _name_disp = small_font.render(
-            (_SETTINGS.player_name or "Player") + ("|" if _name_active else ""),
-            True,
-            (239, 234, 222),
-        )
-        screen.blit(
-            _name_disp,
-            (settings_player_name_rect.x + 8, settings_player_name_rect.centery - _name_disp.get_height() // 2),
-        )
-
-        vol_label = body_font.render(
-            f"Volume: {int(_SETTINGS.volume * 100)}%", True, (245, 236, 218)
-        )
-        screen.blit(vol_label, (modal.x + 28, modal.y + 92))
-        settings_volume_rect = pygame.Rect(modal.x + 28, modal.y + 128, 420, 18)
-        pygame.draw.rect(screen, (69, 56, 43), settings_volume_rect, border_radius=9)
-        fill = settings_volume_rect.copy()
-        fill.width = max(8, int(settings_volume_rect.width * _SETTINGS.volume))
-        pygame.draw.rect(screen, (214, 176, 91), fill, border_radius=9)
-        knob_x = settings_volume_rect.x + int(settings_volume_rect.width * _SETTINGS.volume)
-        knob_x = max(settings_volume_rect.left + 10, min(settings_volume_rect.right - 10, knob_x))
-        pygame.draw.circle(screen, (255, 244, 220), (knob_x, settings_volume_rect.centery), 11)
-        pygame.draw.circle(screen, (139, 96, 48), (knob_x, settings_volume_rect.centery), 11, 2)
-
-        anim_text = "On" if _SETTINGS.animations_enabled else "Off"
-        settings_anim_rect = pygame.Rect(modal.x + 28, modal.y + 184, 174, 44)
-        anim_label = body_font.render(f"Animations: {anim_text}", True, (245, 236, 218))
-        screen.blit(anim_label, (modal.x + 28, modal.y + 156))
-        pygame.draw.rect(
-            screen,
-            (62, 101, 74) if _SETTINGS.animations_enabled else (121, 72, 66),
-            settings_anim_rect,
-            border_radius=22,
-        )
-        pygame.draw.rect(screen, (255, 239, 212), settings_anim_rect, width=2, border_radius=22)
-        toggle_text = body_font.render("Toggle", True, (255, 255, 255))
-        screen.blit(
-            toggle_text,
-            (
-                settings_anim_rect.centerx - toggle_text.get_width() // 2,
-                settings_anim_rect.centery - toggle_text.get_height() // 2,
-            ),
-        )
-
-        ai_label = body_font.render(
-            f"Online AI Pref: {AI_LEVELS[_SETTINGS.online_ai_level]}", True, (245, 236, 218)
-        )
-        screen.blit(ai_label, (modal.x + 244, modal.y + 156))
-        settings_ai_left_rect = pygame.Rect(modal.x + 244, modal.y + 184, 46, 44)
-        settings_ai_right_rect = pygame.Rect(modal.x + 366, modal.y + 184, 46, 44)
-        mid_rect = pygame.Rect(modal.x + 300, modal.y + 184, 56, 44)
-        for rect, label in ((settings_ai_left_rect, "<"), (settings_ai_right_rect, ">")):
-            pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
-            pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
-            txt = body_font.render(label, True, (255, 255, 255))
-            screen.blit(
-                txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2)
-            )
-        ai_mid = body_font.render(str(_SETTINGS.online_ai_level), True, (255, 255, 255))
-        pygame.draw.rect(screen, (55, 48, 42), mid_rect, border_radius=18)
-        pygame.draw.rect(screen, (233, 205, 153), mid_rect, width=2, border_radius=18)
-        screen.blit(
-            ai_mid,
-            (
-                mid_rect.centerx - ai_mid.get_width() // 2,
-                mid_rect.centery - ai_mid.get_height() // 2,
-            ),
-        )
-
-        style_label = body_font.render("Playfield Style:", True, (245, 236, 218))
-        screen.blit(style_label, (modal.x + 28, modal.y + 244))
-        settings_style_left_rect = pygame.Rect(modal.x + 28, modal.y + 272, 46, 44)
-        settings_style_right_rect = pygame.Rect(modal.x + 402, modal.y + 272, 46, 44)
-        style_mid_rect = pygame.Rect(modal.x + 84, modal.y + 272, 312, 44)
-        for rect, label in ((settings_style_left_rect, "<"), (settings_style_right_rect, ">")):
-            pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
-            pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
-            txt = body_font.render(label, True, (255, 255, 255))
-            screen.blit(
-                txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2)
-            )
-        pygame.draw.rect(screen, (55, 48, 42), style_mid_rect, border_radius=18)
-        pygame.draw.rect(screen, (233, 205, 153), style_mid_rect, width=2, border_radius=18)
-        style_text = small_font.render(_UI_STYLE_LABELS[_SETTINGS.ui_style], True, (255, 255, 255))
-        screen.blit(
-            style_text,
-            (
-                style_mid_rect.centerx - style_text.get_width() // 2,
-                style_mid_rect.centery - style_text.get_height() // 2,
-            ),
-        )
-
-        voice_style_label = body_font.render("Bert Voice Style:", True, (245, 236, 218))
-        screen.blit(voice_style_label, (modal.x + 28, modal.y + 324))
-        settings_voice_style_rect = pygame.Rect(modal.x + 216, modal.y + 324, 196, 44)
-        pygame.draw.rect(screen, (66, 94, 132), settings_voice_style_rect, border_radius=18)
-        pygame.draw.rect(screen, (224, 234, 244), settings_voice_style_rect, width=2, border_radius=18)
-        voice_text = small_font.render(
-            f"{_SETTINGS.bert_voice_style.title()} (click)", True, (255, 255, 255)
-        )
-        screen.blit(
-            voice_text,
-            (
-                settings_voice_style_rect.centerx - voice_text.get_width() // 2,
-                settings_voice_style_rect.centery - voice_text.get_height() // 2,
-            ),
-        )
-
-        backend_label = body_font.render("Bert Voice Backend:", True, (245, 236, 218))
-        screen.blit(backend_label, (modal.x + 28, modal.y + 378))
-        settings_voice_backend_rect = pygame.Rect(modal.x + 216, modal.y + 378, 196, 44)
-        pygame.draw.rect(screen, (88, 94, 66), settings_voice_backend_rect, border_radius=18)
-        pygame.draw.rect(screen, (244, 239, 188), settings_voice_backend_rect, width=2, border_radius=18)
-        backend_text = "Local AI" if _SETTINGS.bert_voice_backend == "local_ai" else "Windows SAPI"
-        backend_note = small_font.render(f"{backend_text} (click)", True, (255, 255, 255))
-        screen.blit(
-            backend_note,
-            (
-                settings_voice_backend_rect.centerx - backend_note.get_width() // 2,
-                settings_voice_backend_rect.centery - backend_note.get_height() // 2,
-            ),
-        )
-
-        rvc_label = body_font.render("RVC Accent Pass:", True, (245, 236, 218))
-        screen.blit(rvc_label, (modal.x + 28, modal.y + 432))
-        settings_rvc_toggle_rect = pygame.Rect(modal.x + 216, modal.y + 432, 196, 44)
-        rvc_fill = (62, 101, 74) if _SETTINGS.bert_rvc_enabled else (121, 72, 66)
-        pygame.draw.rect(screen, rvc_fill, settings_rvc_toggle_rect, border_radius=18)
-        pygame.draw.rect(screen, (244, 239, 188), settings_rvc_toggle_rect, width=2, border_radius=18)
-        rvc_text = "Enabled (click)" if _SETTINGS.bert_rvc_enabled else "Disabled (click)"
-        rvc_note = small_font.render(rvc_text, True, (255, 255, 255))
-        screen.blit(
-            rvc_note,
-            (
-                settings_rvc_toggle_rect.centerx - rvc_note.get_width() // 2,
-                settings_rvc_toggle_rect.centery - rvc_note.get_height() // 2,
-            ),
-        )
-
-        pitch_label = body_font.render("RVC Pitch Shift:", True, (245, 236, 218))
-        screen.blit(pitch_label, (modal.x + 28, modal.y + 486))
-        settings_rvc_pitch_left_rect = pygame.Rect(modal.x + 216, modal.y + 486, 46, 44)
-        settings_rvc_pitch_right_rect = pygame.Rect(modal.x + 366, modal.y + 486, 46, 44)
-        pitch_mid_rect = pygame.Rect(modal.x + 272, modal.y + 486, 84, 44)
-        for rect, label in (
-            (settings_rvc_pitch_left_rect, "<"),
-            (settings_rvc_pitch_right_rect, ">"),
-        ):
-            pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
-            pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
-            txt = body_font.render(label, True, (255, 255, 255))
-            screen.blit(
-                txt,
-                (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2),
-            )
-        pygame.draw.rect(screen, (55, 48, 42), pitch_mid_rect, border_radius=18)
-        pygame.draw.rect(screen, (233, 205, 153), pitch_mid_rect, width=2, border_radius=18)
-        pitch_text = body_font.render(str(_SETTINGS.bert_rvc_pitch_shift), True, (255, 255, 255))
-        screen.blit(
-            pitch_text,
-            (
-                pitch_mid_rect.centerx - pitch_text.get_width() // 2,
-                pitch_mid_rect.centery - pitch_text.get_height() // 2,
-            ),
-        )
-
-        settings_voice_test_rect = pygame.Rect(modal.x + 116, modal.y + 542, 248, 44)
-        pygame.draw.rect(screen, (90, 74, 142), settings_voice_test_rect, border_radius=18)
-        pygame.draw.rect(screen, (222, 212, 248), settings_voice_test_rect, width=2, border_radius=18)
-        test_text = body_font.render("Test Bert Voice", True, (255, 255, 255))
-        screen.blit(
-            test_text,
-            (
-                settings_voice_test_rect.centerx - test_text.get_width() // 2,
-                settings_voice_test_rect.centery - test_text.get_height() // 2,
-            ),
-        )
-
-        field_font = pygame.font.SysFont("consolas", 16)
-
-        local_exe_label = body_font.render("Piper Executable:", True, (245, 236, 218))
-        screen.blit(local_exe_label, (modal.x + 28, modal.y + 488))
-        settings_local_exe_rect = pygame.Rect(modal.x + 28, modal.y + 518, modal.width - 56, 30)
-        local_exe_active = settings_text_active == "local_exe"
-        pygame.draw.rect(
-            screen,
-            (58, 52, 45) if not local_exe_active else (68, 60, 52),
-            settings_local_exe_rect,
-            border_radius=10,
-        )
-        pygame.draw.rect(
-            screen,
-            (222, 212, 188) if not local_exe_active else (255, 237, 172),
-            settings_local_exe_rect,
-            width=2,
-            border_radius=10,
-        )
-        local_exe_text = field_font.render(_path_preview(_SETTINGS.bert_local_exe_path), True, (239, 234, 222))
-        screen.blit(local_exe_text, (settings_local_exe_rect.x + 10, settings_local_exe_rect.y + 6))
-
-        local_model_label = body_font.render("Piper Model Path:", True, (245, 236, 218))
-        screen.blit(local_model_label, (modal.x + 28, modal.y + 560))
-        settings_local_model_rect = pygame.Rect(modal.x + 28, modal.y + 590, modal.width - 56, 30)
-        local_model_active = settings_text_active == "local_model"
-        pygame.draw.rect(
-            screen,
-            (58, 52, 45) if not local_model_active else (68, 60, 52),
-            settings_local_model_rect,
-            border_radius=10,
-        )
-        pygame.draw.rect(
-            screen,
-            (222, 212, 188) if not local_model_active else (255, 237, 172),
-            settings_local_model_rect,
-            width=2,
-            border_radius=10,
-        )
-        local_model_text = field_font.render(
-            _path_preview(_SETTINGS.bert_local_model_path), True, (239, 234, 222)
-        )
-        screen.blit(local_model_text, (settings_local_model_rect.x + 10, settings_local_model_rect.y + 6))
-
-        rvc_exe_label = body_font.render("RVC Executable:", True, (245, 236, 218))
-        screen.blit(rvc_exe_label, (modal.x + 28, modal.y + 632))
-        settings_rvc_exe_rect = pygame.Rect(modal.x + 28, modal.y + 662, modal.width - 56, 30)
-        rvc_exe_active = settings_text_active == "rvc_exe"
-        pygame.draw.rect(
-            screen,
-            (58, 52, 45) if not rvc_exe_active else (68, 60, 52),
-            settings_rvc_exe_rect,
-            border_radius=10,
-        )
-        pygame.draw.rect(
-            screen,
-            (222, 212, 188) if not rvc_exe_active else (255, 237, 172),
-            settings_rvc_exe_rect,
-            width=2,
-            border_radius=10,
-        )
-        rvc_exe_text = field_font.render(_path_preview(_SETTINGS.bert_rvc_exe_path), True, (239, 234, 222))
-        screen.blit(rvc_exe_text, (settings_rvc_exe_rect.x + 10, settings_rvc_exe_rect.y + 6))
-
-        rvc_model_label = body_font.render("RVC Model Path:", True, (245, 236, 218))
-        screen.blit(rvc_model_label, (modal.x + 28, modal.y + 704))
-        settings_rvc_model_rect = pygame.Rect(modal.x + 28, modal.y + 734, modal.width - 56, 30)
-        rvc_model_active = settings_text_active == "rvc_model"
-        pygame.draw.rect(
-            screen,
-            (58, 52, 45) if not rvc_model_active else (68, 60, 52),
-            settings_rvc_model_rect,
-            border_radius=10,
-        )
-        pygame.draw.rect(
-            screen,
-            (222, 212, 188) if not rvc_model_active else (255, 237, 172),
-            settings_rvc_model_rect,
-            width=2,
-            border_radius=10,
-        )
-        rvc_model_text = field_font.render(
-            _path_preview(_SETTINGS.bert_rvc_model_path), True, (239, 234, 222)
-        )
-        screen.blit(rvc_model_text, (settings_rvc_model_rect.x + 10, settings_rvc_model_rect.y + 6))
-
-        rvc_index_label = body_font.render("RVC Index Path:", True, (245, 236, 218))
-        screen.blit(rvc_index_label, (modal.x + 28, modal.y + 776))
-        settings_rvc_index_rect = pygame.Rect(modal.x + 28, modal.y + 806, modal.width - 56, 30)
-        rvc_index_active = settings_text_active == "rvc_index"
-        pygame.draw.rect(
-            screen,
-            (58, 52, 45) if not rvc_index_active else (68, 60, 52),
-            settings_rvc_index_rect,
-            border_radius=10,
-        )
-        pygame.draw.rect(
-            screen,
-            (222, 212, 188) if not rvc_index_active else (255, 237, 172),
-            settings_rvc_index_rect,
-            width=2,
-            border_radius=10,
-        )
-        rvc_index_text = field_font.render(
-            _path_preview(_SETTINGS.bert_rvc_index_path), True, (239, 234, 222)
-        )
-        screen.blit(rvc_index_text, (settings_rvc_index_rect.x + 10, settings_rvc_index_rect.y + 6))
-
-        warn_text = _voice_startup_warning_text()
-        if warn_text:
-            warn = small_font.render(warn_text, True, (235, 193, 136))
-            screen.blit(warn, (modal.x + 28, modal.y + 842))
-
-        hint = small_font.render(
-            "Click a path box to edit. Enter saves. Esc exits field.", True, (210, 198, 176)
-        )
-        screen.blit(hint, (modal.centerx - hint.get_width() // 2, modal.bottom - 22))
-
     if capture_gameplay_pending:
         _prepare_gameplay_preview_state()
 
@@ -2361,7 +1988,7 @@ def main():
             subtitle_small = subtitle_small_font.render(
                 "Maine camp cards, dressed like opening night.", True, (214, 194, 162)
             )
-            voice_warning = _voice_startup_warning_text()
+            voice_warning = voice_startup_warning_text(_SETTINGS)
 
             title_top = 88
             title_to_subtitle_gap = 8
@@ -2793,7 +2420,15 @@ def main():
             )
 
             if settings_open:
-                _draw_settings_modal(sw, sh)
+                settings_rects = draw_settings_modal(
+                    screen=screen,
+                    sw=sw,
+                    sh=sh,
+                    settings=_SETTINGS,
+                    settings_text_active=settings_text_active,
+                    ai_level_labels=AI_LEVELS,
+                    ui_style_labels=_UI_STYLE_LABELS,
+                )
 
             if _handle_intro_capture_outputs():
                 return
