@@ -1946,7 +1946,7 @@ def main():
         _UI_STYLE = _SETTINGS.ui_style
         _persist_settings()
 
-    def _begin_classic_round(*, announce: bool) -> tuple[int, Card, str]:
+    def _begin_classic_round(*, announce: bool) -> tuple[int, object, str]:
         d, sc, msg = _start_fresh_game()
         _transition_phase("discard")
         if announce:
@@ -2028,6 +2028,36 @@ def main():
 
         settings_text_active = None
         settings_open = False
+
+    def _start_next_round_from_end() -> None:
+        global dealer, starter_card, message
+        d, sc, msg = _start_next_round()
+        dealer = d
+        starter_card = sc
+        message = msg
+        game_controller.transition_phase("discard")
+
+    def _handle_end_phase_action(action: dict[str, object]) -> None:
+        action_type = str(action.get("type", ""))
+        if action_type == "KEYDOWN" and action.get("key") == pygame.K_r:
+            _start_next_round_from_end()
+            return
+        if action_type == "MOUSEBUTTONDOWN" and action.get("button") == 1:
+            sw, sh = screen.get_width(), screen.get_height()
+            pos = action.get("pos")
+            if isinstance(pos, tuple) and _primary_button_rect(sw, sh).collidepoint(pos):
+                _start_next_round_from_end()
+
+    def _handle_game_over_action(action: dict[str, object]) -> None:
+        action_type = str(action.get("type", ""))
+        if action_type == "KEYDOWN" and action.get("key") == pygame.K_r:
+            game_controller.transition_phase("intro")
+            return
+        if action_type == "MOUSEBUTTONDOWN" and action.get("button") == 1:
+            sw, sh = screen.get_width(), screen.get_height()
+            pos = action.get("pos")
+            if isinstance(pos, tuple) and _primary_button_rect(sw, sh).collidepoint(pos):
+                game_controller.transition_phase("intro")
 
     def _draw_settings_modal(sw: int, sh: int) -> None:
         nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
@@ -3062,31 +3092,10 @@ def main():
                     message = f"AI level set to {dad_ai_level}."
 
             if _CLASSIC_SESSION.phase == "end":
-                if action_type == "KEYDOWN" and action.get("key") == pygame.K_r:
-                    d, sc, msg = _start_next_round()
-                    dealer = d
-                    starter_card = sc
-                    message = msg
-                    game_controller.transition_phase("discard")
-                elif action_type == "MOUSEBUTTONDOWN" and action.get("button") == 1:
-                    sw, sh = screen.get_width(), screen.get_height()
-                    pos = action.get("pos")
-                    if pos and _primary_button_rect(sw, sh).collidepoint(pos):
-                        d, sc, msg = _start_next_round()
-                        dealer = d
-                        starter_card = sc
-                        message = msg
-                        game_controller.transition_phase("discard")
+                _handle_end_phase_action(action)
 
             if _CLASSIC_SESSION.phase == "game_over":
-                if action_type == "KEYDOWN" and action.get("key") == pygame.K_r:
-                    # Return to intro; starting a new game resets scores.
-                    game_controller.transition_phase("intro")
-                elif action_type == "MOUSEBUTTONDOWN" and action.get("button") == 1:
-                    sw, sh = screen.get_width(), screen.get_height()
-                    pos = action.get("pos")
-                    if pos and _primary_button_rect(sw, sh).collidepoint(pos):
-                        game_controller.transition_phase("intro")
+                _handle_game_over_action(action)
 
         game_controller.process(actions)
 
