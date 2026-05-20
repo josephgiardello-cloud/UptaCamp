@@ -2082,6 +2082,97 @@ def main():
 
         return False
 
+    def _draw_player_hand_lane(sw: int, sh: int) -> None:
+        p1_pos = fixed_hand_positions(1, len(_CLASSIC_SESSION.player_hand), sw, sh)
+        mouse_pos = pygame.mouse.get_pos()
+        for i, card in enumerate(_CLASSIC_SESSION.player_hand):
+            card.rect.topleft = p1_pos[i]
+            hovered = (
+                card.rect.collidepoint(mouse_pos)
+                and _CLASSIC_SESSION.phase in ("discard", "pegging")
+                and _CLASSIC_SESSION.player_turn == 0
+            )
+            draw_rect = card.rect.copy()
+            if hovered:
+                draw_rect.y -= 14
+
+            shadow = pygame.Rect(
+                draw_rect.x + 6, draw_rect.y + 8, draw_rect.width, draw_rect.height
+            )
+            pygame.draw.rect(screen, (0, 0, 0, 80), shadow, border_radius=12)
+            if hovered:
+                lifted = pygame.transform.rotozoom(card.image, -3, 1.03)
+                lifted_rect = lifted.get_rect(center=draw_rect.center)
+                screen.blit(lifted, lifted_rect)
+            else:
+                card.draw(screen)
+
+    def _draw_ai_hand_lane(sw: int) -> None:
+        p2_size = (106, 159)
+        p2_pos = _row_positions(len(_CLASSIC_SESSION.ai_hand), sw, 170, p2_size[0], margin=60)
+        if _CLASSIC_SESSION.ai_hand:
+            opp_font = pygame.font.SysFont("segoe ui", 18, bold=True)
+            opp_label = opp_font.render("Opponent Hand", True, (218, 206, 174))
+            row_center_x = p2_pos[0][0] + ((p2_pos[-1][0] + p2_size[0]) - p2_pos[0][0]) // 2
+            label_y = max(124, p2_pos[0][1] - 34)
+            screen.blit(opp_label, opp_label.get_rect(center=(row_center_x, label_y)))
+        for i, card in enumerate(_CLASSIC_SESSION.ai_hand):
+            card.rect = pygame.Rect(p2_pos[i][0], p2_pos[i][1], p2_size[0], p2_size[1])
+            shadow = pygame.Rect(
+                card.rect.x + 5, card.rect.y + 6, card.rect.width, card.rect.height
+            )
+            pygame.draw.rect(screen, (0, 0, 0, 80), shadow, border_radius=12)
+            _draw_card_back(screen, card.rect)
+
+    def _draw_pegging_lane(sw: int, sh: int) -> tuple[int, tuple[int, int]]:
+        pegging_card_size = (92, 138)
+        _player_row_top = max(510, sh - CARD_HEIGHT - 70)
+        pegging_y = min(PEGGING_Y, _player_row_top - pegging_card_size[1] - 62)
+        lane_width = min(620, max(220, 128 + len(_CLASSIC_SESSION.pegging_pile) * 30))
+        pegging_lane = pygame.Rect(
+            sw // 2 - lane_width // 2,
+            pegging_y - 14,
+            lane_width,
+            pegging_card_size[1] + 20,
+        )
+        if _CLASSIC_SESSION.pegging_pile:
+            _draw_shadowed_panel(
+                screen,
+                pegging_lane,
+                (21, 57, 42),
+                (182, 155, 100),
+                radius=28,
+                shadow=(3, 4),
+            )
+        for i, card in enumerate(_CLASSIC_SESSION.pegging_pile):
+            card.rect = pygame.Rect(
+                sw // 2 - 220 + i * 26, pegging_y, pegging_card_size[0], pegging_card_size[1]
+            )
+            shadow = pygame.Rect(
+                card.rect.x + 4, card.rect.y + 6, card.rect.width, card.rect.height
+            )
+            pygame.draw.rect(screen, (0, 0, 0, 75), shadow, border_radius=12)
+            _draw_scaled_card(screen, card.image, card.rect, pegging_card_size)
+
+        return pegging_y, pegging_card_size
+
+    def _draw_pegging_total_chip(pegging_y: int, pegging_card_size: tuple[int, int], sw: int) -> None:
+        total_font = pygame.font.SysFont("segoe ui", 20, bold=True)
+        total_chip = pygame.Rect(sw // 2 - 154, pegging_y + pegging_card_size[1] - 4, 308, 46)
+        _draw_shadowed_panel(
+            screen, total_chip, (24, 36, 29), (197, 170, 108), radius=23, shadow=(4, 5)
+        )
+        total_surf = total_font.render(
+            f"Pegging Total: {get_pegging_total()}", True, (238, 224, 188)
+        )
+        screen.blit(
+            total_surf,
+            (
+                total_chip.centerx - total_surf.get_width() // 2,
+                total_chip.centery - total_surf.get_height() // 2,
+            ),
+        )
+
     def _draw_settings_modal(sw: int, sh: int) -> None:
         nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
         nonlocal settings_style_left_rect, settings_style_right_rect
@@ -3127,75 +3218,9 @@ def main():
             phase=_CLASSIC_SESSION.phase,
         )
 
-        # Update Card Positions for rendering
-        p1_pos = fixed_hand_positions(1, len(_CLASSIC_SESSION.player_hand), sw, sh)
-        mouse_pos = pygame.mouse.get_pos()
-        for i, card in enumerate(_CLASSIC_SESSION.player_hand):
-            card.rect.topleft = p1_pos[i]
-            hovered = (
-                card.rect.collidepoint(mouse_pos)
-                and _CLASSIC_SESSION.phase in ("discard", "pegging")
-                and _CLASSIC_SESSION.player_turn == 0
-            )
-            draw_rect = card.rect.copy()
-            if hovered:
-                draw_rect.y -= 14
-
-            shadow = pygame.Rect(
-                draw_rect.x + 6, draw_rect.y + 8, draw_rect.width, draw_rect.height
-            )
-            pygame.draw.rect(screen, (0, 0, 0, 80), shadow, border_radius=12)
-            if hovered:
-                lifted = pygame.transform.rotozoom(card.image, -3, 1.03)
-                lifted_rect = lifted.get_rect(center=draw_rect.center)
-                screen.blit(lifted, lifted_rect)
-            else:
-                card.draw(screen)
-
-        p2_size = (106, 159)
-        p2_pos = _row_positions(len(_CLASSIC_SESSION.ai_hand), sw, 170, p2_size[0], margin=60)
-        if _CLASSIC_SESSION.ai_hand:
-            opp_font = pygame.font.SysFont("segoe ui", 18, bold=True)
-            opp_label = opp_font.render("Opponent Hand", True, (218, 206, 174))
-            row_center_x = p2_pos[0][0] + ((p2_pos[-1][0] + p2_size[0]) - p2_pos[0][0]) // 2
-            label_y = max(124, p2_pos[0][1] - 34)
-            screen.blit(opp_label, opp_label.get_rect(center=(row_center_x, label_y)))
-        for i, card in enumerate(_CLASSIC_SESSION.ai_hand):
-            card.rect = pygame.Rect(p2_pos[i][0], p2_pos[i][1], p2_size[0], p2_size[1])
-            shadow = pygame.Rect(
-                card.rect.x + 5, card.rect.y + 6, card.rect.width, card.rect.height
-            )
-            pygame.draw.rect(screen, (0, 0, 0, 80), shadow, border_radius=12)
-            _draw_card_back(screen, card.rect)
-
-        pegging_card_size = (92, 138)
-        _player_row_top = max(510, sh - CARD_HEIGHT - 70)
-        pegging_y = min(PEGGING_Y, _player_row_top - pegging_card_size[1] - 62)
-        lane_width = min(620, max(220, 128 + len(_CLASSIC_SESSION.pegging_pile) * 30))
-        pegging_lane = pygame.Rect(
-            sw // 2 - lane_width // 2,
-            pegging_y - 14,
-            lane_width,
-            pegging_card_size[1] + 20,
-        )
-        if _CLASSIC_SESSION.pegging_pile:
-            _draw_shadowed_panel(
-                screen,
-                pegging_lane,
-                (21, 57, 42),
-                (182, 155, 100),
-                radius=28,
-                shadow=(3, 4),
-            )
-        for i, card in enumerate(_CLASSIC_SESSION.pegging_pile):
-            card.rect = pygame.Rect(
-                sw // 2 - 220 + i * 26, pegging_y, pegging_card_size[0], pegging_card_size[1]
-            )
-            shadow = pygame.Rect(
-                card.rect.x + 4, card.rect.y + 6, card.rect.width, card.rect.height
-            )
-            pygame.draw.rect(screen, (0, 0, 0, 75), shadow, border_radius=12)
-            _draw_scaled_card(screen, card.image, card.rect, pegging_card_size)
+        _draw_player_hand_lane(sw, sh)
+        _draw_ai_hand_lane(sw)
+        pegging_y, pegging_card_size = _draw_pegging_lane(sw, sh)
 
         if _EFFECTS is not None and _SETTINGS.animations_enabled:
             _EFFECTS.draw(screen)
@@ -3206,21 +3231,7 @@ def main():
                 screen.blit(shaken, (shake_x, shake_y))
 
         if _CLASSIC_SESSION.phase == "pegging":
-            total_font = pygame.font.SysFont("segoe ui", 20, bold=True)
-            total_chip = pygame.Rect(sw // 2 - 154, pegging_y + pegging_card_size[1] - 4, 308, 46)
-            _draw_shadowed_panel(
-                screen, total_chip, (24, 36, 29), (197, 170, 108), radius=23, shadow=(4, 5)
-            )
-            total_surf = total_font.render(
-                f"Pegging Total: {get_pegging_total()}", True, (238, 224, 188)
-            )
-            screen.blit(
-                total_surf,
-                (
-                    total_chip.centerx - total_surf.get_width() // 2,
-                    total_chip.centery - total_surf.get_height() // 2,
-                ),
-            )
+            _draw_pegging_total_chip(pegging_y, pegging_card_size, sw)
 
         # Display scoring breakdown during end-of-hand phase
         if _CLASSIC_SESSION.phase == "end":
