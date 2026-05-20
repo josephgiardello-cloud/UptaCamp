@@ -2293,6 +2293,118 @@ def main():
 
         return False
 
+    def _handle_intro_capture_outputs() -> bool:
+        nonlocal capture_title_pending, capture_intro_frames
+        global dealer, starter_card, message
+
+        if capture_title_pending:
+            capture_path = Path(args.capture_title)
+            capture_path.parent.mkdir(parents=True, exist_ok=True)
+            pygame.image.save(screen, str(capture_path))
+            print(f"Saved title screenshot to: {capture_path}")
+            capture_title_pending = False
+            if args.exit_after_capture:
+                pygame.quit()
+                return True
+
+        if capture_discard_pending:
+            d, sc, msg = _start_fresh_game()
+            dealer = d
+            starter_card = sc
+            message = msg
+            _transition_phase("discard")
+            _sync_classic_session_from_runtime()
+
+        if capture_video_pending:
+            _save_video_frame()
+            capture_intro_frames += 1
+            if capture_intro_frames >= capture_intro_target:
+                d, sc, msg = _start_fresh_game()
+                dealer = d
+                starter_card = sc
+                message = msg
+                _transition_phase("discard")
+                _sync_classic_session_from_runtime()
+
+        return False
+
+    def _handle_intro_action(action: dict[str, object], mouse_pos: tuple[int, int]) -> bool:
+        global dad_ai_level, dealer, starter_card, message
+        nonlocal running, settings_open, settings_text_active
+
+        action_type = str(action.get("type", ""))
+        raw_event = action.get("raw_event")
+
+        if action_type == "QUIT":
+            running = False
+            return False
+
+        if (
+            action_type == "SETTINGS_TOGGLE"
+            and not (settings_open and settings_text_active is not None)
+        ):
+            settings_open = not settings_open
+            if not settings_open:
+                settings_text_active = None
+            return False
+
+        if (
+            action_type == "KEYDOWN"
+            and settings_open
+            and raw_event is not None
+            and _handle_settings_text_key(raw_event)
+        ):
+            return False
+
+        if action_type == "AI_LEVEL_SELECT" and not settings_open:
+            level = action.get("level")
+            if isinstance(level, int) and 1 <= level <= 5:
+                dad_ai_level = level
+                if dad_ai_level in (4, 5):
+                    _speak_bert_event("level_selected", force=True)
+            return False
+
+        if action_type == "ONLINE_MODE" and not settings_open:
+            _launch_online_client()
+            return True
+
+        if action_type == "KEYDOWN" and action.get("key") in (pygame.K_RETURN, pygame.K_SPACE):
+            if not settings_open:
+                d, sc, msg = _begin_classic_round(announce=True)
+                dealer = d
+                starter_card = sc
+                message = msg
+            return False
+
+        if action_type == "MOUSEBUTTONDOWN":
+            pos = action.get("pos")
+            if not isinstance(pos, tuple):
+                return False
+
+            if settings_open:
+                _handle_settings_modal_click(pos)
+                return False
+
+            for level, btn_rect in difficulty_buttons.items():
+                if btn_rect.collidepoint(mouse_pos):
+                    dad_ai_level = level
+                    if dad_ai_level in (4, 5):
+                        _speak_bert_event("level_selected", force=True)
+
+            if start_btn_rect.collidepoint(mouse_pos):
+                d, sc, msg = _begin_classic_round(announce=True)
+                dealer = d
+                starter_card = sc
+                message = msg
+            elif online_btn_rect is not None and online_btn_rect.collidepoint(mouse_pos):
+                _launch_online_client()
+                return True
+            elif settings_btn_rect is not None and settings_btn_rect.collidepoint(mouse_pos):
+                settings_open = True
+                settings_text_active = None
+
+        return False
+
     def _draw_settings_modal(sw: int, sh: int) -> None:
         nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
         nonlocal settings_style_left_rect, settings_style_right_rect
@@ -3160,34 +3272,8 @@ def main():
             if settings_open:
                 _draw_settings_modal(sw, sh)
 
-            if capture_title_pending:
-                capture_path = Path(args.capture_title)
-                capture_path.parent.mkdir(parents=True, exist_ok=True)
-                pygame.image.save(screen, str(capture_path))
-                print(f"Saved title screenshot to: {capture_path}")
-                capture_title_pending = False
-                if args.exit_after_capture:
-                    pygame.quit()
-                    return
-
-            if capture_discard_pending:
-                d, sc, msg = _start_fresh_game()
-                dealer = d
-                starter_card = sc
-                message = msg
-                _transition_phase("discard")
-                _sync_classic_session_from_runtime()
-
-            if capture_video_pending:
-                _save_video_frame()
-                capture_intro_frames += 1
-                if capture_intro_frames >= capture_intro_target:
-                    d, sc, msg = _start_fresh_game()
-                    dealer = d
-                    starter_card = sc
-                    message = msg
-                    _transition_phase("discard")
-                    _sync_classic_session_from_runtime()
+            if _handle_intro_capture_outputs():
+                return
 
             pygame.display.flip()
             clock.tick(FPS)
@@ -3196,76 +3282,8 @@ def main():
 
             actions = event_handler.get_actions()
             for action in actions:
-                action_type = str(action.get("type", ""))
-                raw_event = action.get("raw_event")
-
-                if action_type == "QUIT":
-                    running = False
-                    continue
-
-                if (
-                    action_type == "SETTINGS_TOGGLE"
-                    and not (settings_open and settings_text_active is not None)
-                ):
-                    settings_open = not settings_open
-                    if not settings_open:
-                        settings_text_active = None
-                    continue
-
-                if (
-                    action_type == "KEYDOWN"
-                    and settings_open
-                    and raw_event is not None
-                    and _handle_settings_text_key(raw_event)
-                ):
-                    continue
-
-                if action_type == "AI_LEVEL_SELECT" and not settings_open:
-                    level = action.get("level")
-                    if isinstance(level, int) and 1 <= level <= 5:
-                        dad_ai_level = level
-                        if dad_ai_level in (4, 5):
-                            _speak_bert_event("level_selected", force=True)
-                    continue
-
-                if action_type == "ONLINE_MODE" and not settings_open:
-                    _launch_online_client()
+                if _handle_intro_action(action, mouse_pos):
                     return
-
-                if action_type == "KEYDOWN" and action.get("key") in (pygame.K_RETURN, pygame.K_SPACE):
-                    if not settings_open:
-                        d, sc, msg = _begin_classic_round(announce=True)
-                        dealer = d
-                        starter_card = sc
-                        message = msg
-                    continue
-
-                if action_type == "MOUSEBUTTONDOWN":
-                    pos = action.get("pos")
-                    if not pos:
-                        continue
-
-                    if settings_open:
-                        _handle_settings_modal_click(pos)
-                        continue
-
-                    for level, btn_rect in difficulty_buttons.items():
-                        if btn_rect.collidepoint(mouse_pos):
-                            dad_ai_level = level
-                            if dad_ai_level in (4, 5):
-                                _speak_bert_event("level_selected", force=True)
-
-                    if start_btn_rect.collidepoint(mouse_pos):
-                        d, sc, msg = _begin_classic_round(announce=True)
-                        dealer = d
-                        starter_card = sc
-                        message = msg
-                    elif online_btn_rect is not None and online_btn_rect.collidepoint(mouse_pos):
-                        _launch_online_client()
-                        return
-                    elif settings_btn_rect is not None and settings_btn_rect.collidepoint(mouse_pos):
-                        settings_open = True
-                        settings_text_active = None
             continue
 
         sw, sh = screen.get_width(), screen.get_height()
