@@ -143,6 +143,8 @@ The test suite includes dedicated files for:
 
 ## Online Backend
 
+> **Status**: Online multiplayer support is implemented with API + websocket stack. The backend supports authentication, matchmaking, leaderboards, and turn-by-turn match progression. See tests in `tests/test_online_*.py` for full coverage.
+
 ### Start API server
 
 ```bash

@@ -1432,6 +1432,10 @@ def handle_counting():
     _record_single_player_hand_stats(p1_points, p2_points, s.dealer)
 
     w = _check_for_winner()
+
+    # Auto-save game checkpoint after each hand
+    s.save_checkpoint()
+
     if w is None:
         s.message = "Round counted. Review the scoring popup and press R for next round."
         _speak_bert_event("hand_scored")
