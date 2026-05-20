@@ -2059,6 +2059,29 @@ def main():
             if isinstance(pos, tuple) and _primary_button_rect(sw, sh).collidepoint(pos):
                 game_controller.transition_phase("intro")
 
+    def _handle_gameplay_action(action: dict[str, object]) -> bool:
+        global message, dad_ai_level
+
+        action_type = str(action.get("type", ""))
+        if action_type == "QUIT":
+            return True
+
+        if action_type == "AI_LEVEL_CHANGE":
+            dad_ai_level = 1 if dad_ai_level == 5 else dad_ai_level + 1
+            if dad_ai_level in (4, 5):
+                message = f"AI level set to {dad_ai_level}. Opponent is now Bert."
+                _speak_bert_event("level_selected", force=True)
+            else:
+                message = f"AI level set to {dad_ai_level}."
+
+        if _CLASSIC_SESSION.phase == "end":
+            _handle_end_phase_action(action)
+
+        if _CLASSIC_SESSION.phase == "game_over":
+            _handle_game_over_action(action)
+
+        return False
+
     def _draw_settings_modal(sw: int, sh: int) -> None:
         nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
         nonlocal settings_style_left_rect, settings_style_right_rect
@@ -3078,24 +3101,9 @@ def main():
 
         actions = event_handler.get_actions()
         for action in actions:
-            action_type = str(action.get("type", ""))
-            if action_type == "QUIT":
+            if _handle_gameplay_action(action):
                 running = False
                 break
-
-            if action_type == "AI_LEVEL_CHANGE":
-                dad_ai_level = 1 if dad_ai_level == 5 else dad_ai_level + 1
-                if dad_ai_level in (4, 5):
-                    message = f"AI level set to {dad_ai_level}. Opponent is now Bert."
-                    _speak_bert_event("level_selected", force=True)
-                else:
-                    message = f"AI level set to {dad_ai_level}."
-
-            if _CLASSIC_SESSION.phase == "end":
-                _handle_end_phase_action(action)
-
-            if _CLASSIC_SESSION.phase == "game_over":
-                _handle_game_over_action(action)
 
         game_controller.process(actions)
 
