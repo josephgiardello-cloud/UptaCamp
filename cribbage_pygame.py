@@ -2253,6 +2253,46 @@ def main():
         screen.blit(btn_shadow, (tx + 2, ty + 2))
         screen.blit(btn_label, (tx, ty))
 
+    def _handle_gameplay_capture_outputs() -> bool:
+        nonlocal capture_gameplay_pending, capture_discard_pending, capture_end_frames
+
+        if capture_gameplay_pending:
+            capture_path = Path(args.capture_gameplay)
+            capture_path.parent.mkdir(parents=True, exist_ok=True)
+            pygame.image.save(screen, str(capture_path))
+            print(f"Saved gameplay screenshot to: {capture_path}")
+            capture_gameplay_pending = False
+            if args.exit_after_capture:
+                pygame.quit()
+                return True
+
+        if capture_discard_pending and _CLASSIC_SESSION.phase == "discard":
+            capture_path = Path(args.capture_discard)
+            capture_path.parent.mkdir(parents=True, exist_ok=True)
+            pygame.image.save(screen, str(capture_path))
+            print(f"Saved discard screenshot to: {capture_path}")
+            capture_discard_pending = False
+            if args.exit_after_capture:
+                pygame.quit()
+                return True
+
+        if capture_video_pending:
+            _save_video_frame()
+
+            if _CLASSIC_SESSION.phase in ("end", "game_over"):
+                capture_end_frames += 1
+            else:
+                capture_end_frames = 0
+
+            hit_end_target = capture_end_frames >= capture_end_target
+            hit_max_frames = capture_video_frame_index >= capture_max_frames
+            if hit_end_target or hit_max_frames:
+                _finalize_video_capture()
+                pygame.quit()
+                return True
+
+        return False
+
     def _draw_settings_modal(sw: int, sh: int) -> None:
         nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
         nonlocal settings_style_left_rect, settings_style_right_rect
@@ -3319,40 +3359,8 @@ def main():
         if _CLASSIC_SESSION.phase in ("end", "game_over"):
             _draw_end_or_game_over_button(sw, sh)
 
-        if capture_gameplay_pending:
-            capture_path = Path(args.capture_gameplay)
-            capture_path.parent.mkdir(parents=True, exist_ok=True)
-            pygame.image.save(screen, str(capture_path))
-            print(f"Saved gameplay screenshot to: {capture_path}")
-            capture_gameplay_pending = False
-            if args.exit_after_capture:
-                pygame.quit()
-                return
-
-        if capture_discard_pending and _CLASSIC_SESSION.phase == "discard":
-            capture_path = Path(args.capture_discard)
-            capture_path.parent.mkdir(parents=True, exist_ok=True)
-            pygame.image.save(screen, str(capture_path))
-            print(f"Saved discard screenshot to: {capture_path}")
-            capture_discard_pending = False
-            if args.exit_after_capture:
-                pygame.quit()
-                return
-
-        if capture_video_pending:
-            _save_video_frame()
-
-            if _CLASSIC_SESSION.phase in ("end", "game_over"):
-                capture_end_frames += 1
-            else:
-                capture_end_frames = 0
-
-            hit_end_target = capture_end_frames >= capture_end_target
-            hit_max_frames = capture_video_frame_index >= capture_max_frames
-            if hit_end_target or hit_max_frames:
-                _finalize_video_capture()
-                pygame.quit()
-                return
+        if _handle_gameplay_capture_outputs():
+            return
 
         pygame.display.flip()
         clock.tick(FPS)
