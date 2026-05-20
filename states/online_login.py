@@ -8,7 +8,7 @@ from .base import GameStateBase
 class OnlineLoginState(GameStateBase):
     def __init__(self):
         self.name = ""
-        self.info = "Enter username and press Enter"
+        self.info = "Pick a display name and press Enter"
 
     def handle_event(self, event, engine, assets, app):
         if event.type == pygame.KEYDOWN:
@@ -45,7 +45,7 @@ class OnlineLoginState(GameStateBase):
         title_font = pygame.font.SysFont(None, 60)
         body_font = pygame.font.SysFont(None, 34)
 
-        title = title_font.render("Online Login", True, (245, 245, 245))
+        title = title_font.render("Play With a Friend", True, (245, 245, 245))
         screen.blit(title, title.get_rect(center=(screen.get_width() // 2, 90)))
 
         prompt = body_font.render(self.info, True, (210, 210, 210))
@@ -57,7 +57,7 @@ class OnlineLoginState(GameStateBase):
         entry = body_font.render(self.name or "Type name...", True, (20, 20, 20))
         screen.blit(entry, (box.x + 12, box.y + 14))
 
-        hint = body_font.render("Enter=login  Esc=back", True, (190, 190, 190))
+        hint = body_font.render("Enter=continue  Esc=back", True, (190, 190, 190))
         screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, 320)))
 
         if app.last_error:
