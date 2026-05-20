@@ -8,6 +8,63 @@ from pathlib import Path
 from bert_agent import BertAgent
 from game_state import GameState
 
+# === Strategy Constants ===
+
+# Keep-score weighting (hand value assessment)
+PAIR_WEIGHT: float = 2.4  # Pair bonus multiplier
+PAIR_ROYAL_WEIGHT: float = 6.0  # Three-of-a-kind bonus multiplier
+RUN_BASE_WEIGHT: float = 1.5  # Run combo base weight
+RUN_LENGTH_BONUS: float = 0.8  # Additional bonus for streak >= 4
+FIFTEEN_WEIGHT: float = 1.6  # Fifteen-sum combo weight
+LOW_CARD_WEIGHT: float = 0.18  # Bonus for low cards {4,5,6,7}
+FLUSH_WEIGHT: float = 1.2  # Flush bonus multiplier
+
+# Crib-score weighting (discard penalty/value for opponent's crib)
+DISCARD_PAIR_WEIGHT: float = 3.5  # Pair penalty in crib
+DISCARD_RUN_ADJACENT: float = 1.4  # Adjacent rank bonus + 10+5 combo weight
+DISCARD_15_WEIGHT: float = 2.4  # 15-sum penalty in crib
+DISCARD_FIVE_WEIGHT: float = 2.1  # Five-value penalty in crib
+DISCARD_FLUSH_WEIGHT: float = 0.35  # Flush penalty in crib
+
+# Pegging shape adjustments (risky vs. safe totals)
+PEGGING_RISKY_PENALTY_PRIMARY: float = 1.4  # Penalty for {5, 10, 21}
+PEGGING_RISKY_PENALTY_SECONDARY: float = 0.8  # Penalty for {14, 20, 26}
+PEGGING_SAFE_BONUS: float = 0.45  # Bonus for {4, 6, 11, 16, 17, 24}
+PEGGING_LEAD_FIVE_PENALTY: float = 2.25  # Leading a 5 when not scoring
+PEGGING_EARLY_TEN_PENALTY: float = 0.35  # Preserving 10+ cards early
+
+# Discard level weighting (difficulty-dependent strategy)
+# Level 2: lighter simulation, intrinsic/crib weight
+LEVEL_2_INTRINSIC: float = 0.35
+LEVEL_2_DEALER_CRIB: float = 0.22
+LEVEL_2_PONE_CRIB: float = -0.18
+
+# Level 3: medium simulation, heavier weights
+LEVEL_3_INTRINSIC: float = 0.55
+LEVEL_3_DEALER_CRIB: float = 0.5
+LEVEL_3_PONE_CRIB: float = -0.32
+
+# Level 4: deep simulation, heaviest weights
+LEVEL_4_INTRINSIC: float = 0.8
+LEVEL_4_DEALER_CRIB: float = 0.65
+LEVEL_4_PONE_CRIB: float = -0.45
+
+# Trial limits (simulation depths)
+LEVEL_3_TRIALS: int = 220
+LEVEL_4_TRIALS: int = 560
+
+# Pegging-index strategy weights
+OPPONENT_REPLY_RISK_DISCOUNT: float = 0.85  # Discount for opponent risk
+ENDGAME_IMMEDIATE_BONUS: float = 0.7  # Bonus when close to 121
+ENDGAME_PREVENTION_PENALTY: float = 0.4  # Penalty for preventing endgame score
+EARLY_DISCIPLINE_PENALTY: float = 0.25  # Penalty for early 10+ preservation
+ENDGAME_THRESHOLD: int = 112  # Score threshold (121 - 9 = closest endgame)
+
+# Analysis constants
+ANALYSIS_DEALER_CRIB: float = 0.45  # Dealer crib weight in analysis
+ANALYSIS_PONE_CRIB: float = -0.35  # Pone crib weight in analysis
+PERCENTILE_EPSILON: float = 1e-9  # Epsilon for span normalization
+
 _BERT_AGENT: BertAgent | None = None
 _DEFAULT_BERT_MODEL = Path("bert_model.pkl")
 
@@ -93,8 +150,8 @@ def _intrinsic_keep_score(labels: Sequence[str]) -> float:
     suits = [_parse_label(label)[1] for label in labels]
     counts = Counter(ranks)
 
-    pair_bonus = sum(2.4 for count in counts.values() if count == 2)
-    pair_bonus += sum(6.0 for count in counts.values() if count == 3)
+    pair_bonus = sum(PAIR_WEIGHT for count in counts.values() if count == 2)
+    pair_bonus += sum(PAIR_ROYAL_WEIGHT for count in counts.values() if count == 3)
 
     unique_ranks = sorted(set(ranks))
     run_bonus = 0.0
@@ -102,16 +159,16 @@ def _intrinsic_keep_score(labels: Sequence[str]) -> float:
     for idx in range(1, len(unique_ranks)):
         if unique_ranks[idx] == unique_ranks[idx - 1] + 1:
             streak += 1
-            scaled_run = 1.5 * streak if streak >= 3 else 0.0
+            scaled_run = RUN_BASE_WEIGHT * streak if streak >= 3 else 0.0
             if streak >= 4:
-                scaled_run += 0.8
+                scaled_run += RUN_LENGTH_BONUS
             run_bonus = max(run_bonus, scaled_run)
         else:
             streak = 1
 
-    fifteen_bonus = 1.6 * _count_fifteens(labels)
-    low_card_bonus = sum(0.18 for rank in ranks if rank in {4, 5, 6, 7})
-    flush_bonus = 1.2 if len(set(suits)) == 1 and suits[0] else 0.0
+    fifteen_bonus = FIFTEEN_WEIGHT * _count_fifteens(labels)
+    low_card_bonus = sum(LOW_CARD_WEIGHT for rank in ranks if rank in {4, 5, 6, 7})
+    flush_bonus = FLUSH_WEIGHT if len(set(suits)) == 1 and suits[0] else 0.0
     return pair_bonus + run_bonus + fifteen_bonus + low_card_bonus + flush_bonus
 
 
@@ -122,17 +179,17 @@ def _discard_crib_score(labels: Sequence[str]) -> float:
 
     score = 0.0
     if len(set(ranks)) == 1:
-        score += 3.5
+        score += DISCARD_PAIR_WEIGHT
     if abs(ranks[0] - ranks[1]) == 1:
-        score += 1.4
+        score += DISCARD_RUN_ADJACENT
     if sum(values) == 15:
-        score += 2.4
+        score += DISCARD_15_WEIGHT
     if 5 in values:
-        score += 2.1
+        score += DISCARD_FIVE_WEIGHT
     if 10 in values and 5 in values:
-        score += 1.4
+        score += DISCARD_RUN_ADJACENT
     if suits[0] and suits[0] == suits[1]:
-        score += 0.35
+        score += DISCARD_FLUSH_WEIGHT
     return score
 
 
@@ -143,24 +200,24 @@ def _pegging_shape_adjustment(
 
     # Avoid feeding easy 15/31 replies on common ten-card responses.
     if trial_total in {5, 10, 21}:
-        score -= 1.4
+        score -= PEGGING_RISKY_PENALTY_PRIMARY
     if trial_total in {14, 20, 26}:
-        score -= 0.8
+        score -= PEGGING_RISKY_PENALTY_SECONDARY
 
     # Favor safer lead/count totals that constrain common responses.
     if trial_total in {4, 6, 11, 16, 17, 24}:
-        score += 0.45
+        score += PEGGING_SAFE_BONUS
 
     rank = _parse_label(played_label)[0]
     value = _value_for_15(rank)
 
     # Leading a 5 is usually a gift unless it scores immediately.
     if len(hand_labels) == 4 and value == 5 and immediate == 0:
-        score -= 2.25
+        score -= PEGGING_LEAD_FIVE_PENALTY
 
     # Preserve small cards early when no immediate scoring exists.
     if len(hand_labels) >= 3 and immediate == 0 and value >= 10:
-        score -= 0.35
+        score -= PEGGING_EARLY_TEN_PENALTY
 
     return score
 
@@ -201,10 +258,10 @@ def choose_discard_indices(
             for starter in unseen_pool:
                 total += score_labels_hand(kept, starter, False)
             score = total / len(unseen_pool)
-            score += 0.35 * _intrinsic_keep_score(kept)
-            score += (0.22 if dealer_is_dad else -0.18) * _discard_crib_score(discards)
+            score += LEVEL_2_INTRINSIC * _intrinsic_keep_score(kept)
+            score += (LEVEL_2_DEALER_CRIB if dealer_is_dad else LEVEL_2_PONE_CRIB) * _discard_crib_score(discards)
         elif dad_ai_level == 3:
-            trials = min(220, len(unseen_pool) * 4)
+            trials = min(LEVEL_3_TRIALS, len(unseen_pool) * 4)
             total = 0.0
             for _ in range(trials):
                 opp_discards = random.sample(unseen_pool, 2)
@@ -217,11 +274,11 @@ def choose_discard_indices(
                 crib_score = score_labels_hand(crib_labels, starter, True)
                 total += own_score + (crib_score if dealer_is_dad else -crib_score)
             score = total / max(1, trials)
-            score += 0.55 * _intrinsic_keep_score(kept)
-            score += (0.5 if dealer_is_dad else -0.32) * _discard_crib_score(discards)
+            score += LEVEL_3_INTRINSIC * _intrinsic_keep_score(kept)
+            score += (LEVEL_3_DEALER_CRIB if dealer_is_dad else LEVEL_3_PONE_CRIB) * _discard_crib_score(discards)
         else:
             # Brutal mode: deeper simulation with heavier intrinsic weighting.
-            trials = min(560, len(unseen_pool) * 10)
+            trials = min(LEVEL_4_TRIALS, len(unseen_pool) * 10)
             total = 0.0
             for _ in range(trials):
                 opp_discards = random.sample(unseen_pool, 2)
@@ -234,8 +291,8 @@ def choose_discard_indices(
                 crib_score = score_labels_hand(crib_labels, starter, True)
                 total += own_score + (crib_score if dealer_is_dad else -crib_score)
             score = total / max(1, trials)
-            score += 0.8 * _intrinsic_keep_score(kept)
-            score += (0.65 if dealer_is_dad else -0.45) * _discard_crib_score(discards)
+            score += LEVEL_4_INTRINSIC * _intrinsic_keep_score(kept)
+            score += (LEVEL_4_DEALER_CRIB if dealer_is_dad else LEVEL_4_PONE_CRIB) * _discard_crib_score(discards)
 
         if score > best_score:
             best_score = score
@@ -269,7 +326,7 @@ def analyze_discard_options(
             # Approximate crib influence by expected random opponent discard value.
             # This keeps analysis deterministic and fast for learning feedback.
             total += own_score + (
-                (0.45 if dealer_is_player else -0.35) * _discard_crib_score(discards)
+                (ANALYSIS_DEALER_CRIB if dealer_is_player else ANALYSIS_PONE_CRIB) * _discard_crib_score(discards)
             )
         expected = total / len(unseen_pool)
         scored.append(
@@ -291,7 +348,7 @@ def analyze_discard_options(
 
     analyzed: list[DiscardOption] = []
     for discard_idxs, discard_labels, keep_labels, expected in scored:
-        if span <= 1e-9:
+        if span <= PERCENTILE_EPSILON:
             percentile = 100.0
         else:
             percentile = max(0.0, min(100.0, ((expected - lo) / span) * 100.0))
@@ -355,20 +412,20 @@ def choose_pegging_index(
 
         score = immediate + shape_bonus
         if dad_ai_level >= 3 and estimate_opponent_reply_risk is not None:
-            score -= 0.85 * estimate_opponent_reply_risk(trial_pile)
+            score -= OPPONENT_REPLY_RISK_DISCOUNT * estimate_opponent_reply_risk(trial_pile)
 
         if dad_ai_level >= 4:
             # Endgame awareness: when close to 121, prioritize immediate points.
-            if own_score is not None and own_score >= 112:
-                score += 0.7 * immediate
-            if opp_score is not None and opp_score >= 112 and immediate == 0:
-                score -= 0.4
+            if own_score is not None and own_score >= ENDGAME_THRESHOLD:
+                score += ENDGAME_IMMEDIATE_BONUS * immediate
+            if opp_score is not None and opp_score >= ENDGAME_THRESHOLD and immediate == 0:
+                score -= ENDGAME_PREVENTION_PENALTY
 
             # Early-round discipline in brutal mode.
             if own_cards_remaining is not None and own_cards_remaining >= 3 and immediate == 0:
                 val = value_for_15(parse_label(label)[0])
                 if val >= 10:
-                    score -= 0.25
+                    score -= EARLY_DISCIPLINE_PENALTY
 
         if score > best_score:
             best_score = score
