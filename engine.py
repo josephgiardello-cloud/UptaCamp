@@ -9,9 +9,15 @@ from game_state import GameState
 
 
 class CribbageEngine:
-    def __init__(self):
+    def __init__(self, *, debug_validate: bool = False):
         self.state = GameState()
         self.score_func = cribbage_cards.score_hand
+        # Debug builds validate postconditions after mutating public methods.
+        self._debug_validate = bool(debug_validate)
+
+    def _validate_state_if_enabled(self) -> None:
+        if self._debug_validate:
+            self._validate_state()
 
     @staticmethod
     def _label(card_obj: Any) -> str:
@@ -43,7 +49,7 @@ class CribbageEngine:
         assert len(self.state.crib) <= 4, "Crib cannot exceed 4 cards"
 
         assert self.state.phase in (
-            "discard", "pegging", "counting", "end", "online_login", "online_match"
+            "intro", "discard", "pegging", "counting", "end", "online_login", "online_match"
         ), f"Invalid phase: {self.state.phase}"
 
         if self.state.phase == "pegging":
@@ -73,6 +79,7 @@ class CribbageEngine:
         self.state.last_pegging_player = None
         self.state.message = "Select 2 cards to discard to the crib."
         self.state.stock_labels = list(stock_labels)
+        self._validate_state_if_enabled()
 
     def start_next_round(
         self,
@@ -94,6 +101,7 @@ class CribbageEngine:
         self.state.last_pegging_player = None
         self.state.message = "New Round. Select 2 cards to discard."
         self.state.stock_labels = list(stock_labels)
+        self._validate_state_if_enabled()
 
     def handle_discard(self, selected_indices: Sequence[int]) -> None:
         selected = sorted(set(selected_indices), reverse=True)
@@ -122,6 +130,7 @@ class CribbageEngine:
         self.state.pegging_passes = [False, False]
         self.state.last_pegging_player = None
         self.state.message = "Pegging phase begins!"
+        self._validate_state_if_enabled()
 
     def play_pegging_card(
         self,
@@ -177,15 +186,17 @@ class CribbageEngine:
                 self.state.player_turn = 1 - player_idx
 
             self.state.last_pegging_player = player_idx
+            self._validate_state_if_enabled()
             return points
         except (IndexError, KeyError, AttributeError, TypeError) as e:
             # Log error but allow game to continue with safe default
             print(f"Warning: play_pegging_card error: {type(e).__name__}: {e}")
             return 0
 
-    def ai_discard(self) -> list[int]:
+    def ai_discard(self, strategy: Any | None = None) -> list[int]:
+        strategy_module = ai_strategy if strategy is None else strategy
         dad_labels = self._labels(self.state.ai_hand)
-        return ai_strategy.choose_discard_indices(
+        return strategy_module.choose_discard_indices(
             dad_labels=dad_labels,
             dad_ai_level=self.state.dad_ai_level,
             dealer_is_dad=(self.state.dealer == 1),
@@ -238,12 +249,14 @@ class CribbageEngine:
             self.state.message = "Counting hands."
 
         self.state.phase = "counting"
+        self._validate_state_if_enabled()
         return True
 
     def count_hands(self, label_to_model_card: Callable[[str], Any]) -> dict:
         if self.state.starter_card is None:
             self.state.phase = "end"
             self.state.message = "No starter card available. Press R to reset."
+            self._validate_state_if_enabled()
             return {"player": 0, "ai": 0, "crib": 0}
 
         starter = label_to_model_card(self.state.starter_card)
@@ -271,6 +284,8 @@ class CribbageEngine:
             except OSError:
                 # Gameplay should continue even if model persistence fails.
                 pass
+
+        self._validate_state_if_enabled()
 
         return {
             "player": p1_total,

@@ -36,11 +36,11 @@
 ## Phase 3: Game Loop → src/controllers/
 
 ### GameController Tasks
-- [ ] **6.3.1** Extract phase handlers (deal, discard, pegging, counting)
-- [ ] **6.3.2** Extract `_transition_phase()` logic
-- [ ] **6.3.3** Extract `_check_for_winner()` logic
-- [ ] **6.3.4** Create `GameController.update()` orchestrator
-- [ ] **6.3.5** Replace main game loop with controller calls
+- [x] **6.3.1** Extract phase handlers (deal, discard, pegging, counting)
+- [x] **6.3.2** Extract `_transition_phase()` logic
+- [x] **6.3.3** Extract `_check_for_winner()` logic
+- [x] **6.3.4** Create `GameController.update()` orchestrator
+- [x] **6.3.5** Replace main game loop with controller calls
 - [ ] **6.3.6** Test + commit
 
 ### GameApplication Tasks
