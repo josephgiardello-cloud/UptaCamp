@@ -2253,6 +2253,50 @@ def main():
         screen.blit(btn_shadow, (tx + 2, ty + 2))
         screen.blit(btn_label, (tx, ty))
 
+    def _draw_gameplay_backdrop(sw: int, sh: int) -> None:
+        if _UI_STYLE != "classic":
+            _draw_board_frame(screen)
+            return
+
+        if gameplay_background is not None:
+            bg = pygame.transform.smoothscale(gameplay_background, (sw, sh))
+            screen.blit(bg, (0, 0))
+
+            atmosphere = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            atmosphere.fill((10, 22, 18, 44))
+            pygame.draw.ellipse(
+                atmosphere,
+                (220, 188, 118, 16),
+                pygame.Rect(sw // 2 - 420, sh // 2 - 220, 840, 500),
+            )
+            pygame.draw.ellipse(
+                atmosphere,
+                (0, 0, 0, 52),
+                pygame.Rect(14, 14, sw - 28, sh - 28),
+                width=34,
+            )
+            screen.blit(atmosphere, (0, 0))
+
+            table_zone = pygame.Rect(42, 88, sw - 84, sh - 136)
+            zone_overlay = pygame.Surface((table_zone.width, table_zone.height), pygame.SRCALPHA)
+            pygame.draw.rect(
+                zone_overlay,
+                (15, 45, 33, PLAYFIELD_ALPHA),
+                zone_overlay.get_rect(),
+                border_radius=26,
+            )
+            pygame.draw.rect(
+                zone_overlay,
+                (214, 184, 113, 95),
+                zone_overlay.get_rect(),
+                width=2,
+                border_radius=26,
+            )
+            screen.blit(zone_overlay, table_zone.topleft)
+            return
+
+        _draw_board_frame(screen)
+
     def _handle_gameplay_capture_outputs() -> bool:
         nonlocal capture_gameplay_pending, capture_discard_pending, capture_end_frames
 
@@ -3288,45 +3332,7 @@ def main():
 
         sw, sh = screen.get_width(), screen.get_height()
         _LAST_SCREEN_SIZE = (sw, sh)
-        if _UI_STYLE != "classic":
-            _draw_board_frame(screen)
-        elif gameplay_background is not None:
-            bg = pygame.transform.smoothscale(gameplay_background, (sw, sh))
-            screen.blit(bg, (0, 0))
-
-            atmosphere = pygame.Surface((sw, sh), pygame.SRCALPHA)
-            atmosphere.fill((10, 22, 18, 44))
-            pygame.draw.ellipse(
-                atmosphere,
-                (220, 188, 118, 16),
-                pygame.Rect(sw // 2 - 420, sh // 2 - 220, 840, 500),
-            )
-            pygame.draw.ellipse(
-                atmosphere,
-                (0, 0, 0, 52),
-                pygame.Rect(14, 14, sw - 28, sh - 28),
-                width=34,
-            )
-            screen.blit(atmosphere, (0, 0))
-
-            table_zone = pygame.Rect(42, 88, sw - 84, sh - 136)
-            zone_overlay = pygame.Surface((table_zone.width, table_zone.height), pygame.SRCALPHA)
-            pygame.draw.rect(
-                zone_overlay,
-                (15, 45, 33, PLAYFIELD_ALPHA),
-                zone_overlay.get_rect(),
-                border_radius=26,
-            )
-            pygame.draw.rect(
-                zone_overlay,
-                (214, 184, 113, 95),
-                zone_overlay.get_rect(),
-                width=2,
-                border_radius=26,
-            )
-            screen.blit(zone_overlay, table_zone.topleft)
-        else:
-            _draw_board_frame(screen)
+        _draw_gameplay_backdrop(sw, sh)
 
         actions = event_handler.get_actions()
         for action in actions:
