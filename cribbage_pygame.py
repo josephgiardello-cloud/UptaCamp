@@ -2173,6 +2173,86 @@ def main():
             ),
         )
 
+    def _draw_end_phase_scoring(sw: int, sh: int) -> None:
+        p1_pts, p1_breakdown = round_breakdown["player"]
+        p2_pts, p2_breakdown = round_breakdown["ai"]
+        crib_pts, crib_breakdown = round_breakdown["crib"]
+
+        _draw_scoring_breakdown(screen, 0, p1_breakdown, p1_pts, player_name)
+        _draw_scoring_breakdown(screen, 1, p2_breakdown, p2_pts, player_name)
+
+        if crib_pts > 0 or crib_breakdown:
+            playfield = _playfield_rect(screen)
+            crib_panel = _crib_panel_rect(sw, sh)
+            crib_w = 240
+            crib_h = 140
+            crib_x = crib_panel.centerx - crib_w // 2
+            if _CLASSIC_SESSION.dealer == 0:
+                crib_y = crib_panel.top - crib_h - 12
+            else:
+                crib_y = crib_panel.bottom + 12
+
+            crib_x = max(playfield.left + 12, min(crib_x, playfield.right - crib_w - 12))
+            crib_y = max(playfield.top + 12, min(crib_y, playfield.bottom - crib_h - 12))
+            crib_rect = pygame.Rect(crib_x, crib_y, crib_w, crib_h)
+            _draw_shadowed_panel(screen, crib_rect, (21, 71, 48), (199, 169, 102), radius=18)
+
+            crib_font = pygame.font.SysFont("segoe ui", 16, bold=True)
+            item_font = pygame.font.SysFont("segoe ui", 13)
+            crib_label = "Crib" if _CLASSIC_SESSION.dealer == 1 else "Opponent's Crib"
+            _draw_label(
+                screen,
+                crib_label,
+                (crib_rect.x + 12, crib_rect.y + 10),
+                crib_font,
+                (240, 227, 188),
+            )
+
+            y = crib_rect.y + 38
+            for desc, _cards, points in crib_breakdown:
+                score_str = f"{desc}: +{points}"
+                item_surf = item_font.render(score_str, True, (223, 211, 181))
+                screen.blit(item_surf, (crib_rect.x + 12, y))
+                y += 22
+
+            total_font = pygame.font.SysFont("segoe ui", 14, bold=True)
+            total_str = f"Total: +{crib_pts}"
+            total_surf = total_font.render(total_str, True, (240, 205, 124))
+            screen.blit(total_surf, (crib_rect.x + 12, y + 8))
+
+        _draw_round_summary_popup(
+            screen,
+            p1_pts,
+            p2_pts,
+            crib_pts,
+            _CLASSIC_SESSION.dealer,
+            player_name,
+            discard_analysis_message,
+        )
+
+    def _draw_end_or_game_over_button(sw: int, sh: int) -> None:
+        btn = _primary_button_rect(sw, sh)
+        is_hover = btn.collidepoint(pygame.mouse.get_pos())
+        if is_hover:
+            btn = btn.move(0, -2)
+        _draw_shadowed_panel(
+            screen,
+            btn,
+            (34, 50, 40) if is_hover else (28, 40, 33),
+            (223, 190, 115),
+            radius=18,
+            shadow=(5, 7),
+        )
+
+        btn_text = "Next Round" if _CLASSIC_SESSION.phase == "end" else "Back to Intro"
+        btn_font = pygame.font.SysFont("cambria", 28, bold=True)
+        btn_shadow = btn_font.render(btn_text, True, (0, 0, 0))
+        btn_label = btn_font.render(btn_text, True, (243, 227, 183))
+        tx = btn.centerx - btn_label.get_width() // 2
+        ty = btn.centery - btn_label.get_height() // 2
+        screen.blit(btn_shadow, (tx + 2, ty + 2))
+        screen.blit(btn_label, (tx, ty))
+
     def _draw_settings_modal(sw: int, sh: int) -> None:
         nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
         nonlocal settings_style_left_rect, settings_style_right_rect
@@ -3233,91 +3313,11 @@ def main():
         if _CLASSIC_SESSION.phase == "pegging":
             _draw_pegging_total_chip(pegging_y, pegging_card_size, sw)
 
-        # Display scoring breakdown during end-of-hand phase
         if _CLASSIC_SESSION.phase == "end":
-            p1_pts, p1_breakdown = round_breakdown["player"]
-            p2_pts, p2_breakdown = round_breakdown["ai"]
-            crib_pts, crib_breakdown = round_breakdown["crib"]
+            _draw_end_phase_scoring(sw, sh)
 
-            # Show player and ai hand scoring
-            _draw_scoring_breakdown(screen, 0, p1_breakdown, p1_pts, player_name)
-            _draw_scoring_breakdown(screen, 1, p2_breakdown, p2_pts, player_name)
-
-            # Show crib scoring in the center if dealer
-            if crib_pts > 0 or crib_breakdown:
-                playfield = _playfield_rect(screen)
-                crib_panel = _crib_panel_rect(sw, sh)
-                crib_w = 240
-                crib_h = 140
-                crib_x = crib_panel.centerx - crib_w // 2
-                if _CLASSIC_SESSION.dealer == 0:
-                    # Opponent crib: place summary above the crib/starter box.
-                    crib_y = crib_panel.top - crib_h - 12
-                else:
-                    crib_y = crib_panel.bottom + 12
-
-                crib_x = max(playfield.left + 12, min(crib_x, playfield.right - crib_w - 12))
-                crib_y = max(playfield.top + 12, min(crib_y, playfield.bottom - crib_h - 12))
-                crib_rect = pygame.Rect(crib_x, crib_y, crib_w, crib_h)
-                _draw_shadowed_panel(screen, crib_rect, (21, 71, 48), (199, 169, 102), radius=18)
-
-                crib_font = pygame.font.SysFont("segoe ui", 16, bold=True)
-                item_font = pygame.font.SysFont("segoe ui", 13)
-                crib_label = "Crib" if _CLASSIC_SESSION.dealer == 1 else "Opponent's Crib"
-                _draw_label(
-                    screen,
-                    crib_label,
-                    (crib_rect.x + 12, crib_rect.y + 10),
-                    crib_font,
-                    (240, 227, 188),
-                )
-
-                y = crib_rect.y + 38
-                for desc, _cards, points in crib_breakdown:
-                    score_str = f"{desc}: +{points}"
-                    item_surf = item_font.render(score_str, True, (223, 211, 181))
-                    screen.blit(item_surf, (crib_rect.x + 12, y))
-                    y += 22
-
-                total_font = pygame.font.SysFont("segoe ui", 14, bold=True)
-                total_str = f"Total: +{crib_pts}"
-                total_surf = total_font.render(total_str, True, (240, 205, 124))
-                screen.blit(total_surf, (crib_rect.x + 12, y + 8))
-
-            _draw_round_summary_popup(
-                screen,
-                p1_pts,
-                p2_pts,
-                crib_pts,
-                _CLASSIC_SESSION.dealer,
-                player_name,
-                discard_analysis_message,
-            )
-
-        # End-of-hand / game-over clickable button (in addition to the R key).
         if _CLASSIC_SESSION.phase in ("end", "game_over"):
-            sw, sh = screen.get_width(), screen.get_height()
-            btn = _primary_button_rect(sw, sh)
-            is_hover = btn.collidepoint(pygame.mouse.get_pos())
-            if is_hover:
-                btn = btn.move(0, -2)
-            _draw_shadowed_panel(
-                screen,
-                btn,
-                (34, 50, 40) if is_hover else (28, 40, 33),
-                (223, 190, 115),
-                radius=18,
-                shadow=(5, 7),
-            )
-
-            btn_text = "Next Round" if _CLASSIC_SESSION.phase == "end" else "Back to Intro"
-            btn_font = pygame.font.SysFont("cambria", 28, bold=True)
-            btn_shadow = btn_font.render(btn_text, True, (0, 0, 0))
-            btn_label = btn_font.render(btn_text, True, (243, 227, 183))
-            tx = btn.centerx - btn_label.get_width() // 2
-            ty = btn.centery - btn_label.get_height() // 2
-            screen.blit(btn_shadow, (tx + 2, ty + 2))
-            screen.blit(btn_label, (tx, ty))
+            _draw_end_or_game_over_button(sw, sh)
 
         if capture_gameplay_pending:
             capture_path = Path(args.capture_gameplay)
