@@ -27,49 +27,24 @@ from engine import CribbageEngine
 from game_state import GameState
 from phase_states import PhaseStateMachine
 from settings_manager import GameSettings, load_settings, save_settings
+from src.controllers import GameController
+from src.input import EventHandler
 from stats_manager import get_player_profile, record_game_result, record_hand_stats
 from voice_manager import VoiceManager
+
 
 # --- Constants ---
 CARD_WIDTH = 120
 CARD_HEIGHT = 180
-FPS = 60
-TABLE_COLOR = (34, 139, 34)
+
+# Legacy global variables for compatibility
 MAX_SCORE = 121
-PEGGING_Y = 440
-AI_LEVELS = {1: "Easy", 2: "Medium", 3: "Hard", 4: "Bert", 5: "Bert Learning"}
-PLAYFIELD_ALPHA = 128  # 50% transparent (50% opacity)
-
-THEME = {
-    "outer_bg": (50, 30, 14),
-    "felt": (24, 92, 56),
-    "felt_dark": (18, 72, 44),
-    "wood": (102, 63, 34),
-    "wood_light": (144, 93, 52),
-    "panel": (246, 236, 214),
-    "panel_edge": (90, 67, 39),
-    "text": (245, 241, 230),
-    "ink": (36, 28, 20),
-    "gold": (214, 176, 91),
-    "blue": (84, 145, 225),
-    "red": (205, 83, 71),
-    "muted": (194, 181, 157),
-}
-
-MAINE_COLORS = {
-    "pine": (44, 56, 36),
-    "bark": (80, 51, 20),
-    "sand": (222, 184, 135),
-    "gold": (212, 175, 55),
-    "cream": (245, 234, 210),
-}
-
-# --- Global Game State ---
 game_phase = "intro"
-dealer = 0  # 0 for Player, 1 for Dealer
-crib: list[Any] = []
-selected_cards: list[int] = []
-player1_hand: list[Any] = []
+dealer = 0
+crib = []
+player1_hand = []
+selected_cards = []
+
 player2_hand: list[Any] = []
 pegging_pile: list[Any] = []
 player_scores: list[int] = [0, 0]
@@ -2344,6 +2319,9 @@ def main():
 
         selected_cards = []
 
+    game_controller = GameController(_ENGINE, legacy_module=sys.modules[__name__])
+    event_handler = EventHandler()
+
     running = True
     while running:
         if _EFFECTS is not None and _SETTINGS.animations_enabled:
@@ -2860,172 +2838,126 @@ def main():
 
             mouse_pos = pygame.mouse.get_pos()
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+            actions = event_handler.get_actions()
+            for action in actions:
+                action_type = str(action.get("type", ""))
+                raw_event = action.get("raw_event")
+
+                if action_type == "QUIT":
                     running = False
-                elif (
-                    event.type == pygame.KEYDOWN
-                    and event.key == pygame.K_s
+                    continue
+
+                if (
+                    action_type == "SETTINGS_TOGGLE"
                     and not (settings_open and settings_text_active is not None)
                 ):
                     settings_open = not settings_open
                     if not settings_open:
                         settings_text_active = None
-                elif event.type == pygame.KEYDOWN and settings_open and _handle_settings_text_key(event):
                     continue
-                elif event.type == pygame.KEYDOWN and event.key in (
-                    pygame.K_1,
-                    pygame.K_2,
-                    pygame.K_3,
-                    pygame.K_4,
-                    pygame.K_5,
+
+                if (
+                    action_type == "KEYDOWN"
+                    and settings_open
+                    and raw_event is not None
+                    and _handle_settings_text_key(raw_event)
                 ):
-                    if not settings_open:
-                        dad_ai_level = int(event.unicode)
+                    continue
+
+                if action_type == "AI_LEVEL_SELECT" and not settings_open:
+                    level = action.get("level")
+                    if isinstance(level, int) and 1 <= level <= 5:
+                        dad_ai_level = level
                         if dad_ai_level in (4, 5):
                             _speak_bert_event("level_selected", force=True)
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_o:
+                    continue
+
+                if action_type == "ONLINE_MODE" and not settings_open:
+                    _launch_online_client()
+                    return
+
+                if action_type == "KEYDOWN" and action.get("key") in (pygame.K_RETURN, pygame.K_SPACE):
                     if not settings_open:
-                        _launch_online_client()
-                        return
-                elif event.type == pygame.KEYDOWN and event.key in (
-                    pygame.K_RETURN,
-                    pygame.K_SPACE,
-                ):
-                    if not settings_open:
-                        # Start a brand-new game
                         d, sc, msg = _start_fresh_game()
                         dealer = d
                         starter_card = sc
                         message = msg
                         _transition_phase("discard")
                         _speak_bert_event("game_start", force=True)
-                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    continue
+
+                if action_type == "MOUSEBUTTONDOWN":
+                    pos = action.get("pos")
+                    if not pos:
+                        continue
+
                     if settings_open:
-                        if settings_volume_rect is not None and settings_volume_rect.collidepoint(
-                            event.pos
-                        ):
-                            ratio = (event.pos[0] - settings_volume_rect.x) / max(
-                                1, settings_volume_rect.width
-                            )
+                        if settings_volume_rect is not None and settings_volume_rect.collidepoint(pos):
+                            ratio = (pos[0] - settings_volume_rect.x) / max(1, settings_volume_rect.width)
                             _SETTINGS.volume = max(0.0, min(1.0, ratio))
                             _persist_settings()
                             if _AUDIO is not None:
                                 _AUDIO.play("score")
-                        elif settings_anim_rect is not None and settings_anim_rect.collidepoint(
-                            event.pos
-                        ):
+                        elif settings_anim_rect is not None and settings_anim_rect.collidepoint(pos):
                             _SETTINGS.animations_enabled = not _SETTINGS.animations_enabled
                             _persist_settings()
-                        elif (
-                            settings_ai_left_rect is not None
-                            and settings_ai_left_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_ai_left_rect is not None and settings_ai_left_rect.collidepoint(pos):
                             _cycle_online_ai(-1)
-                        elif (
-                            settings_ai_right_rect is not None
-                            and settings_ai_right_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_ai_right_rect is not None and settings_ai_right_rect.collidepoint(pos):
                             _cycle_online_ai(1)
-                        elif (
-                            settings_style_left_rect is not None
-                            and settings_style_left_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_style_left_rect is not None and settings_style_left_rect.collidepoint(pos):
                             _cycle_ui_style(-1)
-                        elif (
-                            settings_style_right_rect is not None
-                            and settings_style_right_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_style_right_rect is not None and settings_style_right_rect.collidepoint(pos):
                             _cycle_ui_style(1)
-                        elif (
-                            settings_voice_style_rect is not None
-                            and settings_voice_style_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_voice_style_rect is not None and settings_voice_style_rect.collidepoint(pos):
                             _SETTINGS.bert_voice_style = (
                                 "robot" if _SETTINGS.bert_voice_style == "downeast" else "downeast"
                             )
                             _persist_settings()
                             _speak_bert_event("level_selected", force=True)
-                        elif (
-                            settings_voice_backend_rect is not None
-                            and settings_voice_backend_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_voice_backend_rect is not None and settings_voice_backend_rect.collidepoint(pos):
                             _SETTINGS.bert_voice_backend = (
-                                "local_ai"
-                                if _SETTINGS.bert_voice_backend == "sapi"
-                                else "sapi"
+                                "local_ai" if _SETTINGS.bert_voice_backend == "sapi" else "sapi"
                             )
                             _persist_settings()
                             _speak_bert_event("level_selected", force=True)
-                        elif (
-                            settings_rvc_toggle_rect is not None
-                            and settings_rvc_toggle_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_rvc_toggle_rect is not None and settings_rvc_toggle_rect.collidepoint(pos):
                             _SETTINGS.bert_rvc_enabled = not _SETTINGS.bert_rvc_enabled
                             _persist_settings()
                             _preview_bert_voice()
-                        elif (
-                            settings_rvc_pitch_left_rect is not None
-                            and settings_rvc_pitch_left_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_rvc_pitch_left_rect is not None and settings_rvc_pitch_left_rect.collidepoint(pos):
                             _SETTINGS.bert_rvc_pitch_shift = max(-24, _SETTINGS.bert_rvc_pitch_shift - 1)
                             _persist_settings()
                             _preview_bert_voice()
-                        elif (
-                            settings_rvc_pitch_right_rect is not None
-                            and settings_rvc_pitch_right_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_rvc_pitch_right_rect is not None and settings_rvc_pitch_right_rect.collidepoint(pos):
                             _SETTINGS.bert_rvc_pitch_shift = min(24, _SETTINGS.bert_rvc_pitch_shift + 1)
                             _persist_settings()
                             _preview_bert_voice()
-                        elif (
-                            settings_voice_test_rect is not None
-                            and settings_voice_test_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_voice_test_rect is not None and settings_voice_test_rect.collidepoint(pos):
                             _preview_bert_voice()
-                        elif (
-                            settings_local_exe_rect is not None
-                            and settings_local_exe_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_local_exe_rect is not None and settings_local_exe_rect.collidepoint(pos):
                             settings_text_active = "local_exe"
-                        elif (
-                            settings_local_model_rect is not None
-                            and settings_local_model_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_local_model_rect is not None and settings_local_model_rect.collidepoint(pos):
                             settings_text_active = "local_model"
-                        elif (
-                            settings_rvc_exe_rect is not None
-                            and settings_rvc_exe_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_rvc_exe_rect is not None and settings_rvc_exe_rect.collidepoint(pos):
                             settings_text_active = "rvc_exe"
-                        elif (
-                            settings_rvc_model_rect is not None
-                            and settings_rvc_model_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_rvc_model_rect is not None and settings_rvc_model_rect.collidepoint(pos):
                             settings_text_active = "rvc_model"
-                        elif (
-                            settings_rvc_index_rect is not None
-                            and settings_rvc_index_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_rvc_index_rect is not None and settings_rvc_index_rect.collidepoint(pos):
                             settings_text_active = "rvc_index"
-                        elif (
-                            settings_player_name_rect is not None
-                            and settings_player_name_rect.collidepoint(event.pos)
-                        ):
+                        elif settings_player_name_rect is not None and settings_player_name_rect.collidepoint(pos):
                             settings_text_active = "player_name"
                         else:
                             settings_text_active = None
                             settings_open = False
                         continue
 
-                    # Check if difficulty button clicked
                     for level, btn_rect in difficulty_buttons.items():
                         if btn_rect.collidepoint(mouse_pos):
                             dad_ai_level = level
                             if dad_ai_level in (4, 5):
                                 _speak_bert_event("level_selected", force=True)
 
-                    # Check if start button clicked
                     if start_btn_rect.collidepoint(mouse_pos):
                         d, sc, msg = _start_fresh_game()
                         dealer = d
@@ -3036,9 +2968,7 @@ def main():
                     elif online_btn_rect is not None and online_btn_rect.collidepoint(mouse_pos):
                         _launch_online_client()
                         return
-                    elif settings_btn_rect is not None and settings_btn_rect.collidepoint(
-                        mouse_pos
-                    ):
+                    elif settings_btn_rect is not None and settings_btn_rect.collidepoint(mouse_pos):
                         settings_open = True
                         settings_text_active = None
             continue
@@ -3085,53 +3015,55 @@ def main():
         else:
             _draw_board_frame(screen)
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+        actions = event_handler.get_actions()
+        for action in actions:
+            action_type = str(action.get("type", ""))
+            if action_type == "QUIT":
                 running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
+                break
+
+            if action_type == "AI_LEVEL_CHANGE":
                 dad_ai_level = 1 if dad_ai_level == 5 else dad_ai_level + 1
                 if dad_ai_level in (4, 5):
-                    message = f"AI level set to {AI_LEVELS[dad_ai_level]}. Opponent is now Bert."
+                    message = f"AI level set to {dad_ai_level}. Opponent is now Bert."
                     _speak_bert_event("level_selected", force=True)
                 else:
-                    message = f"AI level set to {AI_LEVELS[dad_ai_level]}."
+                    message = f"AI level set to {dad_ai_level}."
 
-            if _CLASSIC_SESSION.phase == "discard":
-                handle_discard(event)
-            elif _CLASSIC_SESSION.phase == "pegging" and event.type == pygame.MOUSEBUTTONDOWN:
-                handle_pegging(event)
-            elif _CLASSIC_SESSION.phase == "end":
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+            if _CLASSIC_SESSION.phase == "end":
+                if action_type == "KEYDOWN" and action.get("key") == pygame.K_r:
                     d, sc, msg = _start_next_round()
                     dealer = d
                     starter_card = sc
                     message = msg
-                    _transition_phase("discard")
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    game_controller.transition_phase("discard")
+                elif action_type == "MOUSEBUTTONDOWN" and action.get("button") == 1:
                     sw, sh = screen.get_width(), screen.get_height()
-                    if _primary_button_rect(sw, sh).collidepoint(event.pos):
+                    pos = action.get("pos")
+                    if pos and _primary_button_rect(sw, sh).collidepoint(pos):
                         d, sc, msg = _start_next_round()
                         dealer = d
                         starter_card = sc
                         message = msg
-                        _transition_phase("discard")
-            elif _CLASSIC_SESSION.phase == "game_over":
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                        game_controller.transition_phase("discard")
+
+            if _CLASSIC_SESSION.phase == "game_over":
+                if action_type == "KEYDOWN" and action.get("key") == pygame.K_r:
                     # Return to intro; starting a new game resets scores.
-                    _transition_phase("intro")
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    game_controller.transition_phase("intro")
+                elif action_type == "MOUSEBUTTONDOWN" and action.get("button") == 1:
                     sw, sh = screen.get_width(), screen.get_height()
-                    if _primary_button_rect(sw, sh).collidepoint(event.pos):
-                        _transition_phase("intro")
+                    pos = action.get("pos")
+                    if pos and _primary_button_rect(sw, sh).collidepoint(pos):
+                        game_controller.transition_phase("intro")
+
+        game_controller.process(actions)
 
         # Let the game logic advance even when there are no input events.
         if not capture_gameplay_pending:
             if capture_video_pending and _CLASSIC_SESSION.phase == "discard":
                 _auto_discard_player_hand()
-            if _CLASSIC_SESSION.phase == "pegging":
-                handle_pegging(None, auto_player=capture_video_pending)
-            elif _CLASSIC_SESSION.phase == "counting":
-                handle_counting()
+            game_controller.update(auto_player=capture_video_pending)
 
         _draw_game_header(screen, _CLASSIC_SESSION.message)
         _draw_score_panel(

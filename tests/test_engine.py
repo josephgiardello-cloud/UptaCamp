@@ -180,6 +180,39 @@ def test_ai_strategy_delegates(monkeypatch):
     )
 
 
+def test_ai_discard_allows_strategy_injection():
+    engine = CribbageEngine()
+    engine.state.ai_hand = [_LabeledCard("5_of_hearts"), _LabeledCard("6_of_hearts")]
+
+    class _InjectedStrategy:
+        @staticmethod
+        def choose_discard_indices(**kwargs):
+            assert kwargs["dad_labels"] == ["5_of_hearts", "6_of_hearts"]
+            return [1, 0]
+
+    assert engine.ai_discard(strategy=_InjectedStrategy) == [1, 0]
+
+
+def test_debug_validation_runs_after_state_mutation(monkeypatch):
+    engine = CribbageEngine(debug_validate=True)
+    calls = {"count": 0}
+
+    monkeypatch.setattr(
+        engine,
+        "_validate_state",
+        lambda: calls.__setitem__("count", calls["count"] + 1),
+    )
+
+    engine.start_new_game(
+        player_hand=[_LabeledCard("5_of_hearts")] * 6,
+        ai_hand=[_LabeledCard("6_of_clubs")] * 6,
+        stock_labels=["ace_of_spades"],
+        dealer=1,
+    )
+
+    assert calls["count"] == 1
+
+
 def test_level5_count_hands_updates_and_saves_bert(monkeypatch):
     engine = CribbageEngine()
     engine.state.dad_ai_level = 5

@@ -16,7 +16,7 @@ class EventHandler:
 
     def __init__(self):
         """Initialize event handler."""
-        pass
+        self._last_actions: list[Dict[str, Any]] = []
 
     def poll_events(self) -> list[Dict[str, Any]]:
         """Poll pygame for events and convert to action dictionaries.
@@ -25,12 +25,83 @@ class EventHandler:
             List of action dictionaries. Each action has a 'type' key and
             action-specific data. Special action type 'QUIT' signals exit.
         """
-        # TODO: Import pygame.event and iterate pygame.event.get()
-        # TODO: Convert events to action dicts:
-        #   - {'type': 'QUIT'}
-        #   - {'type': 'KEYDOWN', 'key': key_constant}
-        #   - {'type': 'MOUSEBUTTONDOWN', 'pos': (x, y), 'button': 1}
-        return []
+        import pygame
+
+        actions: list[Dict[str, Any]] = []
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                actions.append({"type": "QUIT", "raw_event": event})
+            elif event.type == pygame.KEYDOWN:
+                mapped = self.handle_keyboard(event.key, getattr(event, "mod", 0))
+                if mapped is not None:
+                    mapped["raw_event"] = event
+                    actions.append(mapped)
+                else:
+                    actions.append(
+                        {
+                            "type": "KEYDOWN",
+                            "key": event.key,
+                            "mod": getattr(event, "mod", 0),
+                            "raw_event": event,
+                        }
+                    )
+            elif event.type == pygame.KEYUP:
+                actions.append(
+                    {
+                        "type": "KEYUP",
+                        "key": event.key,
+                        "mod": getattr(event, "mod", 0),
+                        "raw_event": event,
+                    }
+                )
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mapped = self.handle_mouse_click(event.pos, event.button)
+                if mapped is not None:
+                    mapped["raw_event"] = event
+                    actions.append(mapped)
+                else:
+                    actions.append(
+                        {
+                            "type": "MOUSEBUTTONDOWN",
+                            "pos": event.pos,
+                            "button": event.button,
+                            "raw_event": event,
+                        }
+                    )
+            elif event.type == pygame.MOUSEBUTTONUP:
+                actions.append(
+                    {
+                        "type": "MOUSEBUTTONUP",
+                        "pos": event.pos,
+                        "button": event.button,
+                        "raw_event": event,
+                    }
+                )
+            elif event.type == pygame.MOUSEMOTION:
+                actions.append(
+                    {
+                        "type": "MOUSEMOTION",
+                        "pos": event.pos,
+                        "rel": event.rel,
+                        "buttons": event.buttons,
+                        "raw_event": event,
+                    }
+                )
+            elif event.type == pygame.TEXTINPUT:
+                mapped = self.handle_settings_input(key=0, text=getattr(event, "text", ""))
+                if mapped is not None:
+                    mapped["raw_event"] = event
+                    actions.append(mapped)
+        self._last_actions = actions
+        return actions
+
+    def get_actions(self) -> list[Dict[str, Any]]:
+        """Return the latest polled actions.
+
+        This mirrors the migration-plan naming while preserving poll_events()
+        as the primary API.
+        """
+        return self.poll_events()
 
     def handle_keyboard(self, key: int, modifiers: int = 0) -> Dict[str, Any] | None:
         """Handle keyboard event.
@@ -42,12 +113,32 @@ class EventHandler:
         Returns:
             Action dict or None if key not handled
         """
-        # TODO: Map keys to actions:
-        #   F2 -> {'type': 'AI_LEVEL_CHANGE'}
-        #   S -> {'type': 'SETTINGS_TOGGLE'}
-        #   R -> {'type': 'RESET_HAND'}
-        #   O -> {'type': 'ONLINE_MODE'}
-        #   1-5 -> {'type': 'AI_LEVEL_SELECT', 'level': int(key)}
+        import pygame
+
+        if key == pygame.K_F2:
+            return {"type": "AI_LEVEL_CHANGE"}
+        if key == pygame.K_s:
+            return {"type": "SETTINGS_TOGGLE"}
+        if key == pygame.K_r:
+            return {"type": "RESET_HAND"}
+        if key == pygame.K_o:
+            return {"type": "ONLINE_MODE"}
+
+        number_map = {
+            pygame.K_1: 1,
+            pygame.K_2: 2,
+            pygame.K_3: 3,
+            pygame.K_4: 4,
+            pygame.K_5: 5,
+            pygame.K_KP1: 1,
+            pygame.K_KP2: 2,
+            pygame.K_KP3: 3,
+            pygame.K_KP4: 4,
+            pygame.K_KP5: 5,
+        }
+        level = number_map.get(key)
+        if level is not None:
+            return {"type": "AI_LEVEL_SELECT", "level": level, "mod": modifiers}
         return None
 
     def handle_mouse_click(self, pos: tuple[int, int], button: int = 1) -> Dict[str, Any] | None:
@@ -60,9 +151,9 @@ class EventHandler:
         Returns:
             Action dict or None if click not handled
         """
-        # TODO: Detect card selection based on pos
-        # TODO: Return {'type': 'CARD_SELECTED', 'card_index': idx}
-        return None
+        if button != 1:
+            return None
+        return {"type": "MOUSEBUTTONDOWN", "pos": pos, "button": button}
 
     def handle_settings_input(self, key: int, text: str = "") -> Dict[str, Any] | None:
         """Handle input while settings modal is open.
@@ -74,8 +165,15 @@ class EventHandler:
         Returns:
             Action dict or None
         """
-        # TODO: Handle text input for player name, settings fields
-        # TODO: Return {'type': 'SETTINGS_INPUT', 'field': name, 'value': value}
+        if text:
+            return {"type": "SETTINGS_INPUT", "text": text}
+
+        if key == 8:  # Backspace
+            return {"type": "SETTINGS_BACKSPACE"}
+        if key == 13:  # Enter
+            return {"type": "SETTINGS_SUBMIT"}
+        if key == 27:  # Escape
+            return {"type": "SETTINGS_CANCEL"}
         return None
 
     def should_quit(self) -> bool:
@@ -84,10 +182,12 @@ class EventHandler:
         Returns:
             True if QUIT event pending
         """
-        # TODO: Check pygame.event queue for QUIT
-        return False
-        # TODO: Extract from cribbage_pygame click handlers
-        pass
+        import pygame
+
+        try:
+            return bool(pygame.event.peek(pygame.QUIT))
+        except pygame.error:
+            return False
 
     def handle_key_press(self, key: int) -> None:
         """Handle keyboard event.
@@ -95,5 +195,4 @@ class EventHandler:
         Args:
             key: pygame key constant
         """
-        # TODO: Extract from cribbage_pygame key handlers
-        pass
+        _ = key
