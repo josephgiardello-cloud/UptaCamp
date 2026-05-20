@@ -313,8 +313,9 @@ class BoardRenderer:
         p2_pts, p2_breakdown = round_breakdown["ai"]
         crib_pts, crib_breakdown = round_breakdown["crib"]
 
-        legacy._draw_scoring_breakdown(self.context.screen, 0, p1_breakdown, p1_pts, player_name)
-        legacy._draw_scoring_breakdown(self.context.screen, 1, p2_breakdown, p2_pts, player_name)
+        dealer_name = "Bert" if int(getattr(session, "dad_ai_level", 2)) in (4, 5) else "AI"
+        self._draw_scoring_breakdown(0, p1_breakdown, p1_pts, player_name, dealer_name)
+        self._draw_scoring_breakdown(1, p2_breakdown, p2_pts, player_name, dealer_name)
 
         if crib_pts > 0 or crib_breakdown:
             playfield = legacy._playfield_rect(self.context.screen)
@@ -355,15 +356,174 @@ class BoardRenderer:
             total_surf = total_font.render(total_str, True, (240, 205, 124))
             self.context.screen.blit(total_surf, (crib_rect.x + 12, y + 8))
 
-        legacy._draw_round_summary_popup(
-            self.context.screen,
-            p1_pts,
-            p2_pts,
-            crib_pts,
-            session.dealer,
-            player_name,
-            discard_analysis_message,
+        self._draw_round_summary_popup(
+            player_points=p1_pts,
+            dealer_points=p2_pts,
+            crib_points=crib_pts,
+            dealer_idx=session.dealer,
+            player_name=player_name,
+            analysis_text=discard_analysis_message,
+            dealer_name=dealer_name,
         )
+
+    def _draw_scoring_breakdown(
+        self,
+        player_idx: int,
+        breakdown_list: list[tuple[str, list[Any], int]],
+        total_points: int,
+        player_name: str,
+        dealer_name: str,
+    ) -> None:
+        """Draw a breakdown panel for one side during end-of-hand scoring."""
+        import pygame
+        import cribbage_pygame as legacy
+
+        if self.context.screen is None:
+            return
+
+        sh = self.context.screen.get_height()
+        playfield = legacy._playfield_rect(self.context.screen)
+        panel_w = 220
+        panel_h = 280
+        if player_idx == 0:
+            panel_x = playfield.left + 14
+        else:
+            panel_x = playfield.right - panel_w - 14
+        panel_y = sh // 2 - panel_h // 2
+        panel_y = max(playfield.top + 14, min(panel_y, playfield.bottom - panel_h - 14))
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+
+        legacy._draw_shadowed_panel(self.context.screen, panel_rect, (29, 42, 33), (193, 167, 109), radius=18)
+        header_font = pygame.font.SysFont("segoe ui", 16, bold=True)
+        item_font = pygame.font.SysFont("segoe ui", 13)
+        total_font = pygame.font.SysFont("segoe ui", 14, bold=True)
+
+        player_label = player_name if player_idx == 0 else dealer_name
+        legacy._draw_label(
+            self.context.screen,
+            f"{player_label}'s Score",
+            (panel_rect.x + 12, panel_rect.y + 10),
+            header_font,
+            (236, 222, 186),
+        )
+
+        y_offset = panel_rect.y + 38
+        if breakdown_list:
+            for desc, _cards, points in breakdown_list:
+                score_str = f"{desc}: +{points}"
+                item_surf = item_font.render(score_str, True, (213, 202, 175))
+                self.context.screen.blit(item_surf, (panel_rect.x + 12, y_offset))
+                y_offset += 22
+
+        pygame.draw.line(
+            self.context.screen,
+            (153, 132, 90),
+            (panel_rect.x + 12, y_offset),
+            (panel_rect.right - 12, y_offset),
+            1,
+        )
+        y_offset += 8
+        total_str = f"Hand: +{total_points}"
+        total_surf = total_font.render(
+            total_str,
+            True,
+            (120, 189, 255) if player_idx == 0 else (255, 148, 130),
+        )
+        self.context.screen.blit(total_surf, (panel_rect.x + 12, y_offset))
+
+    def _draw_round_summary_popup(
+        self,
+        *,
+        player_points: int,
+        dealer_points: int,
+        crib_points: int,
+        dealer_idx: int,
+        player_name: str,
+        analysis_text: str,
+        dealer_name: str,
+    ) -> None:
+        """Draw centered round summary popup."""
+        import pygame
+        import cribbage_pygame as legacy
+
+        if self.context.screen is None:
+            return
+
+        def _wrap_line(font: Any, text: str, max_width: int, max_lines: int = 3) -> list[str]:
+            words = text.split()
+            if not words:
+                return []
+            lines = []
+            current = words[0]
+            for word in words[1:]:
+                trial = f"{current} {word}"
+                if font.size(trial)[0] <= max_width:
+                    current = trial
+                else:
+                    lines.append(current)
+                    current = word
+                    if len(lines) >= max_lines:
+                        return lines
+            lines.append(current)
+            return lines[:max_lines]
+
+        playfield = legacy._playfield_rect(self.context.screen)
+        panel_w = min(560, playfield.width - 80)
+        panel_h = 260
+        panel_rect = pygame.Rect(
+            playfield.centerx - panel_w // 2,
+            playfield.centery - panel_h // 2,
+            panel_w,
+            panel_h,
+        )
+
+        dim = pygame.Surface((playfield.width, playfield.height), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 76))
+        self.context.screen.blit(dim, playfield.topleft)
+        legacy._draw_shadowed_panel(
+            self.context.screen,
+            panel_rect,
+            (23, 36, 31),
+            (210, 182, 113),
+            radius=22,
+            shadow=(4, 6),
+        )
+
+        title_font = pygame.font.SysFont("cambria", 30, bold=True)
+        row_font = pygame.font.SysFont("segoe ui", 19, bold=True)
+        meta_font = pygame.font.SysFont("segoe ui", 15)
+
+        legacy._draw_label(
+            self.context.screen,
+            "Round Summary",
+            (panel_rect.x + 22, panel_rect.y + 16),
+            title_font,
+            (242, 227, 188),
+        )
+
+        crib_owner = "Your Crib" if dealer_idx == 0 else f"{dealer_name} Crib"
+        rows = [
+            (f"{player_name}: +{player_points}", (174, 214, 255)),
+            (f"{dealer_name}: +{dealer_points}", (255, 176, 160)),
+            (f"{crib_owner}: +{crib_points}", (241, 206, 132)),
+            (f"Round Total: +{player_points + dealer_points + crib_points}", (229, 236, 204)),
+        ]
+        y = panel_rect.y + 66
+        for text, color in rows:
+            surf = row_font.render(text, True, color)
+            self.context.screen.blit(surf, (panel_rect.x + 24, y))
+            y += 34
+
+        analysis = analysis_text.strip()
+        if analysis:
+            wrapped = _wrap_line(meta_font, analysis, panel_rect.width - 48, max_lines=2)
+            for line in wrapped:
+                line_surf = meta_font.render(line, True, (211, 201, 175))
+                self.context.screen.blit(line_surf, (panel_rect.x + 24, y))
+                y += 22
+
+        prompt = meta_font.render("Press R for next round", True, (211, 201, 175))
+        self.context.screen.blit(prompt, (panel_rect.right - prompt.get_width() - 22, panel_rect.bottom - 28))
 
     def draw_end_or_game_over_button(self, *, phase: str, sw: int, sh: int) -> None:
         """Draw end/game over action button."""
