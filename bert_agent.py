@@ -166,3 +166,232 @@ class BertAgent:
             data = payload
 
         self.q_table = defaultdict(float, data)
+
+
+def encode_game_state_as_vector(
+    hand_labels: Sequence[str],
+    current_total: int,
+    state: GameState,
+    state_type: str = "pegging",
+) -> list[float]:
+    """Encode game state as fixed-size feature vector for neural network.
+
+    Feature vector (20 dims total):
+    - [0-5]: Hand card values (sorted, padded with 0s to 6 cards)
+    - [6]: Dealer flag (1.0 if dealer, 0.0)
+    - [7-8]: Scores normalized to [0, 1] range (own_score / 121, opp_score / 121)
+    - [9]: Pegging total normalized to [0, 1] range (current_total / 31)
+    - [10]: Last card value in pegging pile (0-10 scale)
+    - [11]: Remaining cards in deck (0-52 scale)
+    - [12-13]: Pass flags for players [0, 1] (1.0 if passed, 0.0)
+    - [14-19]: Reserved for phase encoding (one-hot: discard, pegging, counting, end)
+
+    Args:
+        hand_labels: Card labels in hand
+        current_total: Current pegging total (0-31)
+        state: GameState object
+        state_type: "discard", "pegging", "counting", "end"
+
+    Returns:
+        List of 20 floats suitable for neural network input
+    """
+    vector: list[float] = []
+
+    # Hand values (6 dims)
+    hand_vals = []
+    for lbl in hand_labels[:6]:
+        rank, _ = cards.parse_card_label(lbl)
+        val = cards.value_for_fifteen(rank)
+        hand_vals.append(float(val))
+    # Pad to 6 dims
+    while len(hand_vals) < 6:
+        hand_vals.append(0.0)
+    vector.extend(hand_vals[:6])
+
+    # Dealer flag (1 dim)
+    vector.append(1.0 if state.dealer == 1 else 0.0)
+
+    # Scores normalized (2 dims)
+    own_score = float(state.scores[0]) / 121.0
+    opp_score = float(state.scores[1]) / 121.0
+    vector.append(max(0.0, min(1.0, own_score)))
+    vector.append(max(0.0, min(1.0, opp_score)))
+
+    # Pegging total (1 dim)
+    pegging_norm = float(current_total) / 31.0 if current_total else 0.0
+    vector.append(max(0.0, min(1.0, pegging_norm)))
+
+    # Last card value (1 dim)
+    last_val = 0.0
+    if state.pegging_pile:
+        try:
+            last_label = cards.card_label(state.pegging_pile[-1])
+            rank, _ = cards.parse_card_label(last_label)
+            last_val = float(cards.value_for_fifteen(rank)) / 10.0
+        except Exception:
+            pass
+    vector.append(max(0.0, min(1.0, last_val)))
+
+    # Remaining cards (1 dim)
+    remaining = len(state.stock_labels) if hasattr(state, "stock_labels") else 0
+    remaining_norm = float(remaining) / 52.0
+    vector.append(max(0.0, min(1.0, remaining_norm)))
+
+    # Pass flags (2 dims)
+    if hasattr(state, "pegging_passes") and isinstance(state.pegging_passes, list):
+        vector.append(1.0 if state.pegging_passes[0] else 0.0)
+        vector.append(1.0 if state.pegging_passes[1] else 0.0)
+    else:
+        vector.append(0.0)
+        vector.append(0.0)
+
+    # Phase encoding one-hot (6 dims)
+    phase_index = {"discard": 0, "pegging": 1, "counting": 2, "end": 3, "online_login": 4, "online_match": 5}
+    phase = state.phase if state.phase in phase_index else "end"
+    for i in range(6):
+        vector.append(1.0 if i == phase_index[phase] else 0.0)
+
+    return vector
+
+
+class DQN:
+    """Deep Q-Network for cribbage decision-making (requires PyTorch).
+
+    Architecture:
+    - Input: 20-dim feature vector (state encoding)
+    - Hidden layers: 64 -> 64 neurons with ReLU
+    - Output: Q-values for actions (variable based on action space)
+
+    This is a stub that gracefully handles missing PyTorch.
+    """
+
+    def __init__(self, input_dim: int = 20, output_dim: int = 15, hidden_dim: int = 64):
+        """Initialize DQN network.
+
+        Args:
+            input_dim: Input feature vector dimension (default 20)
+            output_dim: Output Q-value dimension (e.g., 15 for discard, 4 for pegging)
+            hidden_dim: Hidden layer dimension (default 64)
+        """
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+
+        try:
+            import torch
+            import torch.nn as nn
+
+            self.device = torch.device("cpu")
+            self.model = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, output_dim),
+            ).to(self.device)
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+            self.criterion = nn.MSELoss()
+            self.torch_available = True
+        except ImportError:
+            self.torch_available = False
+            self.model = None
+            self.optimizer = None
+            self.criterion = None
+            self.device = None
+
+    def forward(self, state_vector: list[float]) -> list[float] | None:
+        """Compute Q-values for a state.
+
+        Args:
+            state_vector: Feature vector from encode_game_state_as_vector
+
+        Returns:
+            List of Q-values, or None if PyTorch unavailable
+        """
+        if not self.torch_available or self.model is None:
+            return None
+
+        try:
+            import torch
+
+            with torch.no_grad():
+                state_tensor = torch.tensor(state_vector, dtype=torch.float32, device=self.device).unsqueeze(0)
+                q_values = self.model(state_tensor).squeeze(0)
+                return q_values.cpu().numpy().tolist()
+        except Exception:
+            return None
+
+    def update(self, state_vector: list[float], target_q_values: list[float], learning_rate: float = 0.001) -> float:
+        """Perform a single gradient update.
+
+        Args:
+            state_vector: Feature vector
+            target_q_values: Target Q-values for this state
+            learning_rate: Learning rate (unused, set in __init__)
+
+        Returns:
+            Loss value, or -1.0 if PyTorch unavailable
+        """
+        if not self.torch_available or self.model is None:
+            return -1.0
+
+        try:
+            import torch
+
+            state_tensor = torch.tensor(state_vector, dtype=torch.float32, device=self.device).unsqueeze(0)
+            target_tensor = torch.tensor(target_q_values, dtype=torch.float32, device=self.device).unsqueeze(0)
+
+            self.optimizer.zero_grad()
+            output = self.model(state_tensor)
+            loss = self.criterion(output, target_tensor)
+            loss.backward()
+            self.optimizer.step()
+
+            return float(loss.item())
+        except Exception:
+            return -1.0
+
+    def save_weights(self, path: str | Path) -> bool:
+        """Save model weights to file.
+
+        Args:
+            path: File path to save to
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.torch_available or self.model is None:
+            return False
+
+        try:
+            import torch
+
+            file_path = Path(path)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(self.model.state_dict(), file_path)
+            return True
+        except Exception:
+            return False
+
+    def load_weights(self, path: str | Path) -> bool:
+        """Load model weights from file.
+
+        Args:
+            path: File path to load from
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.torch_available or self.model is None:
+            return False
+
+        try:
+            import torch
+
+            file_path = Path(path)
+            if not file_path.exists():
+                return False
+            self.model.load_state_dict(torch.load(file_path, map_location=self.device))
+            return True
+        except Exception:
+            return False
