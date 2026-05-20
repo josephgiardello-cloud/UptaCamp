@@ -1946,6 +1946,89 @@ def main():
         _UI_STYLE = _SETTINGS.ui_style
         _persist_settings()
 
+    def _begin_classic_round(*, announce: bool) -> tuple[int, Card, str]:
+        d, sc, msg = _start_fresh_game()
+        _transition_phase("discard")
+        if announce:
+            _speak_bert_event("game_start", force=True)
+        return d, sc, msg
+
+    def _handle_settings_modal_click(pos: tuple[int, int]) -> None:
+        nonlocal settings_open, settings_text_active
+
+        if settings_volume_rect is not None and settings_volume_rect.collidepoint(pos):
+            ratio = (pos[0] - settings_volume_rect.x) / max(1, settings_volume_rect.width)
+            _SETTINGS.volume = max(0.0, min(1.0, ratio))
+            _persist_settings()
+            if _AUDIO is not None:
+                _AUDIO.play("score")
+            return
+        if settings_anim_rect is not None and settings_anim_rect.collidepoint(pos):
+            _SETTINGS.animations_enabled = not _SETTINGS.animations_enabled
+            _persist_settings()
+            return
+        if settings_ai_left_rect is not None and settings_ai_left_rect.collidepoint(pos):
+            _cycle_online_ai(-1)
+            return
+        if settings_ai_right_rect is not None and settings_ai_right_rect.collidepoint(pos):
+            _cycle_online_ai(1)
+            return
+        if settings_style_left_rect is not None and settings_style_left_rect.collidepoint(pos):
+            _cycle_ui_style(-1)
+            return
+        if settings_style_right_rect is not None and settings_style_right_rect.collidepoint(pos):
+            _cycle_ui_style(1)
+            return
+        if settings_voice_style_rect is not None and settings_voice_style_rect.collidepoint(pos):
+            _SETTINGS.bert_voice_style = "robot" if _SETTINGS.bert_voice_style == "downeast" else "downeast"
+            _persist_settings()
+            _speak_bert_event("level_selected", force=True)
+            return
+        if settings_voice_backend_rect is not None and settings_voice_backend_rect.collidepoint(pos):
+            _SETTINGS.bert_voice_backend = "local_ai" if _SETTINGS.bert_voice_backend == "sapi" else "sapi"
+            _persist_settings()
+            _speak_bert_event("level_selected", force=True)
+            return
+        if settings_rvc_toggle_rect is not None and settings_rvc_toggle_rect.collidepoint(pos):
+            _SETTINGS.bert_rvc_enabled = not _SETTINGS.bert_rvc_enabled
+            _persist_settings()
+            _preview_bert_voice()
+            return
+        if settings_rvc_pitch_left_rect is not None and settings_rvc_pitch_left_rect.collidepoint(pos):
+            _SETTINGS.bert_rvc_pitch_shift = max(-24, _SETTINGS.bert_rvc_pitch_shift - 1)
+            _persist_settings()
+            _preview_bert_voice()
+            return
+        if settings_rvc_pitch_right_rect is not None and settings_rvc_pitch_right_rect.collidepoint(pos):
+            _SETTINGS.bert_rvc_pitch_shift = min(24, _SETTINGS.bert_rvc_pitch_shift + 1)
+            _persist_settings()
+            _preview_bert_voice()
+            return
+        if settings_voice_test_rect is not None and settings_voice_test_rect.collidepoint(pos):
+            _preview_bert_voice()
+            return
+        if settings_local_exe_rect is not None and settings_local_exe_rect.collidepoint(pos):
+            settings_text_active = "local_exe"
+            return
+        if settings_local_model_rect is not None and settings_local_model_rect.collidepoint(pos):
+            settings_text_active = "local_model"
+            return
+        if settings_rvc_exe_rect is not None and settings_rvc_exe_rect.collidepoint(pos):
+            settings_text_active = "rvc_exe"
+            return
+        if settings_rvc_model_rect is not None and settings_rvc_model_rect.collidepoint(pos):
+            settings_text_active = "rvc_model"
+            return
+        if settings_rvc_index_rect is not None and settings_rvc_index_rect.collidepoint(pos):
+            settings_text_active = "rvc_index"
+            return
+        if settings_player_name_rect is not None and settings_player_name_rect.collidepoint(pos):
+            settings_text_active = "player_name"
+            return
+
+        settings_text_active = None
+        settings_open = False
+
     def _draw_settings_modal(sw: int, sh: int) -> None:
         nonlocal settings_volume_rect, settings_anim_rect, settings_ai_left_rect, settings_ai_right_rect
         nonlocal settings_style_left_rect, settings_style_right_rect
@@ -2887,12 +2970,10 @@ def main():
 
                 if action_type == "KEYDOWN" and action.get("key") in (pygame.K_RETURN, pygame.K_SPACE):
                     if not settings_open:
-                        d, sc, msg = _start_fresh_game()
+                        d, sc, msg = _begin_classic_round(announce=True)
                         dealer = d
                         starter_card = sc
                         message = msg
-                        _transition_phase("discard")
-                        _speak_bert_event("game_start", force=True)
                     continue
 
                 if action_type == "MOUSEBUTTONDOWN":
@@ -2901,64 +2982,7 @@ def main():
                         continue
 
                     if settings_open:
-                        if settings_volume_rect is not None and settings_volume_rect.collidepoint(pos):
-                            ratio = (pos[0] - settings_volume_rect.x) / max(1, settings_volume_rect.width)
-                            _SETTINGS.volume = max(0.0, min(1.0, ratio))
-                            _persist_settings()
-                            if _AUDIO is not None:
-                                _AUDIO.play("score")
-                        elif settings_anim_rect is not None and settings_anim_rect.collidepoint(pos):
-                            _SETTINGS.animations_enabled = not _SETTINGS.animations_enabled
-                            _persist_settings()
-                        elif settings_ai_left_rect is not None and settings_ai_left_rect.collidepoint(pos):
-                            _cycle_online_ai(-1)
-                        elif settings_ai_right_rect is not None and settings_ai_right_rect.collidepoint(pos):
-                            _cycle_online_ai(1)
-                        elif settings_style_left_rect is not None and settings_style_left_rect.collidepoint(pos):
-                            _cycle_ui_style(-1)
-                        elif settings_style_right_rect is not None and settings_style_right_rect.collidepoint(pos):
-                            _cycle_ui_style(1)
-                        elif settings_voice_style_rect is not None and settings_voice_style_rect.collidepoint(pos):
-                            _SETTINGS.bert_voice_style = (
-                                "robot" if _SETTINGS.bert_voice_style == "downeast" else "downeast"
-                            )
-                            _persist_settings()
-                            _speak_bert_event("level_selected", force=True)
-                        elif settings_voice_backend_rect is not None and settings_voice_backend_rect.collidepoint(pos):
-                            _SETTINGS.bert_voice_backend = (
-                                "local_ai" if _SETTINGS.bert_voice_backend == "sapi" else "sapi"
-                            )
-                            _persist_settings()
-                            _speak_bert_event("level_selected", force=True)
-                        elif settings_rvc_toggle_rect is not None and settings_rvc_toggle_rect.collidepoint(pos):
-                            _SETTINGS.bert_rvc_enabled = not _SETTINGS.bert_rvc_enabled
-                            _persist_settings()
-                            _preview_bert_voice()
-                        elif settings_rvc_pitch_left_rect is not None and settings_rvc_pitch_left_rect.collidepoint(pos):
-                            _SETTINGS.bert_rvc_pitch_shift = max(-24, _SETTINGS.bert_rvc_pitch_shift - 1)
-                            _persist_settings()
-                            _preview_bert_voice()
-                        elif settings_rvc_pitch_right_rect is not None and settings_rvc_pitch_right_rect.collidepoint(pos):
-                            _SETTINGS.bert_rvc_pitch_shift = min(24, _SETTINGS.bert_rvc_pitch_shift + 1)
-                            _persist_settings()
-                            _preview_bert_voice()
-                        elif settings_voice_test_rect is not None and settings_voice_test_rect.collidepoint(pos):
-                            _preview_bert_voice()
-                        elif settings_local_exe_rect is not None and settings_local_exe_rect.collidepoint(pos):
-                            settings_text_active = "local_exe"
-                        elif settings_local_model_rect is not None and settings_local_model_rect.collidepoint(pos):
-                            settings_text_active = "local_model"
-                        elif settings_rvc_exe_rect is not None and settings_rvc_exe_rect.collidepoint(pos):
-                            settings_text_active = "rvc_exe"
-                        elif settings_rvc_model_rect is not None and settings_rvc_model_rect.collidepoint(pos):
-                            settings_text_active = "rvc_model"
-                        elif settings_rvc_index_rect is not None and settings_rvc_index_rect.collidepoint(pos):
-                            settings_text_active = "rvc_index"
-                        elif settings_player_name_rect is not None and settings_player_name_rect.collidepoint(pos):
-                            settings_text_active = "player_name"
-                        else:
-                            settings_text_active = None
-                            settings_open = False
+                        _handle_settings_modal_click(pos)
                         continue
 
                     for level, btn_rect in difficulty_buttons.items():
@@ -2968,12 +2992,10 @@ def main():
                                 _speak_bert_event("level_selected", force=True)
 
                     if start_btn_rect.collidepoint(mouse_pos):
-                        d, sc, msg = _start_fresh_game()
+                        d, sc, msg = _begin_classic_round(announce=True)
                         dealer = d
                         starter_card = sc
                         message = msg
-                        _transition_phase("discard")
-                        _speak_bert_event("game_start", force=True)
                     elif online_btn_rect is not None and online_btn_rect.collidepoint(mouse_pos):
                         _launch_online_client()
                         return
