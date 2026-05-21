@@ -12,6 +12,6 @@
   "bert_rvc_exe_path": "rvc_infer",
   "bert_rvc_model_path": "",
   "bert_rvc_index_path": "",
-  "bert_rvc_pitch_shift": 9,
+  "bert_rvc_pitch_shift": 1,
   "player_name": "Player"
 }
