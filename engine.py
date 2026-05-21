@@ -30,6 +30,21 @@ class CribbageEngine:
     def _dealer_name(self) -> str:
         return "Bert" if self.state.dad_ai_level in (4, 5) else "AI"
 
+    def _set_winner_if_needed(self) -> bool:
+        scores = self.state.scores
+        if scores[0] < 121 and scores[1] < 121:
+            return False
+
+        if scores[0] > scores[1]:
+            self.state.winner = 0
+        elif scores[1] > scores[0]:
+            self.state.winner = 1
+        else:
+            self.state.winner = None
+        self.state.phase = "game_over"
+        self.state.counting_next_phase = "game_over"
+        return True
+
     def _validate_state(self) -> None:
         """Debug-mode validation of game state consistency.
 
@@ -78,6 +93,10 @@ class CribbageEngine:
         self.state.player_turn = 0
         self.state.pegging_passes = [False, False]
         self.state.last_pegging_player = None
+        self.state.counting_resolved = False
+        self.state.counting_next_phase = "end"
+        self.state.last_counting_result = {}
+        self.state.last_counting_breakdown = {}
         self.state.message = "Select 2 cards to discard to the crib."
         self.state.stock_labels = list(stock_labels)
         self._validate_state_if_enabled()
@@ -100,6 +119,10 @@ class CribbageEngine:
         self.state.player_turn = 1 - self.state.dealer
         self.state.pegging_passes = [False, False]
         self.state.last_pegging_player = None
+        self.state.counting_resolved = False
+        self.state.counting_next_phase = "end"
+        self.state.last_counting_result = {}
+        self.state.last_counting_breakdown = {}
         self.state.message = "New Round. Select 2 cards to discard."
         self.state.stock_labels = list(stock_labels)
         self._validate_state_if_enabled()
@@ -130,6 +153,8 @@ class CribbageEngine:
         self.state.player_turn = 1 - self.state.dealer
         self.state.pegging_passes = [False, False]
         self.state.last_pegging_player = None
+        self.state.counting_resolved = False
+        self.state.counting_next_phase = "end"
         self.state.message = "Pegging phase begins!"
         self._validate_state_if_enabled()
 
@@ -165,6 +190,12 @@ class CribbageEngine:
             if not hand:
                 return 0
 
+            card = hand[card_index]
+            projected_total = cribbage_cards.pegging_total(self.state.pegging_pile)
+            rank, _ = parse_label(self._label(card))
+            if projected_total + value_for_15(rank) > 31:
+                return 0
+
             card = hand.pop(card_index)
             self.state.pegging_pile.append(card)
             self.state.pegging_passes = [False, False]
@@ -187,6 +218,7 @@ class CribbageEngine:
                 self.state.player_turn = 1 - player_idx
 
             self.state.last_pegging_player = player_idx
+            self._set_winner_if_needed()
             self._validate_state_if_enabled()
             return points
         except (IndexError, KeyError, AttributeError, TypeError) as e:
@@ -224,12 +256,14 @@ class CribbageEngine:
                 if last_card_point
                 else "No plays. New count."
             )
+            self._set_winner_if_needed()
             return {"ok": True, "points": last_card_point, "go_completed": True}
 
         self.state.player_turn = other
         self.state.message = "Go. " + (
             f"{self._dealer_name()}'s turn." if other == 1 else "Your turn."
         )
+        self._set_winner_if_needed()
         return {"ok": True, "points": 0, "go_completed": False}
 
     def ai_discard(self, strategy: Any | None = None) -> list[int]:
@@ -288,6 +322,8 @@ class CribbageEngine:
             self.state.message = "Counting hands."
 
         self.state.phase = "counting"
+        self.state.counting_resolved = False
+        self.state.counting_next_phase = "end"
         self._validate_state_if_enabled()
         return True
 
@@ -297,6 +333,8 @@ class CribbageEngine:
             self.state.message = "No starter card available. Press R to reset."
             self.state.last_counting_result = {}
             self.state.last_counting_breakdown = {}
+            self.state.counting_resolved = True
+            self.state.counting_next_phase = "end"
             self._validate_state_if_enabled()
             return {"player": 0, "ai": 0, "crib": 0}
 
@@ -311,15 +349,45 @@ class CribbageEngine:
             self.score_func(crib_cards, starter, is_crib=True) if len(crib_cards) == 4 else (0, [])
         )
 
-        self.state.scores[0] += p1_total
-        self.state.scores[1] += p2_total
-        self.state.scores[self.state.dealer] += crib_total
-        self.state.last_counting_result = {"player": p1_total, "ai": p2_total, "crib": crib_total}
-        self.state.last_counting_breakdown = {
-            "player": p1_breakdown,
-            "ai": p2_breakdown,
-            "crib": crib_breakdown,
-        }
+        result = {"player": 0, "ai": 0, "crib": 0}
+        breakdown = {"player": [], "ai": [], "crib": []}
+
+        def _score_player(index: int, total: int, score_breakdown: list[tuple[str, list[str], int]], key: str) -> bool:
+            if total <= 0:
+                return False
+            self.state.scores[index] += total
+            result[key] = total
+            breakdown[key] = score_breakdown
+            if self._set_winner_if_needed():
+                self.state.last_counting_result = dict(result)
+                self.state.last_counting_breakdown = dict(breakdown)
+                self.state.counting_resolved = True
+                self.state.counting_next_phase = "game_over"
+                return True
+            return False
+
+        if _score_player(0, p1_total, p1_breakdown, "player"):
+            self._validate_state_if_enabled()
+            return result
+
+        if _score_player(1, p2_total, p2_breakdown, "ai"):
+            self._validate_state_if_enabled()
+            return result
+
+        if len(crib_cards) == 4:
+            dealer_idx = self.state.dealer
+            self.state.scores[dealer_idx] += crib_total
+            result["crib"] = crib_total
+            breakdown["crib"] = crib_breakdown
+            self._set_winner_if_needed()
+        else:
+            result["crib"] = 0
+            breakdown["crib"] = []
+
+        self.state.last_counting_result = dict(result)
+        self.state.last_counting_breakdown = dict(breakdown)
+        self.state.counting_resolved = True
+        self.state.counting_next_phase = "game_over" if self.state.phase == "game_over" else "end"
 
         if self.state.dad_ai_level == 5:
             # Reward is net hand value from AI's perspective.
@@ -335,12 +403,12 @@ class CribbageEngine:
         self._validate_state_if_enabled()
 
         return {
-            "player": p1_total,
-            "ai": p2_total,
-            "crib": crib_total,
-            "player_breakdown": p1_breakdown,
-            "ai_breakdown": p2_breakdown,
-            "crib_breakdown": crib_breakdown,
+            "player": result["player"],
+            "ai": result["ai"],
+            "crib": result["crib"],
+            "player_breakdown": breakdown["player"],
+            "ai_breakdown": breakdown["ai"],
+            "crib_breakdown": breakdown["crib"],
         }
 
     @staticmethod
@@ -363,30 +431,218 @@ class CribbageEngine:
     def _parse_label(label: str) -> tuple[str, str]:
         return cribbage_cards.parse_card_label(label)
 
+    @staticmethod
+    def _remote_phase_index(phase: str) -> int:
+        order = {"deal": 0, "discard": 1, "pegging": 2, "counting": 3, "finished": 4}
+        return order.get(phase, 0)
+
+    def _remote_player_index(self, player_id: str, player_one_id: str, player_two_id: str) -> int:
+        if player_id == player_one_id:
+            return 0
+        if player_id == player_two_id:
+            return 1
+        raise ValueError("Player does not belong to this match")
+
+    def _serialize_remote_cards(self, cards: Sequence[Any]) -> list[str]:
+        return [self._label(card) for card in cards]
+
     def load_remote_snapshot(self, snapshot: dict[str, Any]) -> None:
         state = self.state
         for key, value in snapshot.items():
-            setattr(state, key, value)
+            if hasattr(state, key):
+                setattr(state, key, value)
 
-        # Remote match state stores a few ad-hoc orchestration fields.
-        if not hasattr(state, "deal_ready"):
-            state.deal_ready = []
-        if not hasattr(state, "discard_by_player"):
+        # Normalize remote orchestration fields for backward compatibility.
+        state.phase = str(getattr(state, "phase", "deal") or "deal")
+        raw_scores = getattr(state, "scores", [0, 0])
+        if not isinstance(raw_scores, list) or len(raw_scores) != 2:
+            state.scores = [0, 0]
+        else:
+            state.scores = [int(raw_scores[0]), int(raw_scores[1])]
+
+        state.deal_ready = [str(player) for player in list(getattr(state, "deal_ready", []))]
+        raw_discards = getattr(state, "discard_by_player", {})
+        if isinstance(raw_discards, dict):
+            state.discard_by_player = {
+                str(pid): [str(card) for card in list(cards)]
+                for pid, cards in raw_discards.items()
+            }
+        else:
             state.discard_by_player = {}
-        if not hasattr(state, "pegging_pile"):
-            state.pegging_pile = []
-        if not hasattr(state, "pegging_running_total"):
-            state.pegging_running_total = 0
-        if not hasattr(state, "pegging_passes"):
-            state.pegging_passes = [False, False]
-        if not hasattr(state, "last_pegging_player"):
-            state.last_pegging_player = None
-        if not hasattr(state, "last_action"):
-            state.last_action = None
+
+        state.pegging_pile = list(getattr(state, "pegging_pile", []))
+        raw_passes = list(getattr(state, "pegging_passes", [False, False]))
+        state.pegging_passes = [bool(raw_passes[0]), bool(raw_passes[1])] if len(raw_passes) >= 2 else [False, False]
+        state.last_pegging_player = getattr(state, "last_pegging_player", None)
+        state.last_action = dict(getattr(state, "last_action", {}) or {})
+        state.phase_progress = max(0, int(getattr(state, "phase_progress", 0) or 0))
+        state.phase_index = int(getattr(state, "phase_index", self._remote_phase_index(state.phase)) or 0)
+        state.count_by_player = {
+            str(pid): bool(done)
+            for pid, done in dict(getattr(state, "count_by_player", {}) or {}).items()
+        }
+        state.player_hand = list(getattr(state, "player_hand", []))
+        state.ai_hand = list(getattr(state, "ai_hand", []))
+        state.pegging_running_total = int(
+            getattr(state, "pegging_running_total", cribbage_cards.pegging_total(state.pegging_pile)) or 0
+        )
 
     def dump_remote_snapshot(self) -> dict[str, Any]:
         state = self.state
-        return dict(vars(state))
+        return {
+            "phase": str(state.phase),
+            "phase_index": int(state.phase_index),
+            "phase_progress": int(state.phase_progress),
+            "scores": [int(state.scores[0]), int(state.scores[1])],
+            "dealer": int(state.dealer),
+            "player_turn": int(state.player_turn),
+            "deal_ready": list(state.deal_ready),
+            "discard_by_player": {k: list(v) for k, v in state.discard_by_player.items()},
+            "pegging_pile": self._serialize_remote_cards(state.pegging_pile),
+            "pegging_running_total": int(state.pegging_running_total),
+            "pegging_passes": [bool(state.pegging_passes[0]), bool(state.pegging_passes[1])],
+            "last_pegging_player": state.last_pegging_player,
+            "count_by_player": dict(state.count_by_player),
+            "player_hand": self._serialize_remote_cards(state.player_hand),
+            "ai_hand": self._serialize_remote_cards(state.ai_hand),
+            "last_action": dict(state.last_action),
+            "winner": state.winner,
+            "message": state.message,
+            "counting_next_phase": state.counting_next_phase,
+        }
+
+    def _apply_remote_deal_ready(self, *, player_id: str) -> None:
+        ready = set(self.state.deal_ready)
+        ready.add(player_id)
+        self.state.deal_ready = sorted(ready)
+        self.state.phase_progress = len(self.state.deal_ready)
+        if len(self.state.deal_ready) >= 2:
+            self.state.phase = "discard"
+            self.state.phase_index = self._remote_phase_index("discard")
+            self.state.phase_progress = 0
+            self.state.discard_by_player = {}
+
+    def _apply_remote_discard(self, *, player_id: str, payload: dict[str, Any]) -> None:
+        cards = [str(card) for card in list(payload.get("cards", []))]
+        discards = dict(self.state.discard_by_player)
+        discards[player_id] = cards
+        self.state.discard_by_player = discards
+        self.state.phase_progress = len(self.state.discard_by_player)
+        if len(self.state.discard_by_player) >= 2:
+            self.state.phase = "pegging"
+            self.state.phase_index = self._remote_phase_index("pegging")
+            self.state.phase_progress = 0
+            self.state.count_by_player = {}
+            self.state.pegging_passes = [False, False]
+            self.state.pegging_pile = []
+            self.state.pegging_running_total = 0
+            self.state.last_pegging_player = None
+            self.state.player_hand = ["remote_player_slot"] * 4
+            self.state.ai_hand = ["remote_ai_slot"] * 4
+            self.state.discard_by_player = {}
+            self.state.player_turn = 1 - int(self.state.dealer)
+
+    def _finalize_remote_pegging_if_needed(self) -> None:
+        if self.state.phase != "pegging":
+            return
+        changed = self.finalize_pegging_if_complete(
+            lambda: cribbage_cards.pegging_total(self.state.pegging_pile)
+        )
+        if changed:
+            self.state.phase = "counting"
+            self.state.phase_index = self._remote_phase_index("counting")
+            self.state.phase_progress = 0
+            self.state.count_by_player = {}
+
+    def _apply_remote_peg(
+        self,
+        *,
+        player_id: str,
+        player_one_id: str,
+        player_two_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        idx = self._remote_player_index(player_id, player_one_id, player_two_id)
+        hand = self.state.player_hand if idx == 0 else self.state.ai_hand
+        card_label = str(payload.get("card"))
+
+        # Remote snapshots do not carry full hand identities; maintain card counts with slots.
+        if not hand:
+            hand.append("remote_slot")
+        hand.append(card_label)
+        points = self.play_pegging_card(
+            idx,
+            len(hand) - 1,
+            cribbage_cards.score_pegging_play,
+            cribbage_cards.value_for_fifteen,
+            cribbage_cards.parse_card_label,
+        )
+
+        played = not hand or hand[-1] != card_label
+        if not played and hand and hand[-1] == card_label:
+            hand.pop()
+        elif played and hand:
+            hand.pop()
+
+        self.state.pegging_running_total = int(cribbage_cards.pegging_total(self.state.pegging_pile))
+        self.state.phase_progress += 1
+        self._finalize_remote_pegging_if_needed()
+        return {
+            **payload,
+            "running_total": self.state.pegging_running_total,
+            "points": int(points),
+        }
+
+    def _apply_remote_go(
+        self,
+        *,
+        player_id: str,
+        player_one_id: str,
+        player_two_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        idx = self._remote_player_index(player_id, player_one_id, player_two_id)
+        result = self.pass_pegging_turn(idx)
+        self.state.pegging_running_total = int(cribbage_cards.pegging_total(self.state.pegging_pile))
+        self.state.phase_progress += 1
+        self._finalize_remote_pegging_if_needed()
+        if not result.get("ok"):
+            return payload
+        return {
+            **payload,
+            "points": int(result.get("points", 0)),
+            "go_completed": bool(result.get("go_completed", False)),
+        }
+
+    def _apply_remote_count(
+        self,
+        *,
+        player_id: str,
+        player_one_id: str,
+        player_two_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        points = payload.get("points")
+        if not isinstance(points, int):
+            return payload
+
+        if points < 0 or points > 29:
+            print(f"Warning: suspicious remote count points={points} from player={player_id}")
+            return payload
+
+        idx = self._remote_player_index(player_id, player_one_id, player_two_id)
+        counted = dict(self.state.count_by_player)
+        if not counted.get(player_id):
+            self.state.scores[idx] += points
+            counted[player_id] = True
+            self.state.count_by_player = counted
+            self.state.phase_progress = len(counted)
+
+        if self.state.scores[0] >= 121 or self.state.scores[1] >= 121 or len(counted) >= 2:
+            self.state.phase = "finished"
+            self.state.phase_index = self._remote_phase_index("finished")
+            self.state.phase_progress = 0
+        return payload
 
     def apply_remote_action(
         self,
@@ -397,86 +653,45 @@ class CribbageEngine:
         action_type: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        state = self.state
-        phase = str(getattr(state, "phase", "deal"))
+        phase = getattr(self.state, "phase", None)
+        if not isinstance(phase, str) or not phase:
+            raise ValueError("Remote state missing valid phase")
 
+        applied_payload = dict(payload)
         if phase == "deal" and action_type == "deal_ready":
-            ready = set(getattr(state, "deal_ready", []))
-            ready.add(player_id)
-            state.deal_ready = sorted(ready)
-            if len(state.deal_ready) >= 2:
-                state.phase = "discard"
-                state.phase_index = 1
-                state.phase_progress = 0
-
+            self._apply_remote_deal_ready(player_id=player_id)
         elif phase == "discard" and action_type == "discard":
-            discards = dict(getattr(state, "discard_by_player", {}))
-            discards[player_id] = list(payload.get("cards", []))
-            state.discard_by_player = discards
-            if len(state.discard_by_player) >= 2:
-                state.phase = "pegging"
-                state.phase_index = 2
-                state.phase_progress = 0
-
+            self._apply_remote_discard(player_id=player_id, payload=payload)
         elif phase == "pegging" and action_type == "peg":
-            idx = 0 if player_id == player_one_id else 1
-            card_label = str(payload.get("card"))
-            pile = list(getattr(state, "pegging_pile", []))
-            running_total = int(getattr(state, "pegging_running_total", 0))
-            rank, _ = cribbage_cards.parse_card_label(card_label)
-            projected_total = running_total + cribbage_cards.value_for_fifteen(rank)
-            if projected_total > 31:
-                pile = []
-                running_total = 0
-                projected_total = cribbage_cards.value_for_fifteen(rank)
-
-            pile.append(card_label)
-            pegging_points = int(cribbage_cards.score_pegging_play(pile))
-            state.scores[idx] += pegging_points
-            state.pegging_pile = pile
-            state.pegging_running_total = projected_total
-            state.last_pegging_player = idx
-            payload = {**payload, "running_total": projected_total, "points": pegging_points}
-            if projected_total == 31:
-                state.pegging_pile = []
-                state.pegging_running_total = 0
-                state.pegging_passes = [False, False]
-
+            applied_payload = self._apply_remote_peg(
+                player_id=player_id,
+                player_one_id=player_one_id,
+                player_two_id=player_two_id,
+                payload=payload,
+            )
         elif phase == "pegging" and action_type == "go":
-            idx = 0 if player_id == player_one_id else 1
-            passes = list(getattr(state, "pegging_passes", [False, False]))
-            passes[idx] = True
-            state.pegging_passes = passes
-            other = 1 - idx
-            if passes[other]:
-                current_total = int(getattr(state, "pegging_running_total", 0))
-                points = 0
-                if (
-                    state.pegging_pile
-                    and current_total < 31
-                    and state.last_pegging_player is not None
-                ):
-                    points = 1
-                    state.scores[state.last_pegging_player] += 1
-                state.pegging_pile = []
-                state.pegging_running_total = 0
-                state.pegging_passes = [False, False]
-                if state.last_pegging_player is not None:
-                    state.player_turn = 1 - state.last_pegging_player
-                payload = {**payload, "points": points, "go_completed": True}
-            else:
-                state.player_turn = other
-                payload = {**payload, "points": 0, "go_completed": False}
-
+            applied_payload = self._apply_remote_go(
+                player_id=player_id,
+                player_one_id=player_one_id,
+                player_two_id=player_two_id,
+                payload=payload,
+            )
         elif phase == "counting" and action_type == "count":
-            points = payload.get("points")
-            if isinstance(points, int):
-                idx = 0 if player_id == player_one_id else 1
-                state.scores[idx] += points
+            applied_payload = self._apply_remote_count(
+                player_id=player_id,
+                player_one_id=player_one_id,
+                player_two_id=player_two_id,
+                payload=payload,
+            )
 
-        state.last_action = {
+        if self.state.phase == "game_over":
+            self.state.phase = "finished"
+            self.state.phase_index = self._remote_phase_index("finished")
+            self.state.phase_progress = 0
+
+        self.state.last_action = {
             "player_id": player_id,
             "action_type": action_type,
-            "payload": payload,
+            "payload": applied_payload,
         }
         return self.dump_remote_snapshot()

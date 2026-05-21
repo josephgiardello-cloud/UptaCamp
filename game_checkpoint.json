@@ -2,34 +2,35 @@
   "phase": "counting",
   "dealer": 1,
   "scores": [
-    10,
-    12
+    120,
+    83
   ],
   "player_hand": [],
   "ai_hand": [],
   "crib": [
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6AFADF0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6AD5B50>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6B0CD50>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6B0CE50>"
+    "ace_of_spades",
+    "10_of_clubs",
+    "10_of_hearts",
+    "9_of_spades"
   ],
   "pegging_pile": [
-    "namespace(label='10_of_clubs')",
-    "namespace(label='9_of_hearts')"
+    "2_of_hearts",
+    "7_of_clubs",
+    "2_of_diamonds"
   ],
   "player_kept": [
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6A2C590>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6A2FA10>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6ABE820>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6A68710>"
+    "2_of_diamonds",
+    "6_of_clubs",
+    "2_of_hearts",
+    "4_of_spades"
   ],
   "ai_kept": [
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6A68B90>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6A77750>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6A778B0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000149E6AFA7B0>"
+    "6_of_diamonds",
+    "7_of_hearts",
+    "8_of_hearts",
+    "7_of_clubs"
   ],
-  "starter_card": "5_of_clubs",
+  "starter_card": "ace_of_hearts",
   "player_turn": 1,
   "pegging_passes": [
     false,
@@ -37,10 +38,22 @@
   ],
   "last_pegging_player": 0,
   "message": "Last card for 1 point. Counting hands.",
-  "dad_ai_level": 2,
+  "dad_ai_level": 5,
+  "stock_labels": [],
   "ai_level": 1,
   "player_name": "",
   "ai_name": "Dealer",
   "phase_name": "intro",
-  "winner": null
+  "winner": null,
+  "last_counting_result": {},
+  "last_counting_breakdown": {},
+  "counting_resolved": false,
+  "counting_next_phase": "end",
+  "deal_ready": [],
+  "discard_by_player": {},
+  "pegging_running_total": 0,
+  "phase_progress": 0,
+  "phase_index": 0,
+  "count_by_player": {},
+  "last_action": {}
 }

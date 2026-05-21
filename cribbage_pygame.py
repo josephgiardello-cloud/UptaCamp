@@ -28,6 +28,7 @@ from app_context import AppContext
 from assets.maine_shape import maine_shape as MAINE_SHAPE
 from audio_manager import AudioManager
 from engine import CribbageEngine
+from game_state import GameState
 from phase_states import PhaseStateMachine
 from settings_manager import GameSettings, load_settings, save_settings
 from src.controllers import GameApplication, GameController
@@ -122,9 +123,14 @@ _UI_STYLE_LABELS = {
 }
 
 
-def _check_for_winner():
-    scores = list(player_scores)
-    _CLASSIC_SESSION.scores = list(player_scores)
+def _check_for_winner(session: GameState | None = None):
+    if session is None:
+        scores = list(player_scores)
+        _CLASSIC_SESSION.scores = list(scores)
+    else:
+        scores = list(session.scores)
+        player_scores[:] = list(scores)
+        _CLASSIC_SESSION.scores = list(scores)
     if scores[0] >= MAX_SCORE and scores[1] >= MAX_SCORE:
         _CLASSIC_SESSION.winner = -1
         return -1
@@ -893,9 +899,21 @@ def _estimate_opponent_reply_risk(trial_pile):
 
 
 def _finalize_pegging_if_complete():
-    _sync_classic_session_from_runtime()
-    s = _CLASSIC_SESSION
+    return _finalize_pegging_if_complete_for_session(None)
+
+
+def _finalize_pegging_if_complete_for_session(session):
+    should_sync_runtime = False
+    if session is None:
+        _sync_classic_session_from_runtime()
+        s = _CLASSIC_SESSION
+        should_sync_runtime = True
+    else:
+        s = session
+
     if s.player_hand or s.ai_hand:
+        if should_sync_runtime:
+            _sync_runtime_from_classic_session()
         return False
 
     # Last card point if sequence did not already end at 31.
@@ -911,13 +929,24 @@ def _finalize_pegging_if_complete():
         s.message = "Counting hands."
 
     _transition_phase("counting")
-    _sync_runtime_from_classic_session()
+    if should_sync_runtime:
+        _sync_runtime_from_classic_session()
     return True
 
 
 def _handle_go(player_idx):
-    _sync_classic_session_from_runtime()
-    s = _CLASSIC_SESSION
+    return _handle_go_for_session(player_idx, None)
+
+
+def _handle_go_for_session(player_idx, session):
+    should_sync_runtime = False
+    if session is None:
+        _sync_classic_session_from_runtime()
+        s = _CLASSIC_SESSION
+        should_sync_runtime = True
+    else:
+        s = session
+
     s.pegging_passes[player_idx] = True
     other = 1 - player_idx
 
@@ -946,12 +975,23 @@ def _handle_go(player_idx):
         if other == 1:
             _speak_bert_event("go_called")
 
-    _sync_runtime_from_classic_session()
+    if should_sync_runtime:
+        _sync_runtime_from_classic_session()
 
 
 def _play_pegging_card(player_idx, idx):
-    _sync_classic_session_from_runtime()
-    s = _CLASSIC_SESSION
+    return _play_pegging_card_for_session(player_idx, idx, None)
+
+
+def _play_pegging_card_for_session(player_idx, idx, session):
+    should_sync_runtime = False
+    if session is None:
+        _sync_classic_session_from_runtime()
+        s = _CLASSIC_SESSION
+        should_sync_runtime = True
+    else:
+        s = session
+
     if player_idx == 0:
         card = s.player_hand.pop(idx)
     else:
@@ -996,7 +1036,8 @@ def _play_pegging_card(player_idx, idx):
         s.player_turn = 1 - player_idx
 
     s.last_pegging_player = player_idx
-    _sync_runtime_from_classic_session()
+    if should_sync_runtime:
+        _sync_runtime_from_classic_session()
 
 
 # --- Event Handlers ---
@@ -1053,7 +1094,8 @@ def handle_pegging(event, auto_player=False):
     _sync_classic_session_from_runtime()
     s = _CLASSIC_SESSION
 
-    if _finalize_pegging_if_complete():
+    if _finalize_pegging_if_complete_for_session(s):
+        _sync_runtime_from_classic_session()
         return
 
     current_total = get_pegging_total()
@@ -1063,35 +1105,39 @@ def handle_pegging(event, auto_player=False):
             current_total + _value_for_15(_parse_label(c.label)[0]) <= 31 for c in s.player_hand
         )
         if not player_can_move:
-            _handle_go(0)
+            _handle_go_for_session(0, s)
+            _sync_runtime_from_classic_session()
             return
         if auto_player and event is None:
             chosen = _choose_auto_player_pegging_index(current_total)
             if chosen is not None:
-                _play_pegging_card(0, chosen)
-                _check_for_winner()
-            _finalize_pegging_if_complete()
+                _play_pegging_card_for_session(0, chosen, s)
+                _check_for_winner(s)
+            _finalize_pegging_if_complete_for_session(s)
+            _sync_runtime_from_classic_session()
             return
         if event and event.type == pygame.MOUSEBUTTONDOWN:
             for idx, card in enumerate(s.player_hand):
                 val = _value_for_15(_parse_label(card.label)[0])
                 if card.rect.collidepoint(event.pos) and current_total + val <= 31:
-                    _play_pegging_card(0, idx)
-                    _check_for_winner()
+                    _play_pegging_card_for_session(0, idx, s)
+                    _check_for_winner(s)
                     break
     else:  # Dealer Turn (AI)
         dad_can_move = any(
             current_total + _value_for_15(_parse_label(c.label)[0]) <= 31 for c in s.ai_hand
         )
         if not dad_can_move:
-            _handle_go(1)
+            _handle_go_for_session(1, s)
+            _sync_runtime_from_classic_session()
             return
         chosen = _choose_dad_pegging_index(current_total)
         if chosen is not None:
-            _play_pegging_card(1, chosen)
-            _check_for_winner()
+            _play_pegging_card_for_session(1, chosen, s)
+            _check_for_winner(s)
 
-    _finalize_pegging_if_complete()
+    _finalize_pegging_if_complete_for_session(s)
+    _sync_runtime_from_classic_session()
 
 
 def handle_counting():

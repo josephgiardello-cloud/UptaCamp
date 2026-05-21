@@ -162,11 +162,14 @@ def _run_state_client(args):
 
 
 def _run_once(args: Any) -> int:
-    # Default path: classic gameplay renderer/loop that matches screenshot-era visuals and mechanics.
-    if not args.new_client:
+    # Default to classic client to preserve welcome/style screens.
+    if bool(getattr(args, "classic_client", False)):
         return int(run_classic_client() or 0)
 
-    return int(_run_state_client(args) or 0)
+    if bool(getattr(args, "new_client", False)):
+        return int(_run_state_client(args) or 0)
+
+    return int(run_classic_client() or 0)
 
 
 def main():
@@ -180,7 +183,12 @@ def main():
     parser.add_argument(
         "--new-client",
         action="store_true",
-        help="Run the new state-machine client (includes online UI). Default is classic gameplay client.",
+        help="Run the state-driven client path.",
+    )
+    parser.add_argument(
+        "--classic-client",
+        action="store_true",
+        help="Run the classic gameplay client (default).",
     )
     parser.add_argument(
         "--auto-relaunch",

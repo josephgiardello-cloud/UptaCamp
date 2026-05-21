@@ -37,6 +37,10 @@ class EngineAdapter:
         s.winner = getattr(self.legacy, "winner", None)
         s.player_name = getattr(self.legacy, "player_name", "")
         s.ai_name = getattr(self.legacy, "ai_name", s.ai_name)
+        s.last_counting_result = dict(getattr(self.legacy, "last_counting_result", {}))
+        s.last_counting_breakdown = dict(getattr(self.legacy, "last_counting_breakdown", {}))
+        s.counting_resolved = bool(getattr(self.legacy, "counting_resolved", False))
+        s.counting_next_phase = getattr(self.legacy, "counting_next_phase", s.counting_next_phase)
 
     def update_globals_from_engine(self) -> None:
         s = self.engine.state
@@ -62,3 +66,11 @@ class EngineAdapter:
             self.legacy.player_name = s.player_name
         if hasattr(self.legacy, "ai_name"):
             self.legacy.ai_name = s.ai_name
+        if hasattr(self.legacy, "last_counting_result"):
+            self.legacy.last_counting_result = dict(s.last_counting_result)
+        if hasattr(self.legacy, "last_counting_breakdown"):
+            self.legacy.last_counting_breakdown = dict(s.last_counting_breakdown)
+        if hasattr(self.legacy, "counting_resolved"):
+            self.legacy.counting_resolved = s.counting_resolved
+        if hasattr(self.legacy, "counting_next_phase"):
+            self.legacy.counting_next_phase = s.counting_next_phase
