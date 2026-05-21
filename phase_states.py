@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, cast
 
 import cards as cribbage_cards
@@ -9,9 +10,18 @@ from engine import CribbageEngine
 from voice_manager import VoiceManager
 
 
+class PhaseName(str, Enum):
+    INTRO = "intro"
+    DISCARD = "discard"
+    PEGGING = "pegging"
+    COUNTING = "counting"
+    END = "end"
+    GAME_OVER = "game_over"
+
+
 class BasePhaseState:
-    phase_name: str = ""
-    allowed_transitions: set[str] = set()
+    phase_name: PhaseName = PhaseName.INTRO
+    allowed_transitions: set[PhaseName] = set()
 
     def enter(self, engine: CribbageEngine, ctx: dict[str, Any] | None = None) -> None:
         return None
@@ -53,8 +63,8 @@ class BasePhaseState:
 
 
 class IntroState(BasePhaseState):
-    phase_name = "intro"
-    allowed_transitions = {"discard", "pegging", "game_over"}
+    phase_name = PhaseName.INTRO
+    allowed_transitions = {PhaseName.DISCARD, PhaseName.PEGGING, PhaseName.GAME_OVER}
 
     def enter(self, engine: CribbageEngine, ctx: dict[str, Any] | None = None) -> None:
         engine.state.message = "Ayuh, welcome to the table, deah."
@@ -62,8 +72,8 @@ class IntroState(BasePhaseState):
 
 
 class DiscardState(BasePhaseState):
-    phase_name = "discard"
-    allowed_transitions = {"pegging", "intro", "game_over"}
+    phase_name = PhaseName.DISCARD
+    allowed_transitions = {PhaseName.PEGGING, PhaseName.INTRO, PhaseName.GAME_OVER}
 
     def enter(self, engine: CribbageEngine, ctx: dict[str, Any] | None = None) -> None:
         engine.state.message = "Select two cards to discard to the crib."
@@ -77,7 +87,7 @@ class DiscardState(BasePhaseState):
     ) -> str | None:
         if not isinstance(event, dict):
             return None
-        if engine.state.phase != self.phase_name:
+        if engine.state.phase != self.phase_name.value:
             return engine.state.phase
         event_dict = cast(dict[str, Any], event)
         if event_dict.get("action") != "discard":
@@ -92,12 +102,12 @@ class DiscardState(BasePhaseState):
         if any(not isinstance(i, int) or i < 0 or i >= len(engine.state.player_hand) for i in selected):
             return None
         engine.handle_discard(selected)
-        return engine.state.phase if engine.state.phase != self.phase_name else None
+        return engine.state.phase if engine.state.phase != self.phase_name.value else None
 
 
 class PeggingState(BasePhaseState):
-    phase_name = "pegging"
-    allowed_transitions = {"counting", "discard", "game_over"}
+    phase_name = PhaseName.PEGGING
+    allowed_transitions = {PhaseName.COUNTING, PhaseName.DISCARD, PhaseName.GAME_OVER}
 
     def enter(self, engine: CribbageEngine, ctx: dict[str, Any] | None = None) -> None:
         engine.state.pegging_pile.clear()
@@ -105,17 +115,17 @@ class PeggingState(BasePhaseState):
         self._speak_event(engine, "round_start", ctx)
 
     def update(self, engine: CribbageEngine) -> str | None:
-        if engine.state.phase != self.phase_name:
+        if engine.state.phase != self.phase_name.value:
             return engine.state.phase
         # Auto-progress once both hands are exhausted.
         if engine.finalize_pegging_if_complete(
-            lambda: cribbage_cards.pegging_total(engine.state.pegging_pile)
+            lambda: engine.get_pegging_total()
         ):
             return engine.state.phase
 
         # Let AI make pegging plays in this phase when it's AI turn.
-        if engine.state.player_turn == 1 and engine.state.ai_hand:
-            current_total = cribbage_cards.pegging_total(engine.state.pegging_pile)
+        if engine.is_ai_turn() and engine.state.ai_hand:
+            current_total = engine.get_pegging_total()
             ai_index = engine.ai_pegging_move(
                 current_total=current_total,
                 value_for_15=cribbage_cards.value_for_fifteen,
@@ -133,7 +143,7 @@ class PeggingState(BasePhaseState):
                 )
             else:
                 engine.pass_pegging_turn(1)
-            if engine.state.phase != self.phase_name:
+            if engine.state.phase != self.phase_name.value:
                 return engine.state.phase
         return None
 
@@ -145,17 +155,17 @@ class PeggingState(BasePhaseState):
     ) -> str | None:
         if not isinstance(event, dict):
             return None
-        if engine.state.phase != self.phase_name:
+        if engine.state.phase != self.phase_name.value:
             return engine.state.phase
         event_dict = cast(dict[str, Any], event)
         if event_dict.get("action") in {"peg_go", "go"}:
             if engine.state.player_turn != 0:
                 return None
             engine.pass_pegging_turn(0)
-            if engine.state.phase != self.phase_name:
+            if engine.state.phase != self.phase_name.value:
                 return engine.state.phase
             if engine.finalize_pegging_if_complete(
-                lambda: cribbage_cards.pegging_total(engine.state.pegging_pile)
+                lambda: engine.get_pegging_total()
             ):
                 return engine.state.phase
             return None
@@ -170,10 +180,12 @@ class PeggingState(BasePhaseState):
         if card_index < 0 or card_index >= len(engine.state.player_hand):
             return None
 
-        total = cribbage_cards.pegging_total(engine.state.pegging_pile)
-        label = getattr(engine.state.player_hand[card_index], "label", engine.state.player_hand[card_index])
-        rank, _ = cribbage_cards.parse_card_label(str(label))
-        if total + cribbage_cards.value_for_fifteen(rank) > 31:
+        if not engine.is_valid_pegging_play(
+            player_idx=0,
+            card_index=card_index,
+            value_for_15=cribbage_cards.value_for_fifteen,
+            parse_label=cribbage_cards.parse_card_label,
+        ):
             return None
 
         engine.play_pegging_card(
@@ -184,18 +196,18 @@ class PeggingState(BasePhaseState):
             parse_label=cribbage_cards.parse_card_label,
             player_name=engine.state.player_name or "Player",
         )
-        if engine.state.phase != self.phase_name:
+        if engine.state.phase != self.phase_name.value:
             return engine.state.phase
         if engine.finalize_pegging_if_complete(
-            lambda: cribbage_cards.pegging_total(engine.state.pegging_pile)
+            lambda: engine.get_pegging_total()
         ):
             return engine.state.phase
         return None
 
 
 class CountingState(BasePhaseState):
-    phase_name = "counting"
-    allowed_transitions = {"end", "game_over"}
+    phase_name = PhaseName.COUNTING
+    allowed_transitions = {PhaseName.END, PhaseName.GAME_OVER}
 
     def enter(self, engine: CribbageEngine, ctx: dict[str, Any] | None = None) -> None:
         if not engine.state.counting_resolved:
@@ -210,7 +222,7 @@ class CountingState(BasePhaseState):
         self._speak_event(engine, "hand_scored", ctx)
 
     def update(self, engine: CribbageEngine) -> str | None:
-        if engine.state.phase != self.phase_name:
+        if engine.state.phase != self.phase_name.value:
             return engine.state.phase
         if not engine.state.counting_resolved:
             self.enter(engine)
@@ -228,8 +240,8 @@ class CountingState(BasePhaseState):
 
 
 class EndState(BasePhaseState):
-    phase_name = "end"
-    allowed_transitions = {"discard", "intro", "game_over"}
+    phase_name = PhaseName.END
+    allowed_transitions = {PhaseName.DISCARD, PhaseName.INTRO, PhaseName.GAME_OVER}
 
     def enter(self, engine: CribbageEngine, ctx: dict[str, Any] | None = None) -> None:
         engine.state.message = "Round complete. Ready for the next hand?"
@@ -237,8 +249,8 @@ class EndState(BasePhaseState):
 
 
 class GameOverState(BasePhaseState):
-    phase_name = "game_over"
-    allowed_transitions = {"intro", "discard"}
+    phase_name = PhaseName.GAME_OVER
+    allowed_transitions = {PhaseName.INTRO, PhaseName.DISCARD}
 
     def enter(self, engine: CribbageEngine, ctx: dict[str, Any] | None = None) -> None:
         engine.state.message = "Game over."
@@ -253,21 +265,32 @@ class PhaseStateMachine:
     voice: VoiceManager | None = None
 
     def __post_init__(self) -> None:
-        self.states: dict[str, BasePhaseState] = {
-            "intro": IntroState(),
-            "discard": DiscardState(),
-            "pegging": PeggingState(),
-            "counting": CountingState(),
-            "end": EndState(),
-            "game_over": GameOverState(),
+        self.states: dict[PhaseName, BasePhaseState] = {
+            PhaseName.INTRO: IntroState(),
+            PhaseName.DISCARD: DiscardState(),
+            PhaseName.PEGGING: PeggingState(),
+            PhaseName.COUNTING: CountingState(),
+            PhaseName.END: EndState(),
+            PhaseName.GAME_OVER: GameOverState(),
         }
+        for state in self.states.values():
+            if not callable(getattr(state, "enter", None)):
+                raise TypeError(f"Phase {state.__class__.__name__} must define enter()")
+            if not callable(getattr(state, "handle_event", None)):
+                raise TypeError(f"Phase {state.__class__.__name__} must define handle_event()")
+            if not callable(getattr(state, "update", None)):
+                raise TypeError(f"Phase {state.__class__.__name__} must define update()")
         if self.voice is not None:
             self.engine.voice = self.voice
         self.current.enter(self.engine, None)
 
     @property
     def current(self) -> BasePhaseState:
-        return self.states.get(self.engine.state.phase, self.states["intro"])
+        try:
+            key = PhaseName(str(self.engine.state.phase))
+        except ValueError:
+            key = PhaseName.INTRO
+        return self.states.get(key, self.states[PhaseName.INTRO])
 
     def handle_event(self, event: Any, ctx: dict[str, Any] | None = None) -> None:
         transition = self.current.handle_event(event, self.engine, ctx)
@@ -285,16 +308,18 @@ class PhaseStateMachine:
         force: bool = False,
         ctx: dict[str, Any] | None = None,
     ) -> bool:
-        if target_phase not in self.states:
+        try:
+            target = PhaseName(target_phase)
+        except ValueError:
             return False
         current = self.current
         if (
             not force
             and current.allowed_transitions
-            and target_phase not in current.allowed_transitions
+            and target not in current.allowed_transitions
         ):
             return False
         current.exit(self.engine, ctx)
-        self.engine.state.phase = target_phase
+        self.engine.state.phase = target.value
         self.current.enter(self.engine, ctx)
         return True

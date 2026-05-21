@@ -19,14 +19,31 @@ class BertAgent:
     each hand, applying the same terminal reward to each visited state-action.
     """
 
-    def __init__(self, learning_rate: float = 0.12, discount: float = 0.93, epsilon: float = 0.18):
-        self.q_table: defaultdict[tuple[str, Any], float] = defaultdict(float)
+    def __init__(
+        self,
+        learning_rate: float = 0.12,
+        discount: float = 0.93,
+        epsilon: float = 0.18,
+        epsilon_min: float = 0.03,
+        epsilon_decay: float = 0.9995,
+    ):
+        self.q_table: defaultdict[tuple[str, str, Any], float] = defaultdict(float)
         self.lr = float(learning_rate)
         self.gamma = float(discount)
         self.epsilon = float(epsilon)
-        self._trajectory: list[tuple[str, Any]] = []
+        self.epsilon_min = float(epsilon_min)
+        self.epsilon_decay = float(epsilon_decay)
+        self._trajectory: list[dict[str, Any]] = []
         self.games_played = 0
+        self.update_steps = 0
         self.posture = "balanced"
+
+    @staticmethod
+    def _q_key(mode: str, state_key: str, action: Any) -> tuple[str, str, Any]:
+        return (mode, state_key, action)
+
+    def _q_value(self, mode: str, state_key: str, action: Any) -> float:
+        return self.q_table[self._q_key(mode, state_key, action)]
 
     def set_posture(self, posture: str) -> None:
         valid = {"balanced", "aggressive", "deliberate", "cutthroat"}
@@ -52,9 +69,16 @@ class BertAgent:
         hand_vals = tuple(
             sorted(cards.value_for_fifteen(cards.parse_card_label(lbl)[0]) for lbl in hand_labels)
         )
+        rank_hist = tuple(
+            sorted(cards.parse_card_label(lbl)[0] for lbl in hand_labels)
+        )
         dealer_flag = 1 if state.dealer == 1 else 0
+        bert_is_dealer = 1 if state.dealer == 1 else 0
         scores = (int(state.scores[0]), int(state.scores[1]))
-        return f"discard|{hand_vals}|dealer{dealer_flag}|scores{scores}"
+        return (
+            f"discard|vals{hand_vals}|ranks{rank_hist}|dealer{dealer_flag}|"
+            f"bert_dealer{bert_is_dealer}|scores{scores}|hand{len(hand_labels)}"
+        )
 
     def _pegging_state_key(
         self,
@@ -65,12 +89,23 @@ class BertAgent:
         hand_vals = tuple(
             sorted(cards.value_for_fifteen(cards.parse_card_label(lbl)[0]) for lbl in hand_labels)
         )
+        rank_hist = tuple(sorted(cards.parse_card_label(lbl)[0] for lbl in hand_labels))
         scores = (int(state.scores[0]), int(state.scores[1]))
         last_val = 0
+        tail_vals: list[int] = []
         if state.pegging_pile:
             last = cards.card_label(state.pegging_pile[-1])
             last_val = cards.value_for_fifteen(cards.parse_card_label(last)[0])
-        return f"pegging|total{int(current_total)}|hand{hand_vals}|last{last_val}|scores{scores}"
+            for item in state.pegging_pile[-3:]:
+                label = cards.card_label(item)
+                rank, _ = cards.parse_card_label(label)
+                tail_vals.append(cards.value_for_fifteen(rank))
+        passes = tuple(bool(p) for p in getattr(state, "pegging_passes", [False, False]))
+        turn = int(getattr(state, "player_turn", 1))
+        return (
+            f"pegging|total{int(current_total)}|hand{hand_vals}|ranks{rank_hist}|"
+            f"last{last_val}|tail{tuple(tail_vals)}|pass{passes}|turn{turn}|scores{scores}"
+        )
 
     def _discard_posture_bonus(
         self,
@@ -129,11 +164,13 @@ class BertAgent:
         else:
             action = max(
                 actions,
-                key=lambda a: self.q_table[(state_key, a)]
+                key=lambda a: self._q_value("discard", state_key, a)
                 + self._discard_posture_bonus(hand_labels, a, state, posture),
             )
 
-        self._trajectory.append((state_key, action))
+        self._trajectory.append(
+            {"mode": "discard", "state_key": state_key, "action": action, "reward": 0.0}
+        )
         return action
 
     def choose_pegging(
@@ -181,10 +218,20 @@ class BertAgent:
 
                 return 0.0
 
-            action = max(legal, key=lambda i: self.q_table[(state_key, i)] + _pegging_posture_bonus(i))
+            action = max(
+                legal,
+                key=lambda i: self._q_value("pegging", state_key, i) + _pegging_posture_bonus(i),
+            )
 
-        self._trajectory.append((state_key, action))
+        self._trajectory.append(
+            {"mode": "pegging", "state_key": state_key, "action": action, "reward": 0.0}
+        )
         return action
+
+    def record_step_reward(self, reward: float) -> None:
+        if not self._trajectory:
+            return
+        self._trajectory[-1]["reward"] = float(self._trajectory[-1].get("reward", 0.0)) + float(reward)
 
     def end_of_hand_update(self, hand_reward: float) -> None:
         """Apply a discounted terminal-reward update over trajectory."""
@@ -192,14 +239,20 @@ class BertAgent:
             return
 
         self.games_played += 1
-        effective_lr = self.lr * (0.999 ** (self.games_played // 50))
-        target = float(hand_reward)
-        for depth, (state_key, action) in enumerate(reversed(self._trajectory)):
-            decay = self.gamma**depth
-            td_target = target * decay
-            old = self.q_table[(state_key, action)]
-            self.q_table[(state_key, action)] = old + effective_lr * (td_target - old)
+        self.update_steps += len(self._trajectory)
+        effective_lr = max(0.02, self.lr * (0.9997 ** self.update_steps))
+        running_return = float(hand_reward)
+        for step in reversed(self._trajectory):
+            running_return = float(step.get("reward", 0.0)) + self.gamma * running_return
+            mode = str(step.get("mode", "pegging"))
+            state_key = str(step.get("state_key", ""))
+            action = step.get("action")
+            old = self._q_value(mode, state_key, action)
+            self.q_table[self._q_key(mode, state_key, action)] = old + effective_lr * (
+                running_return - old
+            )
         self._trajectory.clear()
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
     def update(
         self,
@@ -208,6 +261,7 @@ class BertAgent:
         reward: float,
         next_state_key: str | None = None,
         done: bool = False,
+        mode: str = "pegging",
     ) -> None:
         """Temporal-difference (TD) learning update for single step.
 
@@ -220,21 +274,25 @@ class BertAgent:
             next_state_key: Next state key (None if terminal)
             done: Whether episode is complete
         """
-        old_q = self.q_table[(state_key, action)]
+        old_q = self._q_value(mode, state_key, action)
 
         if done or next_state_key is None:
             td_target = float(reward)
         else:
-            # Find max Q-value for any action in next state
-            next_actions = [k for k, _ in self.q_table.keys() if k == next_state_key] if next_state_key else []
+            # Find max Q-value for any action already seen in next state for this mode.
+            next_actions = [
+                a for m, s, a in self.q_table.keys() if m == mode and s == next_state_key
+            ]
             if next_actions:
-                max_next_q = max(self.q_table[(next_state_key, a)] for a in next_actions)
+                max_next_q = max(self._q_value(mode, next_state_key, a) for a in next_actions)
             else:
                 max_next_q = 0.0
             td_target = float(reward) + self.gamma * max_next_q
 
         td_error = td_target - old_q
-        self.q_table[(state_key, action)] = old_q + self.lr * td_error
+        self.q_table[self._q_key(mode, state_key, action)] = old_q + self.lr * td_error
+        self.update_steps += 1
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
     def reset_hand_memory(self) -> None:
         self._trajectory.clear()
@@ -247,6 +305,9 @@ class BertAgent:
             "lr": self.lr,
             "gamma": self.gamma,
             "epsilon": self.epsilon,
+            "epsilon_min": self.epsilon_min,
+            "epsilon_decay": self.epsilon_decay,
+            "update_steps": self.update_steps,
         }
         with file_path.open("wb") as f:
             pickle.dump(payload, f)
@@ -261,10 +322,24 @@ class BertAgent:
             self.lr = float(payload.get("lr", self.lr))
             self.gamma = float(payload.get("gamma", self.gamma))
             self.epsilon = float(payload.get("epsilon", self.epsilon))
+            self.epsilon_min = float(payload.get("epsilon_min", self.epsilon_min))
+            self.epsilon_decay = float(payload.get("epsilon_decay", self.epsilon_decay))
+            self.update_steps = int(payload.get("update_steps", self.update_steps))
         else:
             data = payload
 
-        self.q_table = defaultdict(float, data)
+        normalized: dict[tuple[str, str, Any], float] = {}
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(key, tuple) and len(key) == 3:
+                    mode, state_key, action = key
+                    normalized[(str(mode), str(state_key), action)] = float(value)
+                elif isinstance(key, tuple) and len(key) == 2:
+                    state_key, action = key
+                    inferred_mode = "discard" if str(state_key).startswith("discard|") else "pegging"
+                    normalized[(inferred_mode, str(state_key), action)] = float(value)
+
+        self.q_table = defaultdict(float, normalized)
 
 
 def encode_game_state_as_vector(

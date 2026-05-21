@@ -30,6 +30,28 @@ class CribbageEngine:
     def _dealer_name(self) -> str:
         return "Bert" if self.state.dad_ai_level in (4, 5) else "AI"
 
+    def get_pegging_total(self) -> int:
+        return int(cribbage_cards.pegging_total(self.state.pegging_pile))
+
+    def is_ai_turn(self) -> bool:
+        return self.state.player_turn == 1
+
+    def is_valid_pegging_play(
+        self,
+        player_idx: int,
+        card_index: int,
+        value_for_15: Callable[[str], int],
+        parse_label: Callable[[str], tuple[str, str]],
+    ) -> bool:
+        hand = self.state.player_hand if player_idx == 0 else self.state.ai_hand
+        if not isinstance(card_index, int) or card_index < 0 or card_index >= len(hand):
+            return False
+        if not hand:
+            return False
+        card = hand[card_index]
+        rank, _ = parse_label(self._label(card))
+        return self.get_pegging_total() + value_for_15(rank) <= 31
+
     def _set_winner_if_needed(self) -> bool:
         scores = self.state.scores
         if scores[0] < 121 and scores[1] < 121:
@@ -183,17 +205,12 @@ class CribbageEngine:
         try:
             hand = self.state.player_hand if player_idx == 0 else self.state.ai_hand
 
-            # Bounds validation
-            if not isinstance(card_index, int) or card_index < 0 or card_index >= len(hand):
-                return 0
-
-            if not hand:
-                return 0
-
-            card = hand[card_index]
-            projected_total = cribbage_cards.pegging_total(self.state.pegging_pile)
-            rank, _ = parse_label(self._label(card))
-            if projected_total + value_for_15(rank) > 31:
+            if not self.is_valid_pegging_play(
+                player_idx=player_idx,
+                card_index=card_index,
+                value_for_15=value_for_15,
+                parse_label=parse_label,
+            ):
                 return 0
 
             card = hand.pop(card_index)
