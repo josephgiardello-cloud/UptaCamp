@@ -1,17 +1,17 @@
 import itertools
 
 # Card representation
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Card:
     rank: str
     suit: str
-    id: str = field(init=False)
 
-    def __post_init__(self):
-        object.__setattr__(self, "id", f"{self.rank}{self.suit}")
+    @property
+    def id(self) -> str:
+        return f"{self.rank}{self.suit}"
 
     def value(self):
         rank = _normalize_rank(self.rank)
@@ -34,6 +34,8 @@ def _normalize_rank(rank: str) -> str:
     mapping = {
         "ace": "A",
         "a": "A",
+        "ten": "10",
+        "t": "10",
         "jack": "J",
         "j": "J",
         "queen": "Q",
@@ -152,10 +154,15 @@ def score_pegging_play(pile: list, new_card: object | None = None) -> int:
 
 def score_15s(cards: list) -> list[tuple[str, list[str], int]]:
     breakdown: list[tuple[str, list[str], int]] = []
+    seen: set[tuple[str, ...]] = set()
     for r in range(2, len(cards) + 1):
         for combo in itertools.combinations(cards, r):
             if sum(card.value() for card in combo) == 15:
-                breakdown.append(("Fifteen", [str(card) for card in combo], 2))
+                labels = tuple(sorted(str(card) for card in combo))
+                if labels in seen:
+                    continue
+                seen.add(labels)
+                breakdown.append(("Fifteen", list(labels), 2))
     return breakdown
 
 

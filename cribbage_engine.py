@@ -10,12 +10,13 @@ from game_state import GameState
 
 
 class CribbageEngine:
-    def __init__(self):
+    def __init__(self, *, seed: int | None = None):
         self.state = GameState()
         self.current_phase = self.state.phase
         self.players: list[str] = []
         self.ai_agents: dict[str, Any] = {}
         self.deck: list[cribbage_cards.Card] = []
+        self._rng = random.Random(seed)
 
     def _sync_phase(self, phase: str) -> None:
         self.current_phase = phase
@@ -50,12 +51,23 @@ class CribbageEngine:
         self.deck = [cribbage_cards.Card(rank, suit) for suit in suits for rank in ranks]
 
     def _shuffle_and_deal(self) -> None:
-        random.shuffle(self.deck)
+        self._rng.shuffle(self.deck)
         self.state.player_hand = list(self.deck[:6])
         self.state.ai_hand = list(self.deck[6:12])
         self.state.stock_labels = [self._card_to_label(c) for c in self.deck[12:]]
 
-    def start_new_game(self, player_name: str = "You", opponent_type: str = "Bert") -> GameState:
+    def set_seed(self, seed: int) -> None:
+        self._rng.seed(seed)
+
+    def start_new_game(
+        self,
+        player_name: str = "You",
+        opponent_type: str = "Bert",
+        *,
+        seed: int | None = None,
+    ) -> GameState:
+        if seed is not None:
+            self._rng.seed(seed)
         self.state.reset()
         self.players = [player_name, opponent_type]
         self.ai_agents = {"opponent": opponent_type}
@@ -63,6 +75,22 @@ class CribbageEngine:
         self.state.ai_name = opponent_type
         self.state.scores = [0, 0]
         self.state.dealer = 0
+        self._create_deck()
+        self._shuffle_and_deal()
+        self.state.crib = []
+        self.state.player_kept = []
+        self.state.ai_kept = []
+        self.state.pegging_pile = []
+        self.state.pegging_passes = [False, False]
+        self.state.last_pegging_player = None
+        self.state.player_turn = 1 - self.state.dealer
+        self.state.starter_card = None
+        self.state.message = "Select 2 cards to discard to the crib."
+        self._sync_phase("discard")
+        return self.state
+
+    def start_next_round(self) -> GameState:
+        self.state.dealer = 1 - int(self.state.dealer)
         self._create_deck()
         self._shuffle_and_deal()
         self.state.crib = []
@@ -100,7 +128,11 @@ class CribbageEngine:
 
         self.state.player_kept = list(self.state.player_hand)
         self.state.ai_kept = list(self.state.ai_hand)
-        self.state.starter_card = self.state.stock_labels.pop(0) if self.state.stock_labels else None
+        if not self.state.stock_labels:
+            self.state.message = "No starter card available. Round cannot continue."
+            self._sync_phase("end")
+            return False
+        self.state.starter_card = self.state.stock_labels.pop(0)
         self.state.pegging_pile = []
         self.state.pegging_passes = [False, False]
         self.state.last_pegging_player = None
@@ -108,6 +140,10 @@ class CribbageEngine:
         self.state.message = "Pegging phase begins!"
         self._sync_phase("pegging")
         return True
+
+    # Canonical aliases so external orchestration paths do not diverge.
+    def handle_discard(self, selected_indices: Sequence[int]) -> bool:
+        return self.process_discard(selected_indices)
 
     def _current_pegging_total(self) -> int:
         return cribbage_cards.pegging_total(self.state.pegging_pile)
@@ -129,19 +165,44 @@ class CribbageEngine:
 
         return []
 
+    def pass_pegging_turn(self, player_idx: int) -> dict[str, Any]:
+        if self.state.phase != "pegging":
+            return {"ok": False, "reason": "invalid_phase"}
+        if player_idx not in (0, 1):
+            return {"ok": False, "reason": "invalid_player"}
+
+        self.state.pegging_passes[player_idx] = True
+        other = 1 - player_idx
+        if self.state.pegging_passes[other]:
+            current_total = self._current_pegging_total()
+            points = 0
+            if (
+                self.state.pegging_pile
+                and current_total < 31
+                and self.state.last_pegging_player is not None
+            ):
+                points = 1
+                self.state.scores[self.state.last_pegging_player] += 1
+            self.state.pegging_pile = []
+            self.state.pegging_passes = [False, False]
+            if self.state.last_pegging_player is not None:
+                self.state.player_turn = 1 - self.state.last_pegging_player
+            return {"ok": True, "go_completed": True, "points": points}
+
+        self.state.player_turn = other
+        return {"ok": True, "go_completed": False, "points": 0}
+
     def process_pegging_play(self, card: int | Any) -> dict[str, Any]:
         if self.state.phase != "pegging":
             return {"ok": False, "reason": "invalid_phase"}
 
         hand = self.state.player_hand if self.state.player_turn == 0 else self.state.ai_hand
         valid_moves = self.get_valid_moves()
+        if card == "go":
+            return self.pass_pegging_turn(self.state.player_turn)
         if not valid_moves:
-            self.state.pegging_passes[self.state.player_turn] = True
-            self.state.player_turn = 1 - self.state.player_turn
-            if all(self.state.pegging_passes):
-                self.state.pegging_pile = []
-                self.state.pegging_passes = [False, False]
-            return {"ok": False, "reason": "go"}
+            result = self.pass_pegging_turn(self.state.player_turn)
+            return {"ok": False, "reason": "go", **result}
 
         if isinstance(card, int):
             card_index = card
@@ -181,6 +242,14 @@ class CribbageEngine:
             "total": total,
             "next_turn": self.state.player_turn,
         }
+
+    def play_pegging_card(self, player_idx: int, card_index: int) -> int:
+        if self.state.player_turn != player_idx:
+            return 0
+        result = self.process_pegging_play(card_index)
+        if not result.get("ok"):
+            return 0
+        return int(result.get("points", 0))
 
     def end_hand_counting(self) -> dict[str, Any]:
         if self.state.starter_card is None:

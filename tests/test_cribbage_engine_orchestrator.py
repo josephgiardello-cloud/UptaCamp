@@ -93,3 +93,37 @@ def test_end_hand_counting_scores_hands_and_transitions_to_end():
     assert isinstance(result["player"], int)
     assert isinstance(result["ai"], int)
     assert isinstance(result["crib"], int)
+
+
+def test_pegging_go_awards_last_card_point_when_both_pass():
+    engine = CribbageEngine()
+    engine.start_new_game()
+
+    engine.state.phase = "pegging"
+    engine.current_phase = "pegging"
+    engine.state.player_turn = 0
+    engine.state.player_hand = [Card("K", "Hearts")]
+    engine.state.ai_hand = [Card("Q", "Clubs")]
+    engine.state.pegging_pile = [Card("10", "Diamonds"), Card("10", "Spades"), Card("10", "Hearts")]
+    engine.state.last_pegging_player = 1
+    engine.state.scores = [0, 0]
+
+    first = engine.process_pegging_play("go")
+    second = engine.process_pegging_play("go")
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    assert second["go_completed"] is True
+    assert second["points"] == 1
+    assert engine.state.scores[1] == 1
+
+
+def test_start_new_game_seed_is_deterministic():
+    engine_a = CribbageEngine(seed=42)
+    engine_b = CribbageEngine(seed=42)
+
+    state_a = engine_a.start_new_game(seed=42)
+    state_b = engine_b.start_new_game(seed=42)
+
+    assert [str(c) for c in state_a.player_hand] == [str(c) for c in state_b.player_hand]
+    assert [str(c) for c in state_a.ai_hand] == [str(c) for c in state_b.ai_hand]
