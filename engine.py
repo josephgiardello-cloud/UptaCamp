@@ -194,6 +194,44 @@ class CribbageEngine:
             print(f"Warning: play_pegging_card error: {type(e).__name__}: {e}")
             return 0
 
+    def pass_pegging_turn(self, player_idx: int) -> dict[str, Any]:
+        if self.state.phase != "pegging":
+            return {"ok": False, "reason": "invalid_phase"}
+        if player_idx not in (0, 1):
+            return {"ok": False, "reason": "invalid_player"}
+
+        self.state.pegging_passes[player_idx] = True
+        other = 1 - player_idx
+
+        if self.state.pegging_passes[other]:
+            current_total = cribbage_cards.pegging_total(self.state.pegging_pile)
+            last_card_point = 0
+            if (
+                self.state.pegging_pile
+                and current_total < 31
+                and self.state.last_pegging_player is not None
+            ):
+                last_card_point = 1
+                self.state.scores[self.state.last_pegging_player] += 1
+            self.state.pegging_pile.clear()
+            self.state.pegging_passes = [False, False]
+            if self.state.last_pegging_player is not None:
+                self.state.player_turn = 1 - self.state.last_pegging_player
+            self.state.message = (
+                "Go for you (+1). New count."
+                if last_card_point and self.state.last_pegging_player == 0
+                else f"Go for {self._dealer_name()} (+1). New count."
+                if last_card_point
+                else "No plays. New count."
+            )
+            return {"ok": True, "points": last_card_point, "go_completed": True}
+
+        self.state.player_turn = other
+        self.state.message = "Go. " + (
+            f"{self._dealer_name()}'s turn." if other == 1 else "Your turn."
+        )
+        return {"ok": True, "points": 0, "go_completed": False}
+
     def ai_discard(self, strategy: Any | None = None) -> list[int]:
         strategy_module = ai_strategy if strategy is None else strategy
         dad_labels = self._labels(self.state.ai_hand)
@@ -257,6 +295,8 @@ class CribbageEngine:
         if self.state.starter_card is None:
             self.state.phase = "end"
             self.state.message = "No starter card available. Press R to reset."
+            self.state.last_counting_result = {}
+            self.state.last_counting_breakdown = {}
             self._validate_state_if_enabled()
             return {"player": 0, "ai": 0, "crib": 0}
 
@@ -274,6 +314,12 @@ class CribbageEngine:
         self.state.scores[0] += p1_total
         self.state.scores[1] += p2_total
         self.state.scores[self.state.dealer] += crib_total
+        self.state.last_counting_result = {"player": p1_total, "ai": p2_total, "crib": crib_total}
+        self.state.last_counting_breakdown = {
+            "player": p1_breakdown,
+            "ai": p2_breakdown,
+            "crib": crib_breakdown,
+        }
 
         if self.state.dad_ai_level == 5:
             # Reward is net hand value from AI's perspective.
@@ -395,6 +441,32 @@ class CribbageEngine:
                 state.pegging_pile = []
                 state.pegging_running_total = 0
                 state.pegging_passes = [False, False]
+
+        elif phase == "pegging" and action_type == "go":
+            idx = 0 if player_id == player_one_id else 1
+            passes = list(getattr(state, "pegging_passes", [False, False]))
+            passes[idx] = True
+            state.pegging_passes = passes
+            other = 1 - idx
+            if passes[other]:
+                current_total = int(getattr(state, "pegging_running_total", 0))
+                points = 0
+                if (
+                    state.pegging_pile
+                    and current_total < 31
+                    and state.last_pegging_player is not None
+                ):
+                    points = 1
+                    state.scores[state.last_pegging_player] += 1
+                state.pegging_pile = []
+                state.pegging_running_total = 0
+                state.pegging_passes = [False, False]
+                if state.last_pegging_player is not None:
+                    state.player_turn = 1 - state.last_pegging_player
+                payload = {**payload, "points": points, "go_completed": True}
+            else:
+                state.player_turn = other
+                payload = {**payload, "points": 0, "go_completed": False}
 
         elif phase == "counting" and action_type == "count":
             points = payload.get("points")

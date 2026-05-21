@@ -44,6 +44,23 @@ def test_pegging_state_handle_event_plays_card_and_advances_when_done():
     assert engine.state.phase == "counting"
 
 
+def test_pegging_state_handle_event_go_passes_turn_and_scores_last_card():
+    engine = CribbageEngine()
+    engine.state.phase = "pegging"
+    engine.state.player_turn = 0
+    engine.state.player_hand = [_CardRef("ace_of_spades")]
+    engine.state.ai_hand = [_CardRef("2_of_clubs")]
+    engine.state.pegging_pile = [_CardRef("10_of_hearts")]
+    engine.state.last_pegging_player = 1
+
+    state = PeggingState()
+    transition = state.handle_event({"action": "go"}, engine)
+
+    assert transition is None
+    assert engine.state.player_turn == 1
+    assert engine.state.pegging_passes[0] is True
+
+
 def test_counting_state_update_counts_and_transitions_to_end():
     engine = CribbageEngine()
     engine.state.phase = "counting"

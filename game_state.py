@@ -32,6 +32,8 @@ class GameState:
     history: list[Any] = field(default_factory=list)
     current_phase: Any | None = None
     phase_name: str = "intro"
+    last_counting_result: dict[str, int] = field(default_factory=dict)
+    last_counting_breakdown: dict[str, Any] = field(default_factory=dict)
 
     def reset(self) -> None:
         fresh = type(self)()
@@ -83,6 +85,8 @@ class GameState:
             "ai_name": self.ai_name,
             "phase_name": self.phase_name,
             "winner": self.winner,
+            "last_counting_result": self.last_counting_result,
+            "last_counting_breakdown": self.last_counting_breakdown,
         }
 
         try:

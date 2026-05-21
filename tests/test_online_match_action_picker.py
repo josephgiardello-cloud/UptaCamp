@@ -23,4 +23,4 @@ def test_pick_pegging_card_falls_back_when_no_legal_card():
         ["10_of_hearts", "10_of_clubs", "10_of_spades"],
         running_total=31,
     )
-    assert card == "10_of_hearts"
+    assert card is None

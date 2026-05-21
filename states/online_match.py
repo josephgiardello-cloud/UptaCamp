@@ -45,18 +45,15 @@ class OnlineMatchState(GameStateBase):
     @staticmethod
     def _pick_pegging_card(hand_labels: list[str], running_total: int) -> str | None:
         legal: list[tuple[int, str]] = []
-        fallback: str | None = None
         for label in hand_labels:
             rank, _ = cribbage_cards.parse_card_label(label)
             value = cribbage_cards.value_for_fifteen(rank)
-            if fallback is None:
-                fallback = label
             if running_total + value <= 31:
                 legal.append((value, label))
         if legal:
             legal.sort(key=lambda item: item[0])
             return legal[0][1]
-        return fallback
+        return None
 
     @staticmethod
     def _hand_from_snapshot(snapshot: dict[str, object], player_id: str | None) -> list[str]:
@@ -132,14 +129,15 @@ class OnlineMatchState(GameStateBase):
                 hand_labels = self._hand_from_snapshot(snapshot, app.player_id)
                 card_label = self._pick_pegging_card(hand_labels, running_total)
                 if not card_label:
-                    self.last_action_msg = "No legal pegging card available"
-                    return
-                app.client.submit_turn(
-                    self.match_id,
-                    "peg",
-                    {"card": card_label},
-                )
-                self.last_action_msg = "Peg submitted"
+                    app.client.submit_turn(self.match_id, "go", {})
+                    self.last_action_msg = "Go submitted"
+                else:
+                    app.client.submit_turn(
+                        self.match_id,
+                        "peg",
+                        {"card": card_label},
+                    )
+                    self.last_action_msg = "Peg submitted"
             elif phase == "counting":
                 points = self._pick_count_points(snapshot)
                 app.client.submit_turn(self.match_id, "count", {"points": points})
