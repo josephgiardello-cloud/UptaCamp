@@ -491,18 +491,21 @@ class OnlineBackend:
                 raise ValueError("Discard phase requires discard action with exactly 2 cards")
             return
         if phase == "pegging":
-            if action_type != "peg":
-                raise ValueError("Pegging phase requires peg action")
-            if not isinstance(payload.get("card"), str):
-                raise ValueError("Peg action requires card label")
-            if "running_total" in payload:
-                running_total = payload.get("running_total")
-                if not isinstance(running_total, int):
-                    raise ValueError("Peg action requires integer running_total")
-            if "points" in payload:
-                points = payload.get("points")
-                if not isinstance(points, int) or points < 0 or points > 12:
-                    raise ValueError("Peg action points must be between 0 and 12")
+            if action_type == "peg":
+                if not isinstance(payload.get("card"), str):
+                    raise ValueError("Peg action requires card label")
+                if "running_total" in payload:
+                    running_total = payload.get("running_total")
+                    if not isinstance(running_total, int):
+                        raise ValueError("Peg action requires integer running_total")
+                if "points" in payload:
+                    points = payload.get("points")
+                    if not isinstance(points, int) or points < 0 or points > 12:
+                        raise ValueError("Peg action points must be between 0 and 12")
+                return
+            if action_type == "go":
+                return
+            raise ValueError("Pegging phase requires peg or go action")
             return
         if phase == "counting":
             points = payload.get("points")

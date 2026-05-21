@@ -136,6 +136,26 @@ def test_play_pegging_card_clears_on_31():
     assert "31" in engine.state.message
 
 
+def test_pass_pegging_turn_awards_last_card_and_resets_count():
+    engine = CribbageEngine()
+    engine.state.phase = "pegging"
+    engine.state.pegging_pile = [_LabeledCard("5_of_hearts")]
+    engine.state.pegging_passes = [False, False]
+    engine.state.last_pegging_player = 0
+    engine.state.player_turn = 1
+
+    first = engine.pass_pegging_turn(1)
+    second = engine.pass_pegging_turn(0)
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    assert second["go_completed"] is True
+    assert engine.state.scores[0] == 1
+    assert engine.state.pegging_pile == []
+    assert engine.state.pegging_passes == [False, False]
+    assert engine.state.player_turn == 1
+
+
 def test_finalize_pegging_if_complete_awards_last_card_point():
     engine = CribbageEngine()
     engine.state.player_hand = []

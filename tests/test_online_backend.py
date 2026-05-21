@@ -228,6 +228,51 @@ def test_pegging_running_total_and_points_are_server_authoritative(backend: Onli
     assert state["scores"][0] == 0
 
 
+def test_pegging_go_action_resets_count_and_awards_last_card(backend: OnlineBackend) -> None:
+    p1 = backend.login_player("Alice", player_id="p1")
+    p2 = backend.login_player("Bob", player_id="p2")
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+
+    _submit_signed(backend, p1.session_token, match_id, "p1", "deal_ready", {"ready": True}, "g1")
+    _submit_signed(backend, p2.session_token, match_id, "p2", "deal_ready", {"ready": True}, "g2")
+    _submit_signed(
+        backend,
+        p1.session_token,
+        match_id,
+        "p1",
+        "discard",
+        {"cards": ["5_of_hearts", "6_of_hearts"]},
+        "g3",
+    )
+    _submit_signed(
+        backend,
+        p2.session_token,
+        match_id,
+        "p2",
+        "discard",
+        {"cards": ["7_of_hearts", "8_of_hearts"]},
+        "g4",
+    )
+
+    _submit_signed(
+        backend,
+        p1.session_token,
+        match_id,
+        "p1",
+        "peg",
+        {"card": "10_of_hearts", "running_total": 10, "points": 0},
+        "g5",
+    )
+    _submit_signed(backend, p2.session_token, match_id, "p2", "go", {}, "g6")
+    _submit_signed(backend, p1.session_token, match_id, "p1", "go", {}, "g7")
+
+    details = backend.get_match_details(match_id)
+    state = details["game_state"]
+    assert state["pegging_passes"] == [False, False]
+    assert state["pegging_pile"] == []
+
+
 def test_finish_match_updates_elo_and_stats(backend: OnlineBackend) -> None:
     invite = backend.create_invite("p1")
     match_id = backend.accept_invite(invite, "p2")
