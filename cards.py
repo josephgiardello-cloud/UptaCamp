@@ -102,15 +102,15 @@ def label_to_card(label: str) -> Card:
     return Card(model_rank, model_suit)
 
 
-def card_label(card_or_label) -> str:
+def card_label(card_or_label: object) -> str:
     return str(getattr(card_or_label, "label", card_or_label))
 
 
-def pegging_total(pile: list) -> int:
+def pegging_total(pile: list[object]) -> int:
     return sum(value_for_fifteen(parse_card_label(card_label(item))[0]) for item in pile)
 
 
-def score_pegging_play(pile: list, new_card: object | None = None) -> int:
+def score_pegging_play(pile: list[object], new_card: object | None = None) -> int:
     working_pile = list(pile)
     if new_card is not None:
         working_pile.append(new_card)
@@ -152,7 +152,7 @@ def score_pegging_play(pile: list, new_card: object | None = None) -> int:
     return points
 
 
-def score_15s(cards: list) -> list[tuple[str, list[str], int]]:
+def score_15s(cards: list[Card]) -> list[tuple[str, list[str], int]]:
     breakdown: list[tuple[str, list[str], int]] = []
     seen: set[tuple[str, ...]] = set()
     for r in range(2, len(cards) + 1):
@@ -167,7 +167,7 @@ def score_15s(cards: list) -> list[tuple[str, list[str], int]]:
 
 
 # Score pairs
-def score_pairs(cards: list) -> list[tuple[str, list[str], int]]:
+def score_pairs(cards: list[Card]) -> list[tuple[str, list[str], int]]:
     breakdown: list[tuple[str, list[str], int]] = []
     ranks = [_normalize_rank(card.rank) for card in cards]
     for rank in sorted(set(ranks)):
@@ -179,7 +179,7 @@ def score_pairs(cards: list) -> list[tuple[str, list[str], int]]:
     return breakdown
 
 
-def find_all_runs(cards: list) -> list[tuple[int, int, list]]:
+def find_all_runs(cards: list[Card]) -> list[tuple[int, int, list[Card]]]:
     if len(cards) < 3:
         return []
 
@@ -209,7 +209,7 @@ def find_all_runs(cards: list) -> list[tuple[int, int, list]]:
     for _, rank_seq, combo in longest:
         grouped.setdefault(rank_seq, []).append(combo)
 
-    runs: list[tuple[int, int, list]] = []
+    runs: list[tuple[int, int, list[Card]]] = []
     for rank_seq in sorted(grouped.keys()):
         combos = grouped[rank_seq]
         multiplicity = len(combos)
@@ -225,8 +225,8 @@ def find_all_runs(cards: list) -> list[tuple[int, int, list]]:
     return runs
 
 
-def _run_card_combinations(cards: list) -> list[tuple]:
-    by_rank = {}
+def _run_card_combinations(cards: list[Card]) -> list[tuple[Card, ...]]:
+    by_rank: dict[int, list[Card]] = {}
     for card in cards:
         key = rank_index(card.rank)
         by_rank.setdefault(key, []).append(card)
@@ -236,12 +236,12 @@ def _run_card_combinations(cards: list) -> list[tuple]:
 
 
 # Score runs
-def score_runs(cards: list) -> list[tuple[str, list[str], int]]:
+def score_runs(cards: list[Card]) -> list[tuple[str, list[str], int]]:
     runs = find_all_runs(cards)
     if not runs:
         return []
 
-    breakdown = []
+    breakdown: list[tuple[str, list[str], int]] = []
     for run_len, multiplicity, run_cards in runs:
         for combo in _run_card_combinations(run_cards):
             breakdown.append((f"Run of {run_len} (x{multiplicity})", [str(card) for card in combo], run_len))
@@ -249,7 +249,7 @@ def score_runs(cards: list) -> list[tuple[str, list[str], int]]:
 
 
 # Score flush
-def score_flush(hand: list, starter, is_crib: bool = False) -> list[tuple[str, list[str], int]]:
+def score_flush(hand: list[Card], starter: Card, is_crib: bool = False) -> list[tuple[str, list[str], int]]:
     suits = [card.suit for card in hand]
     if not suits or not all(s == suits[0] for s in suits):
         return []
@@ -265,7 +265,7 @@ def score_flush(hand: list, starter, is_crib: bool = False) -> list[tuple[str, l
 
 
 # Score nobs (Jack of same suit as starter)
-def score_nobs(hand: list, starter) -> list[tuple[str, list[str], int]]:
+def score_nobs(hand: list[Card], starter: Card) -> list[tuple[str, list[str], int]]:
     starter_suit = str(starter.suit).strip().lower()
     for card in hand:
         if _normalize_rank(card.rank) == "J" and str(card.suit).strip().lower() == starter_suit:
@@ -274,7 +274,7 @@ def score_nobs(hand: list, starter) -> list[tuple[str, list[str], int]]:
 
 
 # Total hand score
-def score_hand(hand: list, starter, is_crib: bool = False) -> tuple[int, list[tuple[str, list[str], int]]]:
+def score_hand(hand: list[Card], starter: Card, is_crib: bool = False) -> tuple[int, list[tuple[str, list[str], int]]]:
     breakdown: list[tuple[str, list[str], int]] = []
     breakdown += score_15s(hand + [starter])
     breakdown += score_pairs(hand + [starter])

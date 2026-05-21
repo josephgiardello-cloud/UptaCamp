@@ -1,7 +1,8 @@
 import json
+# pyright: reportUnknownVariableType=false
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 @dataclass
@@ -9,12 +10,12 @@ class GameState:
     phase: str = "intro"
     dealer: int = 0
     scores: list[int] = field(default_factory=lambda: [0, 0])
-    player_hand: list[Any] = field(default_factory=list)
-    ai_hand: list[Any] = field(default_factory=list)
-    crib: list[Any] = field(default_factory=list)
-    pegging_pile: list[Any] = field(default_factory=list)
-    player_kept: list[Any] = field(default_factory=list)
-    ai_kept: list[Any] = field(default_factory=list)
+    player_hand: list[object] = field(default_factory=list)
+    ai_hand: list[object] = field(default_factory=list)
+    crib: list[object] = field(default_factory=list)
+    pegging_pile: list[object] = field(default_factory=list)
+    player_kept: list[object] = field(default_factory=list)
+    ai_kept: list[object] = field(default_factory=list)
     starter_card: str | None = None
     player_turn: int = 0
     pegging_passes: list[bool] = field(default_factory=lambda: [False, False])
@@ -22,18 +23,18 @@ class GameState:
     message: str = ""
     dad_ai_level: int = 2
     stock_labels: list[str] = field(default_factory=list)
-    deck: Any | None = None
-    cut_card: Any | None = None
+    deck: object | None = None
+    cut_card: object | None = None
     selected_cards: list[int] = field(default_factory=list)
     winner: int | None = None
     ai_level: int = 1
     player_name: str = ""
     ai_name: str = "Dealer"
-    history: list[Any] = field(default_factory=list)
-    current_phase: Any | None = None
+    history: list[object] = field(default_factory=list)
+    current_phase: object | None = None
     phase_name: str = "intro"
     last_counting_result: dict[str, int] = field(default_factory=dict)
-    last_counting_breakdown: dict[str, Any] = field(default_factory=dict)
+    last_counting_breakdown: dict[str, object] = field(default_factory=dict)
     counting_resolved: bool = False
     counting_next_phase: str = "end"
     # Online / remote orchestration fields
@@ -43,7 +44,7 @@ class GameState:
     phase_progress: int = 0
     phase_index: int = 0
     count_by_player: dict[str, bool] = field(default_factory=dict)
-    last_action: dict[str, Any] = field(default_factory=dict)
+    last_action: dict[str, object] = field(default_factory=dict)
 
     def reset(self) -> None:
         fresh = type(self)()
@@ -51,16 +52,18 @@ class GameState:
         self.__dict__.update(fresh.__dict__)
 
     def transition_to(self, new_phase_class: type[Any], ctx: Any = None) -> None:
-        if self.current_phase is not None and hasattr(self.current_phase, "exit"):
-            self.current_phase.exit(self, ctx)
+        previous = self.current_phase
+        if previous is not None and hasattr(previous, "exit"):
+            cast(Any, previous).exit(self, ctx)
         self.current_phase = new_phase_class()
         self.phase_name = new_phase_class.__name__
         self.phase = getattr(self.current_phase, "phase_name", self.phase_name.lower())
-        if hasattr(self.current_phase, "enter"):
-            self.current_phase.enter(self, ctx)
+        current = self.current_phase
+        if current is not None and hasattr(current, "enter"):
+            cast(Any, current).enter(self, ctx)
 
     @staticmethod
-    def _serialize_card(card: Any) -> str:
+    def _serialize_card(card: object) -> str:
         label = getattr(card, "label", None)
         if isinstance(label, str) and label:
             return label

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
+
 import pickle
 import random
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import cards
 from game_state import GameState
@@ -44,6 +46,10 @@ class BertAgent:
 
     def _q_value(self, mode: str, state_key: str, action: Any) -> float:
         return self.q_table[self._q_key(mode, state_key, action)]
+
+    @staticmethod
+    def card_label_for_agent(card_or_label: object) -> str:
+        return str(getattr(card_or_label, "label", card_or_label))
 
     def set_posture(self, posture: str) -> None:
         valid = {"balanced", "aggressive", "deliberate", "cutthroat"}
@@ -94,10 +100,10 @@ class BertAgent:
         last_val = 0
         tail_vals: list[int] = []
         if state.pegging_pile:
-            last = cards.card_label(state.pegging_pile[-1])
+            last = self.card_label_for_agent(state.pegging_pile[-1])
             last_val = cards.value_for_fifteen(cards.parse_card_label(last)[0])
             for item in state.pegging_pile[-3:]:
-                label = cards.card_label(item)
+                label = self.card_label_for_agent(item)
                 rank, _ = cards.parse_card_label(label)
                 tail_vals.append(cards.value_for_fifteen(rank))
         passes = tuple(bool(p) for p in getattr(state, "pegging_passes", [False, False]))
@@ -300,7 +306,7 @@ class BertAgent:
     def save(self, path: str | Path) -> None:
         file_path = Path(path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
+        payload: dict[str, Any] = {
             "q_table": dict(self.q_table),
             "lr": self.lr,
             "gamma": self.gamma,
@@ -315,10 +321,15 @@ class BertAgent:
     def load(self, path: str | Path) -> None:
         file_path = Path(path)
         with file_path.open("rb") as f:
-            payload = pickle.load(f)
+            payload_obj = pickle.load(f)
 
-        if isinstance(payload, dict) and "q_table" in payload:
-            data = payload.get("q_table", {})
+        payload: dict[str, Any] | None = None
+        if isinstance(payload_obj, dict):
+            payload = cast(dict[str, Any], payload_obj)
+
+        data_obj: object
+        if payload is not None and "q_table" in payload:
+            data_obj = payload.get("q_table", {})
             self.lr = float(payload.get("lr", self.lr))
             self.gamma = float(payload.get("gamma", self.gamma))
             self.epsilon = float(payload.get("epsilon", self.epsilon))
@@ -326,16 +337,16 @@ class BertAgent:
             self.epsilon_decay = float(payload.get("epsilon_decay", self.epsilon_decay))
             self.update_steps = int(payload.get("update_steps", self.update_steps))
         else:
-            data = payload
+            data_obj = payload_obj
 
         normalized: dict[tuple[str, str, Any], float] = {}
-        if isinstance(data, dict):
-            for key, value in data.items():
+        if isinstance(data_obj, dict):
+            for key, value in cast(dict[Any, Any], data_obj).items():
                 if isinstance(key, tuple) and len(key) == 3:
-                    mode, state_key, action = key
+                    mode, state_key, action = cast(tuple[Any, Any, Any], key)
                     normalized[(str(mode), str(state_key), action)] = float(value)
                 elif isinstance(key, tuple) and len(key) == 2:
-                    state_key, action = key
+                    state_key, action = cast(tuple[Any, Any], key)
                     inferred_mode = "discard" if str(state_key).startswith("discard|") else "pegging"
                     normalized[(inferred_mode, str(state_key), action)] = float(value)
 
@@ -372,7 +383,7 @@ def encode_game_state_as_vector(
     vector: list[float] = []
 
     # Hand values (6 dims)
-    hand_vals = []
+    hand_vals: list[float] = []
     for lbl in hand_labels[:6]:
         rank, _ = cards.parse_card_label(lbl)
         val = cards.value_for_fifteen(rank)
@@ -399,7 +410,7 @@ def encode_game_state_as_vector(
     last_val = 0.0
     if state.pegging_pile:
         try:
-            last_label = cards.card_label(state.pegging_pile[-1])
+            last_label = BertAgent.card_label_for_agent(state.pegging_pile[-1])
             rank, _ = cards.parse_card_label(last_label)
             last_val = float(cards.value_for_fifteen(rank)) / 10.0
         except Exception:
@@ -412,9 +423,10 @@ def encode_game_state_as_vector(
     vector.append(max(0.0, min(1.0, remaining_norm)))
 
     # Pass flags (2 dims)
-    if hasattr(state, "pegging_passes") and isinstance(state.pegging_passes, list):
-        vector.append(1.0 if state.pegging_passes[0] else 0.0)
-        vector.append(1.0 if state.pegging_passes[1] else 0.0)
+    pegging_passes = getattr(state, "pegging_passes", [False, False])
+    if len(pegging_passes) >= 2:
+        vector.append(1.0 if bool(pegging_passes[0]) else 0.0)
+        vector.append(1.0 if bool(pegging_passes[1]) else 0.0)
     else:
         vector.append(0.0)
         vector.append(0.0)
@@ -452,8 +464,8 @@ class DQN:
         self.hidden_dim = hidden_dim
 
         try:
-            import torch
-            import torch.nn as nn
+            import torch  # pyright: ignore[reportMissingImports]
+            import torch.nn as nn  # pyright: ignore[reportMissingImports]
 
             self.device = torch.device("cpu")
             self.model = nn.Sequential(
@@ -486,7 +498,7 @@ class DQN:
             return None
 
         try:
-            import torch
+            import torch  # pyright: ignore[reportMissingImports]
 
             with torch.no_grad():
                 state_tensor = torch.tensor(state_vector, dtype=torch.float32, device=self.device).unsqueeze(0)
@@ -506,11 +518,16 @@ class DQN:
         Returns:
             Loss value, or -1.0 if PyTorch unavailable
         """
-        if not self.torch_available or self.model is None:
+        if (
+            not self.torch_available
+            or self.model is None
+            or self.optimizer is None
+            or self.criterion is None
+        ):
             return -1.0
 
         try:
-            import torch
+            import torch  # pyright: ignore[reportMissingImports]
 
             state_tensor = torch.tensor(state_vector, dtype=torch.float32, device=self.device).unsqueeze(0)
             target_tensor = torch.tensor(target_q_values, dtype=torch.float32, device=self.device).unsqueeze(0)
@@ -538,7 +555,7 @@ class DQN:
             return False
 
         try:
-            import torch
+            import torch  # pyright: ignore[reportMissingImports]
 
             file_path = Path(path)
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -560,7 +577,7 @@ class DQN:
             return False
 
         try:
-            import torch
+            import torch  # pyright: ignore[reportMissingImports]
 
             file_path = Path(path)
             if not file_path.exists():
