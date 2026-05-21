@@ -1,46 +1,45 @@
 {
   "phase": "counting",
-  "dealer": 1,
+  "dealer": 0,
   "scores": [
-    10,
-    12
+    133,
+    116
   ],
   "player_hand": [],
   "ai_hand": [],
   "crib": [
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE113610>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE0EDA30>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE3601D0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE3602D0>"
+    "<cribbage_pygame.CardSprite object at 0x000001D06054FE00>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054FCB0>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054F540>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054FEE0>"
   ],
   "pegging_pile": [
-    "namespace(label='10_of_clubs')",
-    "namespace(label='9_of_hearts')"
+    "<cribbage_pygame.CardSprite object at 0x000001D06054F700>"
   ],
   "player_kept": [
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE05E350>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE05F230>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE0CE9C0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE088590>"
+    "<cribbage_pygame.CardSprite object at 0x000001D06054F1C0>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054FB60>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054F620>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054FA80>"
   ],
   "ai_kept": [
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE089250>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE0B35F0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE0B3750>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE113890>"
+    "<cribbage_pygame.CardSprite object at 0x000001D06054FAF0>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054F2A0>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054F700>",
+    "<cribbage_pygame.CardSprite object at 0x000001D06054FBD0>"
   ],
   "starter_card": "5_of_clubs",
-  "player_turn": 1,
+  "player_turn": 0,
   "pegging_passes": [
     false,
     false
   ],
-  "last_pegging_player": 0,
-  "message": "Last card for 1 point. Counting hands.",
-  "dad_ai_level": 2,
+  "last_pegging_player": 1,
+  "message": "Bert gets last card for 1 point. Counting hands.",
+  "dad_ai_level": 5,
   "ai_level": 1,
   "player_name": "",
   "ai_name": "Dealer",
   "phase_name": "intro",
-  "winner": null
+  "winner": 0
 }
