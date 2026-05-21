@@ -42,6 +42,40 @@ def test_main_defaults_to_classic_client(monkeypatch):
         called["value"] = True
         return 123
 
+    monkeypatch.setattr(main, "run_classic_client", _classic_runner)
+    monkeypatch.setattr(
+        main.argparse.ArgumentParser,
+        "parse_known_args",
+        lambda self: (
+            types.SimpleNamespace(
+                debug_play=False,
+                online_url="http://127.0.0.1:8787",
+                online_ws_url="ws://127.0.0.1:8790",
+                volume=0.6,
+                animations="on",
+                online_ai_level=2,
+                new_client=False,
+                classic_client=False,
+            ),
+            [],
+        ),
+    )
+
+    monkeypatch.setattr(main, "_run_state_client", lambda args: 999)
+
+    result = main.main()
+
+    assert result == 123
+    assert called["value"] is True
+
+
+def test_main_uses_classic_path_when_opted_in(monkeypatch):
+    called = {"value": False}
+
+    def _classic_runner():
+        called["value"] = True
+        return 123
+
     monkeypatch.setattr(main, "_run_state_client", lambda args: 999)
     monkeypatch.setattr(main, "run_classic_client", _classic_runner)
     monkeypatch.setattr(
@@ -56,6 +90,7 @@ def test_main_defaults_to_classic_client(monkeypatch):
                 animations="on",
                 online_ai_level=2,
                 new_client=False,
+                classic_client=True,
             ),
             [],
         ),
@@ -80,6 +115,7 @@ def test_main_uses_new_client_path_when_flag_enabled(monkeypatch):
                 animations="off",
                 online_ai_level=3,
                 new_client=True,
+                classic_client=False,
             ),
             [],
         ),

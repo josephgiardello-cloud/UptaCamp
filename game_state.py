@@ -34,6 +34,16 @@ class GameState:
     phase_name: str = "intro"
     last_counting_result: dict[str, int] = field(default_factory=dict)
     last_counting_breakdown: dict[str, Any] = field(default_factory=dict)
+    counting_resolved: bool = False
+    counting_next_phase: str = "end"
+    # Online / remote orchestration fields
+    deal_ready: list[str] = field(default_factory=list)
+    discard_by_player: dict[str, list[str]] = field(default_factory=dict)
+    pegging_running_total: int = 0
+    phase_progress: int = 0
+    phase_index: int = 0
+    count_by_player: dict[str, bool] = field(default_factory=dict)
+    last_action: dict[str, Any] = field(default_factory=dict)
 
     def reset(self) -> None:
         fresh = type(self)()
@@ -49,6 +59,58 @@ class GameState:
         if hasattr(self.current_phase, "enter"):
             self.current_phase.enter(self, ctx)
 
+    @staticmethod
+    def _serialize_card(card: Any) -> str:
+        label = getattr(card, "label", None)
+        if isinstance(label, str) and label:
+            return label
+        return str(card)
+
+    def to_dict(self) -> dict[str, Any]:
+        # Keep checkpoint schema explicit to avoid accidentally persisting runtime-only internals.
+        return {
+            "phase": self.phase,
+            "dealer": self.dealer,
+            "scores": list(self.scores),
+            "player_hand": [self._serialize_card(c) for c in self.player_hand],
+            "ai_hand": [self._serialize_card(c) for c in self.ai_hand],
+            "crib": [self._serialize_card(c) for c in self.crib],
+            "pegging_pile": [self._serialize_card(c) for c in self.pegging_pile],
+            "player_kept": [self._serialize_card(c) for c in self.player_kept],
+            "ai_kept": [self._serialize_card(c) for c in self.ai_kept],
+            "starter_card": str(self.starter_card) if self.starter_card else None,
+            "player_turn": self.player_turn,
+            "pegging_passes": list(self.pegging_passes),
+            "last_pegging_player": self.last_pegging_player,
+            "message": self.message,
+            "dad_ai_level": self.dad_ai_level,
+            "stock_labels": list(self.stock_labels),
+            "ai_level": self.ai_level,
+            "player_name": self.player_name,
+            "ai_name": self.ai_name,
+            "phase_name": self.phase_name,
+            "winner": self.winner,
+            "last_counting_result": dict(self.last_counting_result),
+            "last_counting_breakdown": dict(self.last_counting_breakdown),
+            "counting_resolved": self.counting_resolved,
+            "counting_next_phase": self.counting_next_phase,
+            "deal_ready": list(self.deal_ready),
+            "discard_by_player": {k: list(v) for k, v in self.discard_by_player.items()},
+            "pegging_running_total": int(self.pegging_running_total),
+            "phase_progress": int(self.phase_progress),
+            "phase_index": int(self.phase_index),
+            "count_by_player": dict(self.count_by_player),
+            "last_action": dict(self.last_action),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GameState":
+        state = cls()
+        for key, value in data.items():
+            if hasattr(state, key):
+                setattr(state, key, value)
+        return state
+
     def save_checkpoint(self, path: str | Path | None = None) -> str:
         """Save game state to checkpoint file.
 
@@ -63,31 +125,7 @@ class GameState:
         else:
             path = Path(path)
 
-        # Prepare serializable data (exclude current_phase which contains state objects)
-        state_dict = {
-            "phase": self.phase,
-            "dealer": self.dealer,
-            "scores": self.scores,
-            "player_hand": [str(c) for c in self.player_hand],
-            "ai_hand": [str(c) for c in self.ai_hand],
-            "crib": [str(c) for c in self.crib],
-            "pegging_pile": [str(c) for c in self.pegging_pile],
-            "player_kept": [str(c) for c in self.player_kept],
-            "ai_kept": [str(c) for c in self.ai_kept],
-            "starter_card": str(self.starter_card) if self.starter_card else None,
-            "player_turn": self.player_turn,
-            "pegging_passes": self.pegging_passes,
-            "last_pegging_player": self.last_pegging_player,
-            "message": self.message,
-            "dad_ai_level": self.dad_ai_level,
-            "ai_level": self.ai_level,
-            "player_name": self.player_name,
-            "ai_name": self.ai_name,
-            "phase_name": self.phase_name,
-            "winner": self.winner,
-            "last_counting_result": self.last_counting_result,
-            "last_counting_breakdown": self.last_counting_breakdown,
-        }
+        state_dict = self.to_dict()
 
         try:
             with open(path, "w") as f:
@@ -119,12 +157,7 @@ class GameState:
             with open(path) as f:
                 data = json.load(f)
 
-            # Create new GameState with loaded data
-            state = cls()
-            for key, value in data.items():
-                if hasattr(state, key):
-                    setattr(state, key, value)
-            return state
+            return cls.from_dict(data)
         except Exception as e:
             print(f"Warning: Failed to load checkpoint from {path}: {e}")
             return None

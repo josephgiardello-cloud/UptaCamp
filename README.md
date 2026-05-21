@@ -60,7 +60,7 @@ pip install -e .[dev]
 python main.py
 ```
 
-### New client path
+### State-driven client path
 
 ```bash
 python main.py --new-client

@@ -17,3 +17,7 @@ def test_game_state_has_engine_and_classic_fields():
     assert state.pegging_passes == [False, False]
     assert state.stock_labels == []
     assert state.dad_ai_level == 2
+    assert state.last_counting_result == {}
+    assert state.last_counting_breakdown == {}
+    assert state.counting_resolved is False
+    assert state.counting_next_phase == "end"

@@ -98,6 +98,41 @@ def test_count_hands_returns_breakdowns():
     assert isinstance(result["crib"], int)
 
 
+def test_count_hands_stops_after_first_player_reaches_121():
+    engine = CribbageEngine()
+    engine.state.scores = [120, 10]
+    engine.state.player_kept = [
+        _LabeledCard("J_of_spades"),
+        _LabeledCard("2_of_clubs"),
+        _LabeledCard("7_of_diamonds"),
+        _LabeledCard("K_of_hearts"),
+    ]
+    engine.state.ai_kept = [
+        _LabeledCard("5_of_clubs"),
+        _LabeledCard("5_of_diamonds"),
+        _LabeledCard("5_of_hearts"),
+        _LabeledCard("K_of_spades"),
+    ]
+    engine.state.crib = [
+        _LabeledCard("6_of_clubs"),
+        _LabeledCard("7_of_diamonds"),
+        _LabeledCard("8_of_hearts"),
+        _LabeledCard("9_of_spades"),
+    ]
+    engine.state.starter_card = "A_of_spades"
+    engine.state.dealer = 1
+
+    result = engine.count_hands(_label_to_model)
+
+    assert engine.state.phase == "game_over"
+    assert engine.state.winner == 0
+    assert engine.state.scores[0] == 121
+    assert engine.state.scores[1] == 10
+    assert result["player"] == 1
+    assert result["ai"] == 0
+    assert result["crib"] == 0
+
+
 def test_start_next_round_flips_dealer_and_sets_turn():
     engine = CribbageEngine()
     engine.state.dealer = 0
@@ -134,6 +169,30 @@ def test_play_pegging_card_clears_on_31():
     assert points == 2
     assert engine.state.pegging_pile == []
     assert "31" in engine.state.message
+
+
+def test_play_pegging_card_rejects_over_31():
+    engine = CribbageEngine()
+    engine.state.player_hand = [_LabeledCard("2_of_spades")]
+    engine.state.ai_hand = []
+    engine.state.pegging_pile = [
+        _LabeledCard("10_of_hearts"),
+        _LabeledCard("king_of_clubs"),
+        _LabeledCard("10_of_diamonds"),
+    ]
+    engine.state.player_turn = 0
+
+    points = engine.play_pegging_card(
+        player_idx=0,
+        card_index=0,
+        score_pegging_play=lambda pile: 2,
+        value_for_15=lambda rank: 2 if rank == "2" else 10,
+        parse_label=lambda label: label.split("_of_", 1),
+    )
+
+    assert points == 0
+    assert len(engine.state.player_hand) == 1
+    assert len(engine.state.pegging_pile) == 3
 
 
 def test_pass_pegging_turn_awards_last_card_and_resets_count():

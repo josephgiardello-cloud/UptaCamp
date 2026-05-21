@@ -87,3 +87,72 @@ def test_find_all_runs_includes_multiple_lengths_and_multiplicity():
         "5 of Spades",
         "6 of Clubs",
     ]
+
+
+def test_score_hand_counts_separated_runs_independently():
+    hand = [
+        Card("2", "Clubs"),
+        Card("3", "Diamonds"),
+        Card("4", "Hearts"),
+        Card("7", "Spades"),
+        Card("8", "Clubs"),
+        Card("9", "Diamonds"),
+    ]
+    starter = Card("K", "Spades")
+    total, breakdown = score_hand(hand, starter)
+
+    run_points = sum(points for name, _, points in breakdown if name.startswith("Run of"))
+    assert run_points == 6
+    assert total >= 6
+
+
+def test_score_hand_counts_overlapping_run_multiplicity():
+    hand = [
+        Card("3", "Clubs"),
+        Card("3", "Diamonds"),
+        Card("4", "Hearts"),
+        Card("5", "Spades"),
+        Card("6", "Clubs"),
+        Card("6", "Diamonds"),
+    ]
+    starter = Card("A", "Hearts")
+    total, breakdown = score_hand(hand, starter)
+
+    run_points = sum(points for name, _, points in breakdown if name.startswith("Run of"))
+    pair_points = sum(points for name, _, points in breakdown if name == "Pair")
+    assert run_points == 16
+    assert pair_points == 4
+    assert total >= 20
+
+
+def test_longest_run_only_no_double_counting_shorter_subruns():
+    hand = [
+        Card("3", "Clubs"),
+        Card("3", "Diamonds"),
+        Card("4", "Hearts"),
+        Card("5", "Spades"),
+        Card("6", "Clubs"),
+    ]
+    starter = Card("K", "Hearts")
+    total, breakdown = score_hand(hand, starter)
+
+    run_points = sum(points for name, _, points in breakdown if name.startswith("Run of"))
+    assert run_points == 8
+    assert total >= 10
+
+
+def test_find_all_runs_returns_separate_longest_groups():
+    cards = [
+        Card("2", "Clubs"),
+        Card("3", "Diamonds"),
+        Card("4", "Hearts"),
+        Card("7", "Spades"),
+        Card("8", "Clubs"),
+        Card("9", "Diamonds"),
+    ]
+
+    runs = find_all_runs(cards)
+
+    assert len(runs) == 2
+    assert all(run_len == 3 for run_len, _, _ in runs)
+    assert all(multiplicity == 1 for _, multiplicity, _ in runs)

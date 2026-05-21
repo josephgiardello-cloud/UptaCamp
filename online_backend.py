@@ -68,12 +68,6 @@ class OnlineBackend:
     """
 
     PHASES = ["deal", "discard", "pegging", "counting", "finished"]
-    PHASE_TURN_TARGET = {
-        "deal": 2,
-        "discard": 2,
-        "pegging": 8,
-        "counting": 2,
-    }
 
     def __init__(self, db_path: str | Path = "online_state.db"):
         self.db_path = str(db_path)
@@ -688,24 +682,25 @@ class OnlineBackend:
                     payload=payload,
                 )
 
+                scores = state.get("scores", [0, 0])
+                if isinstance(scores, list) and len(scores) == 2:
+                    p1_score = int(scores[0])
+                    p2_score = int(scores[1])
+                    if p1_score >= 121 or p2_score >= 121:
+                        state["phase"] = "finished"
+                        if p1_score > p2_score:
+                            state["winner_player_id"] = str(match["player_one_id"])
+                        elif p2_score > p1_score:
+                            state["winner_player_id"] = str(match["player_two_id"])
+                        else:
+                            state["winner_player_id"] = player_id
+
                 state["last_action"] = {
                     "turn_index": turn_index,
                     "player_id": player_id,
                     "action_type": action_type,
                     "payload": payload,
                 }
-
-                current_phase = str(state.get("phase", "deal"))
-                progress = 0 if current_phase != phase else int(state.get("phase_progress", 0)) + 1
-                state["phase_progress"] = progress
-
-                target = self.PHASE_TURN_TARGET.get(current_phase, 0)
-                if target and progress >= target:
-                    next_phase_index = min(int(state.get("phase_index", 0)) + 1, len(self.PHASES) - 1)
-                    next_phase = self.PHASES[next_phase_index]
-                    state["phase_index"] = next_phase_index
-                    state["phase"] = next_phase
-                    state["phase_progress"] = 0
 
                 next_player = (
                     match["player_two_id"]

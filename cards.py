@@ -1,5 +1,4 @@
 import itertools
-from collections import Counter
 
 # Card representation
 from dataclasses import dataclass, field
@@ -174,46 +173,47 @@ def score_pairs(cards: list) -> list[tuple[str, list[str], int]]:
 
 
 def find_all_runs(cards: list) -> list[tuple[int, int, list]]:
-    ranks_map = {
-        "A": 1,
-        "2": 2,
-        "3": 3,
-        "4": 4,
-        "5": 5,
-        "6": 6,
-        "7": 7,
-        "8": 8,
-        "9": 9,
-        "10": 10,
-        "J": 11,
-        "Q": 12,
-        "K": 13,
-    }
-    if not cards:
+    if len(cards) < 3:
         return []
 
-    rank_values = [ranks_map[_normalize_rank(card.rank)] for card in cards]
-    counts = Counter(rank_values)
-    unique_sorted = sorted(counts.keys())
+    def _is_run(combo: tuple[Card, ...]) -> tuple[bool, tuple[int, ...]]:
+        ranks = tuple(sorted(rank_index(card.rank) for card in combo))
+        if len(set(ranks)) != len(combo):
+            return False, ()
+        for i in range(1, len(ranks)):
+            if ranks[i] != ranks[i - 1] + 1:
+                return False, ()
+        return True, ranks
 
-    runs = []
-    i = 0
-    while i < len(unique_sorted):
-        j = i
-        while j + 1 < len(unique_sorted) and unique_sorted[j + 1] == unique_sorted[j] + 1:
-            j += 1
+    valid: list[tuple[int, tuple[int, ...], tuple[Card, ...]]] = []
+    for size in range(3, len(cards) + 1):
+        for combo in itertools.combinations(cards, size):
+            ok, rank_seq = _is_run(combo)
+            if ok:
+                valid.append((size, rank_seq, combo))
 
-        if j - i + 1 >= 3:
-            run_len = j - i + 1
-            multiplicity = 1
-            for k in range(i, j + 1):
-                multiplicity *= counts[unique_sorted[k]]
-            run_cards = [
-                card for card in cards if ranks_map[_normalize_rank(card.rank)] in unique_sorted[i : j + 1]
-            ]
-            runs.append((run_len, multiplicity, run_cards))
+    if not valid:
+        return []
 
-        i = j + 1
+    max_len = max(item[0] for item in valid)
+    longest = [item for item in valid if item[0] == max_len]
+
+    grouped: dict[tuple[int, ...], list[tuple[Card, ...]]] = {}
+    for _, rank_seq, combo in longest:
+        grouped.setdefault(rank_seq, []).append(combo)
+
+    runs: list[tuple[int, int, list]] = []
+    for rank_seq in sorted(grouped.keys()):
+        combos = grouped[rank_seq]
+        multiplicity = len(combos)
+        run_cards_set: set[Card] = set()
+        for combo in combos:
+            run_cards_set.update(combo)
+        run_cards = sorted(
+            run_cards_set,
+            key=lambda c: (rank_index(c.rank), str(c.suit)),
+        )
+        runs.append((max_len, multiplicity, run_cards))
 
     return runs
 
