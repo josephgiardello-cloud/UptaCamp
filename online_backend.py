@@ -7,6 +7,7 @@ import logging
 import secrets
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -68,11 +69,39 @@ class OnlineBackend:
     """
 
     PHASES = ["deal", "discard", "pegging", "counting", "finished"]
+    ENGINE_CACHE_TTL_SECONDS = 30 * 60
 
     def __init__(self, db_path: str | Path = "online_state.db"):
         self.db_path = str(db_path)
         self._lock = threading.Lock()
+        self._engine_cache: dict[str, CribbageEngine] = {}
+        self._engine_last_used: dict[str, float] = {}
         self._ensure_schema()
+
+    def _prune_stale_engines(self, now: float | None = None) -> None:
+        current = time.monotonic() if now is None else now
+        stale_ids = [
+            match_id
+            for match_id, last_used in self._engine_last_used.items()
+            if current - last_used > self.ENGINE_CACHE_TTL_SECONDS
+        ]
+        for match_id in stale_ids:
+            self._engine_cache.pop(match_id, None)
+            self._engine_last_used.pop(match_id, None)
+
+    def _get_match_engine(self, match_id: str) -> CribbageEngine:
+        now = time.monotonic()
+        self._prune_stale_engines(now)
+        engine = self._engine_cache.get(match_id)
+        if engine is None:
+            engine = CribbageEngine()
+            self._engine_cache[match_id] = engine
+        self._engine_last_used[match_id] = now
+        return engine
+
+    def _drop_match_engine(self, match_id: str) -> None:
+        self._engine_cache.pop(match_id, None)
+        self._engine_last_used.pop(match_id, None)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -672,7 +701,7 @@ class OnlineBackend:
                     ),
                 )
 
-                engine = CribbageEngine()
+                engine = self._get_match_engine(match_id)
                 engine.load_remote_snapshot(state)
                 state = engine.apply_remote_action(
                     player_id=player_id,
@@ -737,6 +766,7 @@ class OnlineBackend:
                     if refreshed is None:
                         raise ValueError("Match disappeared during submit")
                     self._finish_match_locked(conn, refreshed, winner)
+                    self._drop_match_engine(match_id)
                     return turn_index
 
                 conn.execute(
@@ -773,6 +803,7 @@ class OnlineBackend:
                 if match is None:
                     raise ValueError("Match does not exist")
                 self._finish_match_locked(conn, match, winner_player_id)
+                self._drop_match_engine(match_id)
 
     def get_player_profile(self, player_id: str) -> dict[str, Any]:
         with self._connection() as conn:

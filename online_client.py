@@ -149,10 +149,20 @@ class OnlineClient:
 class MatchEventStream:
     """Background match updates with websocket-first and polling fallback."""
 
-    def __init__(self, client: OnlineClient, match_id: str, ws_url: str | None = None):
+    def __init__(
+        self,
+        client: OnlineClient,
+        match_id: str,
+        ws_url: str | None = None,
+        *,
+        poll_interval_s: float = 2.0,
+        ws_recv_timeout_s: float = 1.5,
+    ):
         self.client = client
         self.match_id = match_id
         self.ws_url = ws_url
+        self.poll_interval_s = max(0.25, float(poll_interval_s))
+        self.ws_recv_timeout_s = max(0.25, float(ws_recv_timeout_s))
         self.last_snapshot: dict[str, Any] | None = None
         self.last_error: str | None = None
         self._stop = threading.Event()
@@ -192,7 +202,9 @@ class MatchEventStream:
                         )
                     )
                     while not self._stop.is_set():
-                        msg = await asyncio.wait_for(sock.recv(), timeout=1.5)
+                        msg = await asyncio.wait_for(
+                            sock.recv(), timeout=self.ws_recv_timeout_s
+                        )
                         data = json.loads(str(msg))
                         if "error" in data:
                             raise OnlineClientError(str(data["error"]))
@@ -209,4 +221,4 @@ class MatchEventStream:
                 self.last_snapshot = self.client.get_match(self.match_id)
             except Exception as exc:
                 self.last_error = str(exc)
-            time.sleep(2.0)
+            time.sleep(self.poll_interval_s)

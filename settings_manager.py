@@ -13,6 +13,8 @@ class GameSettings:
     animations_enabled: bool = True
     online_ai_level: int = 2
     ui_style: str = "classic"
+    background_theme: str = "auto"
+    dark_shadows_unlocked: bool = False
     bert_voice_enabled: bool = True
     bert_voice_style: str = "downeast"
     bert_voice_backend: str = "local_ai"
@@ -37,6 +39,11 @@ class GameSettings:
             "premium_tabletop",
         ):
             self.ui_style = "classic"
+        if self.background_theme not in ("classic", "auto", "wharf", "dark_shadows"):
+            self.background_theme = "auto"
+        self.dark_shadows_unlocked = bool(self.dark_shadows_unlocked)
+        if self.background_theme == "dark_shadows" and not self.dark_shadows_unlocked:
+            self.background_theme = "auto"
         self.bert_voice_enabled = bool(self.bert_voice_enabled)
         if self.bert_voice_style not in ("robot", "downeast"):
             self.bert_voice_style = "downeast"
@@ -67,6 +74,8 @@ def load_settings(path: Path | None = None) -> GameSettings:
         animations_enabled=raw.get("animations_enabled", True),
         online_ai_level=raw.get("online_ai_level", 2),
         ui_style=raw.get("ui_style", "classic"),
+        background_theme=raw.get("background_theme", "auto"),
+        dark_shadows_unlocked=raw.get("dark_shadows_unlocked", False),
         bert_voice_enabled=raw.get("bert_voice_enabled", True),
         bert_voice_style=raw.get("bert_voice_style", "downeast"),
         bert_voice_backend=raw.get("bert_voice_backend", "local_ai"),

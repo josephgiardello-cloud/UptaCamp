@@ -10,6 +10,8 @@ def test_settings_round_trip_includes_bert_voice_flag(tmp_path):
         animations_enabled=True,
         online_ai_level=2,
         ui_style="classic",
+        background_theme="wharf",
+        dark_shadows_unlocked=True,
         bert_voice_enabled=False,
         bert_voice_style="robot",
         bert_voice_backend="local_ai",
@@ -26,6 +28,8 @@ def test_settings_round_trip_includes_bert_voice_flag(tmp_path):
     loaded = load_settings(path=path)
 
     assert loaded.bert_voice_enabled is False
+    assert loaded.background_theme == "wharf"
+    assert loaded.dark_shadows_unlocked is True
     assert loaded.bert_voice_style == "robot"
     assert loaded.bert_voice_backend == "local_ai"
     assert loaded.bert_local_model_path == "models/bert.onnx"
@@ -94,3 +98,19 @@ def test_settings_clamp_trims_and_caps_player_name():
 
     assert len(clamped.player_name) == 24
     assert clamped.player_name == "A" * 24
+
+
+def test_settings_clamp_normalizes_background_theme():
+    settings = GameSettings(background_theme="unknown")
+
+    clamped = settings.clamp()
+
+    assert clamped.background_theme == "auto"
+
+
+def test_settings_clamp_blocks_locked_dark_shadows_theme():
+    settings = GameSettings(background_theme="dark_shadows", dark_shadows_unlocked=False)
+
+    clamped = settings.clamp()
+
+    assert clamped.background_theme == "auto"

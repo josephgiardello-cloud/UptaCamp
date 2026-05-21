@@ -139,6 +139,9 @@ def _run_state_client(args: Any) -> int:
         volume=args.volume,
         animations_enabled=(args.animations != "off"),
         preferred_online_ai_level=args.online_ai_level,
+        fps_cap=max(15, int(args.fps_cap)),
+        online_poll_interval_s=max(0.5, float(args.online_poll_interval)),
+        online_reconnect_delay_s=max(0.5, float(args.online_reconnect_delay)),
     )
 
     controller = RuntimeController(
@@ -158,7 +161,7 @@ def _run_state_client(args: Any) -> int:
         controller.update(clock.get_time())
         controller.render()
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(app.fps_cap)
 
     return 0
 
@@ -179,6 +182,24 @@ def main():
     parser.add_argument("--debug-play", action="store_true")
     parser.add_argument("--online-url", default="http://127.0.0.1:8787")
     parser.add_argument("--online-ws-url", default="ws://127.0.0.1:8790")
+    parser.add_argument(
+        "--fps-cap",
+        type=int,
+        default=60,
+        help="Frame rate cap for the state client.",
+    )
+    parser.add_argument(
+        "--online-poll-interval",
+        type=float,
+        default=2.0,
+        help="Polling interval in seconds when websocket is unavailable.",
+    )
+    parser.add_argument(
+        "--online-reconnect-delay",
+        type=float,
+        default=2.0,
+        help="Delay in seconds between online stream reconnect attempts.",
+    )
     parser.add_argument("--volume", type=float, default=0.6)
     parser.add_argument("--animations", choices=["on", "off"], default="on")
     parser.add_argument("--online-ai-level", type=int, default=2)

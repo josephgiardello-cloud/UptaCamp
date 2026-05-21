@@ -294,26 +294,29 @@ class PhaseStateMachine:
         return self.states.get(key, self.states[PhaseName.INTRO])
 
     def handle_event(self, event: Any, ctx: dict[str, Any] | None = None) -> None:
-        transition = self.current.handle_event(event, self.engine, ctx)
+        current_state = self.current
+        transition = current_state.handle_event(event, self.engine, ctx)
         if transition:
-            self.transition(transition, ctx=ctx)
+            self.transition(transition, ctx=ctx, from_state=current_state)
 
     def update(self) -> None:
-        transition = self.current.update(self.engine)
+        current_state = self.current
+        transition = current_state.update(self.engine)
         if transition:
-            self.transition(transition)
+            self.transition(transition, from_state=current_state)
 
     def transition(
         self,
         target_phase: str,
         force: bool = False,
         ctx: dict[str, Any] | None = None,
+        from_state: BasePhaseState | None = None,
     ) -> bool:
         try:
             target = PhaseName(target_phase)
         except ValueError:
             return False
-        current = self.current
+        current = from_state or self.current
         if (
             not force
             and current.allowed_transitions
@@ -321,6 +324,6 @@ class PhaseStateMachine:
         ):
             return False
         current.exit(self.engine, ctx)
-        self.engine.state.phase = target.value
-        self.current.enter(self.engine, ctx)
+        self.engine.set_phase(target.value)
+        self.states[target].enter(self.engine, ctx)
         return True

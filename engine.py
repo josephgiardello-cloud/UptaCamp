@@ -30,6 +30,11 @@ class CribbageEngine:
     def _dealer_name(self) -> str:
         return "Bert" if self.state.dad_ai_level in (4, 5) else "AI"
 
+    def set_phase(self, phase: str) -> None:
+        self.state.phase = str(phase)
+        if phase in {"deal", "discard", "pegging", "counting", "finished"}:
+            self.state.phase_index = self._remote_phase_index(phase)
+
     def get_pegging_total(self) -> int:
         return int(cribbage_cards.pegging_total(self.state.pegging_pile))
 
@@ -63,7 +68,7 @@ class CribbageEngine:
             self.state.winner = 1
         else:
             self.state.winner = None
-        self.state.phase = "game_over"
+        self.set_phase("game_over")
         self.state.counting_next_phase = "game_over"
         return True
 
@@ -102,7 +107,7 @@ class CribbageEngine:
         stock_labels: Sequence[str],
         dealer: int = 0,
     ) -> None:
-        self.state.phase = "discard"
+        self.set_phase("discard")
         self.state.dealer = dealer
         self.state.scores = [0, 0]
         self.state.player_hand = list(player_hand)
@@ -129,7 +134,7 @@ class CribbageEngine:
         ai_hand: Sequence[Any],
         stock_labels: Sequence[str],
     ) -> None:
-        self.state.phase = "discard"
+        self.set_phase("discard")
         self.state.dealer = 1 - self.state.dealer
         self.state.player_hand = list(player_hand)
         self.state.ai_hand = list(ai_hand)
@@ -171,7 +176,7 @@ class CribbageEngine:
         if self.state.stock_labels:
             self.state.starter_card = self.state.stock_labels.pop(0)
 
-        self.state.phase = "pegging"
+        self.set_phase("pegging")
         self.state.player_turn = 1 - self.state.dealer
         self.state.pegging_passes = [False, False]
         self.state.last_pegging_player = None
@@ -338,7 +343,7 @@ class CribbageEngine:
         else:
             self.state.message = "Counting hands."
 
-        self.state.phase = "counting"
+        self.set_phase("counting")
         self.state.counting_resolved = False
         self.state.counting_next_phase = "end"
         self._validate_state_if_enabled()
@@ -346,7 +351,7 @@ class CribbageEngine:
 
     def count_hands(self, label_to_model_card: Callable[[str], Any]) -> dict[str, Any]:
         if self.state.starter_card is None:
-            self.state.phase = "end"
+            self.set_phase("end")
             self.state.message = "No starter card available. Press R to reset."
             self.state.last_counting_result = {}
             self.state.last_counting_breakdown = {}
@@ -534,8 +539,7 @@ class CribbageEngine:
         self.state.deal_ready = sorted(ready)
         self.state.phase_progress = len(self.state.deal_ready)
         if len(self.state.deal_ready) >= 2:
-            self.state.phase = "discard"
-            self.state.phase_index = self._remote_phase_index("discard")
+            self.set_phase("discard")
             self.state.phase_progress = 0
             self.state.discard_by_player = {}
 
@@ -546,8 +550,7 @@ class CribbageEngine:
         self.state.discard_by_player = discards
         self.state.phase_progress = len(self.state.discard_by_player)
         if len(self.state.discard_by_player) >= 2:
-            self.state.phase = "pegging"
-            self.state.phase_index = self._remote_phase_index("pegging")
+            self.set_phase("pegging")
             self.state.phase_progress = 0
             self.state.count_by_player = {}
             self.state.pegging_passes = [False, False]
@@ -566,8 +569,7 @@ class CribbageEngine:
             lambda: cribbage_cards.pegging_total(self.state.pegging_pile)
         )
         if changed:
-            self.state.phase = "counting"
-            self.state.phase_index = self._remote_phase_index("counting")
+            self.set_phase("counting")
             self.state.phase_progress = 0
             self.state.count_by_player = {}
 
@@ -596,6 +598,19 @@ class CribbageEngine:
         )
 
         played = not hand or hand[-1] != card_label
+        if not played:
+            # If the attempted peg is illegal at the current running total,
+            # advance to a fresh count and retry once so remote turns keep progressing.
+            self.state.pegging_pile.clear()
+            self.state.pegging_passes = [False, False]
+            points = self.play_pegging_card(
+                idx,
+                len(hand) - 1,
+                cribbage_cards.score_pegging_play,
+                cribbage_cards.value_for_fifteen,
+                cribbage_cards.parse_card_label,
+            )
+            played = not hand or hand[-1] != card_label
         if not played and hand and hand[-1] == card_label:
             hand.pop()
         elif played and hand:
@@ -656,8 +671,7 @@ class CribbageEngine:
             self.state.phase_progress = len(counted)
 
         if self.state.scores[0] >= 121 or self.state.scores[1] >= 121 or len(counted) >= 2:
-            self.state.phase = "finished"
-            self.state.phase_index = self._remote_phase_index("finished")
+            self.set_phase("finished")
             self.state.phase_progress = 0
         return payload
 
@@ -702,8 +716,7 @@ class CribbageEngine:
             )
 
         if self.state.phase == "game_over":
-            self.state.phase = "finished"
-            self.state.phase_index = self._remote_phase_index("finished")
+            self.set_phase("finished")
             self.state.phase_progress = 0
 
         self.state.last_action = {

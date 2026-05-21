@@ -13,10 +13,22 @@ class OnlineMatchState(GameStateBase):
         self.match_id = match_id
         self.local_tick = 0
         self.last_action_msg = ""
+        self._last_stream_error = ""
+        self._next_reconnect_ms = 0
+        self._reconnect_attempts = 0
 
     def _ensure_stream(self, app) -> None:
         if app.stream is None:
-            app.stream = MatchEventStream(app.client, self.match_id, ws_url=app.ws_url)
+            app.stream = MatchEventStream(
+                app.client,
+                self.match_id,
+                ws_url=app.ws_url,
+                poll_interval_s=float(getattr(app, "online_poll_interval_s", 2.0)),
+                ws_recv_timeout_s=max(
+                    0.5,
+                    float(getattr(app, "online_poll_interval_s", 2.0)),
+                ),
+            )
             app.stream.start()
 
     @staticmethod
@@ -98,12 +110,14 @@ class OnlineMatchState(GameStateBase):
         try:
             snapshot = app.stream.last_snapshot if app.stream else None
             if not snapshot:
+                app.status_message = "No match snapshot yet. Waiting for server sync..."
                 return
             summary = snapshot["summary"]
             if summary["state"] != "active":
+                app.status_message = "Match is finished. Press Esc to return to menu."
                 return
             if summary["active_player_id"] != app.player_id:
-                app.status_message = "Waiting for opponent turn"
+                app.status_message = "Not your turn yet. Waiting for opponent action."
                 return
 
             phase = snapshot["game_state"].get("phase", "deal")
@@ -145,14 +159,34 @@ class OnlineMatchState(GameStateBase):
             else:
                 self.last_action_msg = "Match already finished"
         except Exception as exc:
-            app.last_error = str(exc)
+            app.last_error = f"Online action failed: {exc}"
+            app.status_message = "Action failed. Connection may be unstable; retrying is safe."
 
     def update(self, engine, dt: int, app):
         self._ensure_stream(app)
         self.local_tick += dt
+        reconnect_delay_ms = int(
+            max(0.5, float(getattr(app, "online_reconnect_delay_s", 2.0))) * 1000
+        )
 
         if app.stream and app.stream.last_error:
-            app.status_message = app.stream.last_error
+            if app.stream.last_error != self._last_stream_error:
+                self._last_stream_error = app.stream.last_error
+                self._reconnect_attempts += 1
+                self._next_reconnect_ms = self.local_tick + reconnect_delay_ms
+            app.status_message = (
+                f"Live updates interrupted (attempt {self._reconnect_attempts}). "
+                "Trying to reconnect..."
+            )
+            if self.local_tick >= self._next_reconnect_ms:
+                app.reset_stream()
+                self._ensure_stream(app)
+                self._next_reconnect_ms = self.local_tick + reconnect_delay_ms
+        elif self._last_stream_error:
+            self._last_stream_error = ""
+            self._reconnect_attempts = 0
+            app.status_message = "Reconnected. Live match updates resumed."
+
         if app.stream and app.stream.last_snapshot:
             snapshot = app.stream.last_snapshot
             state = snapshot["summary"]["state"]
@@ -160,7 +194,7 @@ class OnlineMatchState(GameStateBase):
                 winner = snapshot["game_state"].get("winner_player_id") or "Draw"
                 app.status_message = f"Match finished. Winner: {winner}. Esc to menu."
             elif snapshot["summary"]["active_player_id"] == app.player_id:
-                app.status_message = "Your turn. Press Space to submit phase action."
+                app.status_message = "Your turn. Press Space to submit the next legal action."
             else:
                 app.status_message = "Waiting for opponent turn..."
         return None
@@ -184,7 +218,11 @@ class OnlineMatchState(GameStateBase):
                 f"Mode: {summary['mode']}  State: {summary['state']}",
                 f"Phase: {game_state.get('phase', 'unknown')}",
                 f"Turns: {summary['turns_played']}",
-                f"Active Player: {summary['active_player_id']}",
+                (
+                    "Active: You"
+                    if summary["active_player_id"] == app.player_id
+                    else f"Active: Opponent ({summary['active_player_id']})"
+                ),
                 f"Scores: {game_state.get('scores', [0, 0])}",
                 "Space = submit legal phase action, Esc = menu",
             ]

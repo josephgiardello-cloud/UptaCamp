@@ -15,6 +15,9 @@ class AppContext:
     volume: float = 0.6
     animations_enabled: bool = True
     preferred_online_ai_level: int = 2
+    fps_cap: int = 60
+    online_poll_interval_s: float = 2.0
+    online_reconnect_delay_s: float = 2.0
     player_id: str | None = None
     display_name: str | None = None
     session_token: str | None = None
