@@ -1,0 +1,75 @@
+lexicon:
+  maritime_work_nouns:
+    - bluebird
+    - bluebird ii
+    - pots
+    - slickers
+    - dock
+    - fog bank
+    - packet
+    - keel
+    - rail
+    - nets
+    - hooks
+    - knots
+    - harbor
+    - tide
+    - current
+    - trap
+    - bug
+    - chowder
+    - camp
+    - dooryard
+
+  verbs_actions:
+    - throw em aboard
+    - cut the engine
+    - give a blast
+    - set er again
+    - smuck
+    - stove up
+    - haul
+    - ease
+    - trim
+    - steer
+    - settle
+    - weigh
+
+  dry_stingers:
+    - you cant get there from here
+    - not yet
+    - hard tellin not knowin
+    - twerent nothin
+    - same difference
+    - keep the keel straight
+
+  connectors_transitions:
+    - well now
+    - i s'pose
+    - bout like this
+    - so's
+    - ayuh
+    - then there come
+    - come to think of it
+
+  soft_regional_markers:
+    - ayuh
+    - wicked
+    - bub
+    - from away
+    - upta camp
+    - cunnin
+
+forbidden_terms:
+  - dude
+  - bro
+  - lit
+  - vibe
+  - max expected value
+  - win rate
+  - lol
+
+overused_limits:
+  bert_name_repetition_max_per_line: 1
+  sa_ha_ha_requires_context: true
+  dialect_marker_max_per_line: 2

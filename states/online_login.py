@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pygame
 
 from .base import GameStateBase
 
 
 class OnlineLoginState(GameStateBase):
-    def __init__(self):
-        self.name = ""
-        self.info = "Pick a display name and press Enter"
+    def __init__(self) -> None:
+        self.name: str = ""
+        self.info: str = "Pick a display name and press Enter"
 
-    def handle_event(self, event, engine, assets, app):
+    def handle_event(
+        self,
+        event: pygame.event.Event,
+        engine: Any,
+        assets: Any,
+        app: Any,
+    ) -> Any:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 from .intro import IntroState
@@ -37,10 +45,10 @@ class OnlineLoginState(GameStateBase):
                     self.name += event.unicode
         return self
 
-    def update(self, engine, dt: int, app):
+    def update(self, engine: Any, dt: int, app: Any) -> None:
         return None
 
-    def draw(self, screen, engine, assets, app):
+    def draw(self, screen: pygame.Surface, engine: Any, assets: Any, app: Any) -> None:
         screen.fill((22, 34, 40))
         title_font = pygame.font.SysFont(None, 60)
         body_font = pygame.font.SysFont(None, 34)

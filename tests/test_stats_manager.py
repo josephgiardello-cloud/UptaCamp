@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from stats_manager import get_player_profile, record_game_result, record_hand_stats
+from stats_manager import (
+    get_bert_stats_comment,
+    get_player_profile,
+    record_game_result,
+    record_hand_stats,
+    reset_player_stats,
+)
 
 
 def test_record_hand_stats_accumulates_values(tmp_path):
@@ -42,6 +48,7 @@ def test_record_game_result_tracks_wins_losses_and_best_score(tmp_path):
         skunk_for=False,
         skunk_against=False,
         final_score=121,
+        opponent_score=98,
         mode="single_player",
         path=stats_file,
     )
@@ -51,6 +58,7 @@ def test_record_game_result_tracks_wins_losses_and_best_score(tmp_path):
         skunk_for=False,
         skunk_against=True,
         final_score=94,
+        opponent_score=121,
         mode="single_player",
         path=stats_file,
     )
@@ -63,3 +71,52 @@ def test_record_game_result_tracks_wins_losses_and_best_score(tmp_path):
     assert profile["skunks_against"] == 1
     assert profile["best_game_score"] == 121
     assert profile["win_pct"] == 50.0
+    assert profile["current_win_streak"] == 0
+    assert profile["best_win_streak"] == 1
+    assert profile["avg_margin_win"] == 23.0
+
+
+def test_record_game_result_backward_compatible_without_opponent_score(tmp_path):
+    stats_file = tmp_path / "player_stats.json"
+
+    record_game_result(
+        player_name="Player",
+        won=True,
+        skunk_for=False,
+        skunk_against=False,
+        final_score=121,
+        mode="single_player",
+        path=stats_file,
+    )
+
+    profile = get_player_profile("Player", mode="single_player", path=stats_file)
+    assert profile["games_played"] == 1
+    assert profile["wins"] == 1
+
+
+def test_reset_player_stats_resets_existing_bucket(tmp_path):
+    stats_file = tmp_path / "player_stats.json"
+
+    record_game_result(
+        player_name="Player",
+        won=True,
+        skunk_for=True,
+        skunk_against=False,
+        final_score=121,
+        opponent_score=80,
+        mode="single_player",
+        path=stats_file,
+    )
+
+    assert reset_player_stats("Player", mode="single_player", path=stats_file) is True
+    profile = get_player_profile("Player", mode="single_player", path=stats_file)
+    assert profile["games_played"] == 0
+    assert profile["wins"] == 0
+    assert profile["skunks_for"] == 0
+
+
+def test_get_bert_stats_comment_bands() -> None:
+    assert "wicked good" in get_bert_stats_comment({"win_pct": 70.0}).lower()
+    assert "holdin" in get_bert_stats_comment({"win_pct": 52.0}).lower()
+    assert "scrapin" in get_bert_stats_comment({"win_pct": 40.0}).lower()
+    assert "rough water" in get_bert_stats_comment({"win_pct": 20.0}).lower()

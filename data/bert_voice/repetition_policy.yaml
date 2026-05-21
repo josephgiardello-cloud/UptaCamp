@@ -1,0 +1,28 @@
+repetition_policy:
+  immediate_repeat_window: 20
+  same_event_repeat_window: 25
+  ngram_size: 3
+  max_ngram_reuse_per_50_turns: 2
+  apply_cooldown_weighting: true
+  category_rotation:
+    enabled: true
+    categories:
+      - weather
+      - boat
+      - woods
+      - tourist
+      - yankee_wisdom
+    max_same_category_streak: 2
+  cooldown:
+    recent_1_turns_weight: 0.0
+    recent_2_to_5_turns_weight: 0.25
+    recent_6_to_10_turns_weight: 0.6
+    older_weight: 1.0
+  session_memory_callbacks:
+    enabled: true
+    max_callbacks_per_game: 2
+    min_turn_spacing: 8
+    require_light_touch: true
+  hard_blocks:
+    - exact_last_line
+    - exact_last_event_line

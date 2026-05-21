@@ -1,0 +1,10 @@
+{"id":"gold-001","event":"round_start","mood":"neutral","score_state":"even","tone_tags":["calm","dry"],"line":"We hit the dock early, same as always, and got to work without fuss.","source_id":"bert_and_i_opening_1958"}
+{"id":"gold-002","event":"mishap","mood":"stoic","score_state":"trailing","tone_tags":["understated","deadpan"],"line":"Cold water found us fast, so we quit arguin and swam for it.","source_id":"bert_and_i_opening_1958"}
+{"id":"gold-003","event":"resolution","mood":"stoic","score_state":"even","tone_tags":["inviting","dry"],"line":"If you're down this way, we'll put you aboard and show you how she runs.","source_id":"bert_and_i_opening_1958"}
+{"id":"gold-004","event":"directions","mood":"focused","score_state":"even","tone_tags":["meandering","stinger"],"line":"Come to think of it, you can't get there from here.","source_id":"which_way_to_millinocket_1958"}
+{"id":"gold-005","event":"court_testimony","mood":"stoic","score_state":"even","tone_tags":["literal","dry"],"line":"Been here forever, have ya? Not quite there yet.","source_id":"bert_and_i_opening_1958"}
+{"id":"gold-006","event":"round_start","mood":"stoic","score_state":"ahead","tone_tags":["controlled","measured"],"line":"Keep her straight and count clean; no need for hero tosses.","source_id":"tim_sample_reflects_2017"}
+{"id":"gold-007","event":"go_point","mood":"frustrated","score_state":"trailing","tone_tags":["clipped","pragmatic"],"line":"There's one. Keep the keel straight and haul the next.","source_id":"tim_sample_reflects_2017"}
+{"id":"gold-008","event":"pegging_31","mood":"focused","score_state":"even","tone_tags":["concise","dry"],"line":"Thirty-one on the nose. That's harbor work.","source_id":"tim_sample_reflects_2017"}
+{"id":"gold-009","event":"cards_dealt","mood":"clinical","score_state":"ahead","tone_tags":["terse","confident"],"line":"Toss lean and keep the rail tidy.","source_id":"tim_sample_reflects_2017"}
+{"id":"gold-010","event":"player_won","mood":"hot","score_state":"trailing","tone_tags":["contained","warning"],"line":"You got this tide. It won't stay yours forever.","source_id":"tim_sample_reflects_2017"}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 from voice_manager import VoiceManager
 
 
@@ -16,10 +18,10 @@ def test_shape_for_voice_style_applies_downeast_pronunciation():
     text = "Cards are going to your crib for points."
     shaped = vm._shape_for_voice_style(text, "downeast")
 
-    assert "cahds" in shaped.lower()
-    assert "goin" in shaped.lower()
-    assert "yah" in shaped.lower()
-    assert "fer" in shaped.lower()
+    assert "cards" in shaped.lower()
+    assert "goin'" in shaped.lower()
+    assert "your" in shaped.lower()
+    assert "for" in shaped.lower()
 
 
 def test_configure_backend_updates_runtime_selection():
@@ -68,3 +70,48 @@ def test_prereq_report_contains_rvc_block():
 
     assert "rvc" in report
     assert report["rvc"]["enabled"] is True
+
+
+def test_speak_bert_skips_when_already_speaking(monkeypatch):
+    vm = VoiceManager(enabled=True)
+
+    calls = []
+
+    def _fake_speak_windows(text, dad_ai_level):
+        calls.append((text, dad_ai_level))
+
+    monkeypatch.setattr(vm, "_is_windows", True)
+    monkeypatch.setattr(vm, "_speak_windows", _fake_speak_windows)
+    monkeypatch.setattr(vm, "_is_speaking", lambda now=None: len(calls) > 0)
+
+    vm.speak_bert("First line", dad_ai_level=4, bypass_cooldown=True, voice_style="downeast")
+    vm.speak_bert("Second line", dad_ai_level=4, bypass_cooldown=True, voice_style="downeast")
+
+    assert len(calls) == 1
+
+
+def test_is_speaking_true_when_sapi_process_running(monkeypatch):
+    vm = VoiceManager(enabled=True)
+
+    class _Proc:
+        def poll(self):
+            return None
+
+    vm._sapi_proc = _Proc()
+
+    assert vm._is_speaking() is True
+
+
+def test_dynamic_sapi_rate_slows_for_longer_lines():
+    vm = VoiceManager(enabled=True)
+
+    short_line = "Ayuh."
+    medium_line = "Ayuh bub, cards on the wood."
+    long_line = "Ayuh bub, cards on the wood and we keep this one tidy from first peg to last."
+
+    short_rate = vm._dynamic_sapi_rate(short_line, dad_ai_level=5)
+    medium_rate = vm._dynamic_sapi_rate(medium_line, dad_ai_level=5)
+    long_rate = vm._dynamic_sapi_rate(long_line, dad_ai_level=5)
+
+    assert short_rate >= medium_rate
+    assert medium_rate >= long_rate

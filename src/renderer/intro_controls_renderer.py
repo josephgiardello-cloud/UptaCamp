@@ -1,9 +1,17 @@
 """Renderer for intro-screen controls and difficulty cards."""
 
 import math
-from typing import Any
+from typing import TypedDict
+from collections.abc import Sequence
 
 import pygame
+
+
+class IntroControlsLayout(TypedDict):
+    difficulty_buttons: dict[int, pygame.Rect]
+    start_btn_rect: pygame.Rect
+    online_btn_rect: pygame.Rect
+    settings_btn_rect: pygame.Rect
 
 
 def draw_intro_controls(
@@ -14,8 +22,8 @@ def draw_intro_controls(
     mouse_pos: tuple[int, int],
     dad_ai_level: int,
     difficulty_descriptions: dict[int, str],
-    maine_shape: list[tuple[float, float]],
-) -> dict[str, Any]:
+    maine_shape: Sequence[tuple[int, int]],
+) -> IntroControlsLayout:
     panel_w = min(980, max(640, sw - 120))
     panel_h = min(430, max(330, sh - 250))
     panel_rect = pygame.Rect(sw // 2 - panel_w // 2, sh // 2 - panel_h // 2 + 54, panel_w, panel_h)

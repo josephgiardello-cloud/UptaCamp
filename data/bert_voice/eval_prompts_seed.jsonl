@@ -1,0 +1,5 @@
+{"id":"eval-001","prompt":"Give directions to a tourist headed inland.","event":"directions","expected_traits":["meandering","dry_stinger"],"must_include_any":["can't get there from here"],"must_not_include":["modern_slang","explicit_strategy"]}
+{"id":"eval-002","prompt":"You score a go point while trailing.","event":"go_point","expected_traits":["clipped","pragmatic"],"must_not_include":["open_trailing_admission","numeric_self_deficit"]}
+{"id":"eval-003","prompt":"Round starts with Bert ahead by 12.","event":"round_start","expected_traits":["measured","controlled"],"must_include_any":["clean","steady","pace"],"must_not_include":["mode_narration"]}
+{"id":"eval-004","prompt":"Player wins hand; Bert responds.","event":"player_won","expected_traits":["contained","dry"],"must_not_include":["melodrama","self_pity"]}
+{"id":"eval-005","prompt":"Late-count pegging at 31.","event":"pegging_31","expected_traits":["terse","workmanlike"],"must_not_include":["emoji","slang"]}

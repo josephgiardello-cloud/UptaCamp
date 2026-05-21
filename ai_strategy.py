@@ -70,6 +70,15 @@ _BERT_AGENT: BertAgent | None = None
 _DEFAULT_BERT_MODEL = Path("bert_model.pkl")
 
 
+def _level5_posture_from_state(state: GameState | None) -> str:
+    if state is None:
+        return "balanced"
+    player_score = int(state.scores[0]) if len(state.scores) > 0 else 0
+    bert_score = int(state.scores[1]) if len(state.scores) > 1 else 0
+    posture_agent = BertAgent()
+    return posture_agent.get_posture_from_score(bert_score, player_score)
+
+
 def set_bert_agent(agent: BertAgent) -> None:
     global _BERT_AGENT
     _BERT_AGENT = agent
@@ -250,30 +259,34 @@ def _count_fifteens(labels: Sequence[str]) -> int:
 
 
 def _intrinsic_keep_score(labels: Sequence[str]) -> float:
+    if len(labels) != 4:
+        return 0.0
+
     ranks = [_rank_order(_parse_label(label)[0]) for label in labels]
     suits = [_parse_label(label)[1] for label in labels]
+    values = [_value_for_15(_parse_label(label)[0]) for label in labels]
     counts = Counter(ranks)
 
-    pair_bonus = sum(PAIR_WEIGHT for count in counts.values() if count == 2)
-    pair_bonus += sum(PAIR_ROYAL_WEIGHT for count in counts.values() if count == 3)
+    pair_bonus = sum(PAIR_WEIGHT * (count * (count - 1) // 2) for count in counts.values())
+    trips_bonus = sum(PAIR_ROYAL_WEIGHT * (count == 3) for count in counts.values())
 
-    unique_ranks = sorted(set(ranks))
+    sorted_ranks = sorted(set(ranks))
     run_bonus = 0.0
     streak = 1
-    for idx in range(1, len(unique_ranks)):
-        if unique_ranks[idx] == unique_ranks[idx - 1] + 1:
+    for idx in range(1, len(sorted_ranks)):
+        if sorted_ranks[idx] == sorted_ranks[idx - 1] + 1:
             streak += 1
-            scaled_run = RUN_BASE_WEIGHT * streak if streak >= 3 else 0.0
-            if streak >= 4:
-                scaled_run += RUN_LENGTH_BONUS
-            run_bonus = max(run_bonus, scaled_run)
+            if streak >= 3:
+                run_bonus += RUN_BASE_WEIGHT * streak + (streak - 3) * RUN_LENGTH_BONUS
         else:
             streak = 1
 
     fifteen_bonus = FIFTEEN_WEIGHT * _count_fifteens(labels)
     low_card_bonus = sum(LOW_CARD_WEIGHT for rank in ranks if rank in {4, 5, 6, 7})
     flush_bonus = FLUSH_WEIGHT if len(set(suits)) == 1 and suits[0] else 0.0
-    return pair_bonus + run_bonus + fifteen_bonus + low_card_bonus + flush_bonus
+    five_bonus = 0.65 * values.count(5)
+
+    return pair_bonus + trips_bonus + run_bonus + fifteen_bonus + low_card_bonus + flush_bonus + five_bonus
 
 
 def _discard_crib_score(labels: Sequence[str]) -> float:
@@ -388,7 +401,14 @@ def _choose_discard_indices_impl(
 
     if dad_ai_level == 5:
         state = game_state or GameState()
-        idx1, idx2 = get_bert_agent().choose_discard(dad_labels, state)
+        posture = _level5_posture_from_state(state)
+        agent = get_bert_agent()
+        agent.set_posture(posture)
+        try:
+            idx1, idx2 = agent.choose_discard(dad_labels, state, posture=posture)
+        except TypeError:
+            # Backward compatibility for older BertAgent signatures.
+            idx1, idx2 = agent.choose_discard(dad_labels, state)
         return [idx1, idx2]
 
     unseen_pool = list(set(canonical_deck_labels) - set(dad_labels))
@@ -411,10 +431,11 @@ def _choose_discard_indices_impl(
             score += LEVEL_2_INTRINSIC * _intrinsic_keep_score(kept)
             score += (LEVEL_2_DEALER_CRIB if dealer_is_dad else LEVEL_2_PONE_CRIB) * _discard_crib_score(discards)
         elif dad_ai_level == 3:
-            trials = min(LEVEL_3_TRIALS, len(unseen_pool) * 4)
+            trials = LEVEL_3_TRIALS
             total = 0.0
             for _ in range(trials):
-                opp_discards = random.sample(unseen_pool, 2)
+                weights = [3.0 if _value_for_15(_parse_label(lbl)[0]) >= 10 else 1.0 for lbl in unseen_pool]
+                opp_discards = random.choices(unseen_pool, weights=weights, k=2)
                 rem = [lbl for lbl in unseen_pool if lbl not in opp_discards]
                 if not rem:
                     continue
@@ -428,10 +449,11 @@ def _choose_discard_indices_impl(
             score += (LEVEL_3_DEALER_CRIB if dealer_is_dad else LEVEL_3_PONE_CRIB) * _discard_crib_score(discards)
         else:
             # Brutal mode: deeper simulation with heavier intrinsic weighting.
-            trials = min(LEVEL_4_TRIALS, len(unseen_pool) * 10)
+            trials = LEVEL_4_TRIALS
             total = 0.0
             for _ in range(trials):
-                opp_discards = random.sample(unseen_pool, 2)
+                weights = [3.0 if _value_for_15(_parse_label(lbl)[0]) >= 10 else 1.0 for lbl in unseen_pool]
+                opp_discards = random.choices(unseen_pool, weights=weights, k=2)
                 rem = [lbl for lbl in unseen_pool if lbl not in opp_discards]
                 if not rem:
                     continue
@@ -543,10 +565,18 @@ def choose_pegging_index(
 
     if dad_ai_level == 5:
         state = game_state or GameState()
-        return get_bert_agent().choose_pegging(hand_labels, current_total, state)
+        posture = _level5_posture_from_state(state)
+        agent = get_bert_agent()
+        agent.set_posture(posture)
+        try:
+            return agent.choose_pegging(hand_labels, current_total, state, posture=posture)
+        except TypeError:
+            # Backward compatibility for older BertAgent signatures.
+            return agent.choose_pegging(hand_labels, current_total, state)
 
     best_idx = legal[0]
     best_score = float("-inf")
+    posture = _level5_posture_from_state(game_state) if game_state else "balanced"
 
     for idx in legal:
         label = hand_labels[idx]
@@ -561,6 +591,13 @@ def choose_pegging_index(
         shape_bonus = _pegging_shape_adjustment(trial_total, immediate, hand_labels, label)
 
         score = immediate + shape_bonus
+        if posture == "cutthroat":
+            score += immediate * 1.35
+        elif posture == "aggressive":
+            score += immediate * 1.15
+        elif posture == "deliberate":
+            score = immediate * 0.9 + shape_bonus * 1.4
+
         if dad_ai_level >= 3 and estimate_opponent_reply_risk is not None:
             score -= OPPONENT_REPLY_RISK_DISCOUNT * estimate_opponent_reply_risk(trial_pile)
 

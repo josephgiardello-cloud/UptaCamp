@@ -8,26 +8,26 @@
   "player_hand": [],
   "ai_hand": [],
   "crib": [
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A4BBBB0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A45AB10>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A4B4BD0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A4B4CD0>"
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE113610>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE0EDA30>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE3601D0>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE3602D0>"
   ],
   "pegging_pile": [
     "namespace(label='10_of_clubs')",
     "namespace(label='9_of_hearts')"
   ],
   "player_kept": [
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A4BC2F0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A4BD550>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A452F70>",
-    "<tests.test_phase_transitions._DummyCard object at 0x00000200788A3890>"
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE05E350>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE05F230>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE0CE9C0>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE088590>"
   ],
   "ai_kept": [
-    "<tests.test_phase_transitions._DummyCard object at 0x00000200788A3A10>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A421440>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A4215A0>",
-    "<tests.test_phase_transitions._DummyCard object at 0x000002007A4BBA70>"
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE089250>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE0B35F0>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE0B3750>",
+    "<tests.test_phase_transitions._DummyCard object at 0x000001AFDE113890>"
   ],
   "starter_card": "5_of_clubs",
   "player_turn": 1,

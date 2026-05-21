@@ -99,8 +99,8 @@ def draw_settings_modal(
     )
 
     vol_label = body_font.render(f"Volume: {int(settings.volume * 100)}%", True, (245, 236, 218))
-    screen.blit(vol_label, (modal.x + 28, modal.y + 92))
-    settings_volume_rect = pygame.Rect(modal.x + 28, modal.y + 128, 420, 18)
+    screen.blit(vol_label, (modal.x + 28, modal.y + 122))
+    settings_volume_rect = pygame.Rect(modal.x + 28, modal.y + 154, 420, 18)
     pygame.draw.rect(screen, (69, 56, 43), settings_volume_rect, border_radius=9)
     fill = settings_volume_rect.copy()
     fill.width = max(8, int(settings_volume_rect.width * settings.volume))
@@ -111,9 +111,9 @@ def draw_settings_modal(
     pygame.draw.circle(screen, (139, 96, 48), (knob_x, settings_volume_rect.centery), 11, 2)
 
     anim_text = "On" if settings.animations_enabled else "Off"
-    settings_anim_rect = pygame.Rect(modal.x + 28, modal.y + 184, 174, 44)
+    settings_anim_rect = pygame.Rect(modal.x + 28, modal.y + 216, 174, 44)
     anim_label = body_font.render(f"Animations: {anim_text}", True, (245, 236, 218))
-    screen.blit(anim_label, (modal.x + 28, modal.y + 156))
+    screen.blit(anim_label, (modal.x + 28, modal.y + 188))
     pygame.draw.rect(
         screen,
         (62, 101, 74) if settings.animations_enabled else (121, 72, 66),
@@ -135,10 +135,10 @@ def draw_settings_modal(
         True,
         (245, 236, 218),
     )
-    screen.blit(ai_label, (modal.x + 244, modal.y + 156))
-    settings_ai_left_rect = pygame.Rect(modal.x + 244, modal.y + 184, 46, 44)
-    settings_ai_right_rect = pygame.Rect(modal.x + 366, modal.y + 184, 46, 44)
-    mid_rect = pygame.Rect(modal.x + 300, modal.y + 184, 56, 44)
+    screen.blit(ai_label, (modal.x + 244, modal.y + 188))
+    settings_ai_left_rect = pygame.Rect(modal.x + 244, modal.y + 216, 46, 44)
+    settings_ai_right_rect = pygame.Rect(modal.x + 366, modal.y + 216, 46, 44)
+    mid_rect = pygame.Rect(modal.x + 300, modal.y + 216, 56, 44)
     for rect, label in ((settings_ai_left_rect, "<"), (settings_ai_right_rect, ">")):
         pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
         pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
@@ -153,10 +153,10 @@ def draw_settings_modal(
     )
 
     style_label = body_font.render("Playfield Style:", True, (245, 236, 218))
-    screen.blit(style_label, (modal.x + 28, modal.y + 244))
-    settings_style_left_rect = pygame.Rect(modal.x + 28, modal.y + 272, 46, 44)
-    settings_style_right_rect = pygame.Rect(modal.x + 402, modal.y + 272, 46, 44)
-    style_mid_rect = pygame.Rect(modal.x + 84, modal.y + 272, 312, 44)
+    screen.blit(style_label, (modal.x + 28, modal.y + 270))
+    settings_style_left_rect = pygame.Rect(modal.x + 28, modal.y + 298, 46, 44)
+    settings_style_right_rect = pygame.Rect(modal.x + 402, modal.y + 298, 46, 44)
+    style_mid_rect = pygame.Rect(modal.x + 84, modal.y + 298, 312, 44)
     for rect, label in ((settings_style_left_rect, "<"), (settings_style_right_rect, ">")):
         pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
         pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
@@ -174,8 +174,8 @@ def draw_settings_modal(
     )
 
     voice_style_label = body_font.render("Bert Voice Style:", True, (245, 236, 218))
-    screen.blit(voice_style_label, (modal.x + 28, modal.y + 324))
-    settings_voice_style_rect = pygame.Rect(modal.x + 216, modal.y + 324, 196, 44)
+    screen.blit(voice_style_label, (modal.x + 28, modal.y + 350))
+    settings_voice_style_rect = pygame.Rect(modal.x + 216, modal.y + 346, 196, 44)
     pygame.draw.rect(screen, (66, 94, 132), settings_voice_style_rect, border_radius=18)
     pygame.draw.rect(screen, (224, 234, 244), settings_voice_style_rect, width=2, border_radius=18)
     voice_text = small_font.render(f"{settings.bert_voice_style.title()} (click)", True, (255, 255, 255))
@@ -188,8 +188,8 @@ def draw_settings_modal(
     )
 
     backend_label = body_font.render("Bert Voice Backend:", True, (245, 236, 218))
-    screen.blit(backend_label, (modal.x + 28, modal.y + 378))
-    settings_voice_backend_rect = pygame.Rect(modal.x + 216, modal.y + 378, 196, 44)
+    screen.blit(backend_label, (modal.x + 28, modal.y + 402))
+    settings_voice_backend_rect = pygame.Rect(modal.x + 216, modal.y + 398, 196, 44)
     pygame.draw.rect(screen, (88, 94, 66), settings_voice_backend_rect, border_radius=18)
     pygame.draw.rect(screen, (244, 239, 188), settings_voice_backend_rect, width=2, border_radius=18)
     backend_text = "Local AI" if settings.bert_voice_backend == "local_ai" else "Windows SAPI"
@@ -203,8 +203,8 @@ def draw_settings_modal(
     )
 
     rvc_label = body_font.render("RVC Accent Pass:", True, (245, 236, 218))
-    screen.blit(rvc_label, (modal.x + 28, modal.y + 432))
-    settings_rvc_toggle_rect = pygame.Rect(modal.x + 216, modal.y + 432, 196, 44)
+    screen.blit(rvc_label, (modal.x + 28, modal.y + 454))
+    settings_rvc_toggle_rect = pygame.Rect(modal.x + 216, modal.y + 450, 196, 44)
     rvc_fill = (62, 101, 74) if settings.bert_rvc_enabled else (121, 72, 66)
     pygame.draw.rect(screen, rvc_fill, settings_rvc_toggle_rect, border_radius=18)
     pygame.draw.rect(screen, (244, 239, 188), settings_rvc_toggle_rect, width=2, border_radius=18)
@@ -219,10 +219,10 @@ def draw_settings_modal(
     )
 
     pitch_label = body_font.render("RVC Pitch Shift:", True, (245, 236, 218))
-    screen.blit(pitch_label, (modal.x + 28, modal.y + 486))
-    settings_rvc_pitch_left_rect = pygame.Rect(modal.x + 216, modal.y + 486, 46, 44)
-    settings_rvc_pitch_right_rect = pygame.Rect(modal.x + 366, modal.y + 486, 46, 44)
-    pitch_mid_rect = pygame.Rect(modal.x + 272, modal.y + 486, 84, 44)
+    screen.blit(pitch_label, (modal.x + 28, modal.y + 506))
+    settings_rvc_pitch_left_rect = pygame.Rect(modal.x + 216, modal.y + 502, 46, 44)
+    settings_rvc_pitch_right_rect = pygame.Rect(modal.x + 366, modal.y + 502, 46, 44)
+    pitch_mid_rect = pygame.Rect(modal.x + 272, modal.y + 502, 84, 44)
     for rect, label in ((settings_rvc_pitch_left_rect, "<"), (settings_rvc_pitch_right_rect, ">")):
         pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
         pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
@@ -239,7 +239,7 @@ def draw_settings_modal(
         ),
     )
 
-    settings_voice_test_rect = pygame.Rect(modal.x + 116, modal.y + 542, 248, 44)
+    settings_voice_test_rect = pygame.Rect(modal.x + 116, modal.y + 556, 248, 44)
     pygame.draw.rect(screen, (90, 74, 142), settings_voice_test_rect, border_radius=18)
     pygame.draw.rect(screen, (222, 212, 248), settings_voice_test_rect, width=2, border_radius=18)
     test_text = body_font.render("Test Bert Voice", True, (255, 255, 255))
@@ -253,9 +253,14 @@ def draw_settings_modal(
 
     field_font = pygame.font.SysFont("consolas", 16)
 
+    field_col_gap = 16
+    field_col_w = (modal.width - 56 - field_col_gap) // 2
+    field_left_x = modal.x + 28
+    field_right_x = field_left_x + field_col_w + field_col_gap
+
     local_exe_label = body_font.render("Piper Executable:", True, (245, 236, 218))
-    screen.blit(local_exe_label, (modal.x + 28, modal.y + 488))
-    settings_local_exe_rect = pygame.Rect(modal.x + 28, modal.y + 518, modal.width - 56, 30)
+    screen.blit(local_exe_label, (field_left_x, modal.y + 614))
+    settings_local_exe_rect = pygame.Rect(field_left_x, modal.y + 640, field_col_w, 30)
     local_exe_active = settings_text_active == "local_exe"
     pygame.draw.rect(
         screen,
@@ -274,8 +279,8 @@ def draw_settings_modal(
     screen.blit(local_exe_text, (settings_local_exe_rect.x + 10, settings_local_exe_rect.y + 6))
 
     local_model_label = body_font.render("Piper Model Path:", True, (245, 236, 218))
-    screen.blit(local_model_label, (modal.x + 28, modal.y + 560))
-    settings_local_model_rect = pygame.Rect(modal.x + 28, modal.y + 590, modal.width - 56, 30)
+    screen.blit(local_model_label, (field_right_x, modal.y + 614))
+    settings_local_model_rect = pygame.Rect(field_right_x, modal.y + 640, field_col_w, 30)
     local_model_active = settings_text_active == "local_model"
     pygame.draw.rect(
         screen,
@@ -294,8 +299,8 @@ def draw_settings_modal(
     screen.blit(local_model_text, (settings_local_model_rect.x + 10, settings_local_model_rect.y + 6))
 
     rvc_exe_label = body_font.render("RVC Executable:", True, (245, 236, 218))
-    screen.blit(rvc_exe_label, (modal.x + 28, modal.y + 632))
-    settings_rvc_exe_rect = pygame.Rect(modal.x + 28, modal.y + 662, modal.width - 56, 30)
+    screen.blit(rvc_exe_label, (field_left_x, modal.y + 682))
+    settings_rvc_exe_rect = pygame.Rect(field_left_x, modal.y + 708, field_col_w, 30)
     rvc_exe_active = settings_text_active == "rvc_exe"
     pygame.draw.rect(
         screen,
@@ -314,8 +319,8 @@ def draw_settings_modal(
     screen.blit(rvc_exe_text, (settings_rvc_exe_rect.x + 10, settings_rvc_exe_rect.y + 6))
 
     rvc_model_label = body_font.render("RVC Model Path:", True, (245, 236, 218))
-    screen.blit(rvc_model_label, (modal.x + 28, modal.y + 704))
-    settings_rvc_model_rect = pygame.Rect(modal.x + 28, modal.y + 734, modal.width - 56, 30)
+    screen.blit(rvc_model_label, (field_right_x, modal.y + 682))
+    settings_rvc_model_rect = pygame.Rect(field_right_x, modal.y + 708, field_col_w, 30)
     rvc_model_active = settings_text_active == "rvc_model"
     pygame.draw.rect(
         screen,
@@ -334,8 +339,8 @@ def draw_settings_modal(
     screen.blit(rvc_model_text, (settings_rvc_model_rect.x + 10, settings_rvc_model_rect.y + 6))
 
     rvc_index_label = body_font.render("RVC Index Path:", True, (245, 236, 218))
-    screen.blit(rvc_index_label, (modal.x + 28, modal.y + 776))
-    settings_rvc_index_rect = pygame.Rect(modal.x + 28, modal.y + 806, modal.width - 56, 30)
+    screen.blit(rvc_index_label, (field_left_x, modal.y + 750))
+    settings_rvc_index_rect = pygame.Rect(field_left_x, modal.y + 776, field_col_w, 30)
     rvc_index_active = settings_text_active == "rvc_index"
     pygame.draw.rect(
         screen,
@@ -356,7 +361,7 @@ def draw_settings_modal(
     warn_text = voice_startup_warning_text(settings)
     if warn_text:
         warn = small_font.render(warn_text, True, (235, 193, 136))
-        screen.blit(warn, (modal.x + 28, modal.y + 842))
+        screen.blit(warn, (modal.x + 28, modal.y + 812))
 
     hint = small_font.render(
         "Click a path box to edit. Enter saves. Esc exits field.", True, (210, 198, 176)

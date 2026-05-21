@@ -4,7 +4,10 @@ The primary game client is now main.py + states/.
 This module remains for compatibility with existing tests and migration tooling.
 """
 
+# pyright: reportConstantRedefinition=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownLambdaType=false, reportUnusedFunction=false, reportUnusedVariable=false
+
 import argparse
+from importlib import import_module
 import math
 import random
 import shutil
@@ -22,7 +25,6 @@ from adapter import EngineAdapter
 from animations import EffectsManager
 from app_context import AppContext
 from assets.maine_shape import maine_shape as MAINE_SHAPE
-from assets.woodland_colors import WOODLAND_COLORS
 from audio_manager import AudioManager
 from engine import CribbageEngine
 from game_state import GameState
@@ -31,7 +33,7 @@ from settings_manager import GameSettings, load_settings, save_settings
 from src.controllers import GameController
 from src.input import EventHandler
 from src.renderer import BoardRenderer, RenderingContext
-from src.renderer.intro_controls_renderer import draw_intro_controls
+from src.renderer.intro_controls_renderer import IntroControlsLayout, draw_intro_controls
 from src.renderer.settings_modal_renderer import draw_settings_modal, voice_startup_warning_text
 from stats_manager import get_player_profile, record_game_result, record_hand_stats
 from voice_manager import VoiceManager
@@ -44,24 +46,38 @@ FPS = 60
 
 # Legacy global variables for compatibility
 MAX_SCORE = 121
-game_phase = "intro"
-dealer = 0
-crib = []
-player1_hand = []
-selected_cards = []
+game_phase: str = "intro"
+dealer: int = 0
+crib: list[Any] = []
+player1_hand: list[Any] = []
+selected_cards: list[int] = []
 
-MAINE_COLORS = {
-    "cream": WOODLAND_COLORS.get("widget_font", (222, 184, 135)),
-    "gold": WOODLAND_COLORS.get("selection", (255, 215, 0)),
+MAINE_COLORS: dict[str, tuple[int, int, int]] = {
+    "cream": (222, 184, 135),
+    "gold": (255, 215, 0),
+}
+THEME: dict[str, tuple[int, int, int]] = {
+    "outer_bg": (36, 22, 14),
+    "blue": (90, 172, 255),
+    "red": (255, 125, 125),
+}
+PLAYFIELD_ALPHA = 238
+PEGGING_Y = 402
+AI_LEVELS: dict[int, str] = {
+    1: "Easy",
+    2: "Standard",
+    3: "Hard",
+    4: "Gumption",
+    5: "Adaptive Bert",
 }
 
 player2_hand: list[Any] = []
 pegging_pile: list[Any] = []
 player_scores: list[int] = [0, 0]
-player_turn = 0
-show_computer_hand = False
-player_name = "Player"
-message = "Select 2 cards to discard to the crib."
+player_turn: int = 0
+show_computer_hand: bool = False
+player_name: str = "Player"
+message: str = "Select 2 cards to discard to the crib."
 
 starter_card: Any | None = None
 _deck_labels: list[str] = []
@@ -71,13 +87,13 @@ _stock_labels: list[str] = []
 player1_kept: list[Any] = []
 player2_kept: list[Any] = []
 
-winner_index = None  # 0 = player, 1 = dealer, None = no winner yet
-dad_ai_level = 2
-pegging_passes = [False, False]
-last_pegging_player = None
+winner_index: int | None = None  # 0 = player, 1 = dealer, None = no winner yet
+dad_ai_level: int = 2
+pegging_passes: list[bool] = [False, False]
+last_pegging_player: int | None = None
 
 # Scoring breakdown tracking for end-of-round display
-pegging_points = [0, 0]  # Points from pegging phase by player
+pegging_points: list[int] = [0, 0]  # Points from pegging phase by player
 round_breakdown: dict[str, tuple[int, list[tuple[str, list[Any], int]]]] = (
     {  # Details of hand scoring
         "player": (0, []),  # (total_points, breakdown_list)
@@ -85,18 +101,18 @@ round_breakdown: dict[str, tuple[int, list[tuple[str, list[Any], int]]]] = (
         "crib": (0, []),
     }
 )
-discard_analysis_message = ""
+discard_analysis_message: str = ""
 
 # Engine migration bridge (incremental refactor path)
-_ENGINE = None
-_ADAPTER = None
-_PHASE_SM = None
-_EFFECTS = None
-_LAST_SCREEN_SIZE = (1280, 900)
-_MAINE_BACK_SURFACE = None
+_ENGINE: CribbageEngine | None = None
+_ADAPTER: EngineAdapter | None = None
+_PHASE_SM: PhaseStateMachine | None = None
+_EFFECTS: EffectsManager | None = None
+_LAST_SCREEN_SIZE: tuple[int, int] = (1280, 900)
+_MAINE_BACK_SURFACE: pygame.Surface | None = None
 _CARD_BACK_CACHE: dict[tuple[int, int], pygame.Surface] = {}
-_AUDIO = None
-_VOICE = None
+_AUDIO: AudioManager | None = None
+_VOICE: VoiceManager | None = None
 _SETTINGS = GameSettings()
 ctx = AppContext()
 state: GameState = ctx.game_state
@@ -158,11 +174,37 @@ def _speak_bert(line: str, *, force: bool = False) -> None:
     )
 
 
+def _bert_voice_context() -> dict[str, Any]:
+    session = _CLASSIC_SESSION
+    player_score = int(session.scores[0]) if len(session.scores) > 0 else int(player_scores[0])
+    bert_score = int(session.scores[1]) if len(session.scores) > 1 else int(player_scores[1])
+    player_pts = int(round_breakdown.get("player", (0, []))[0])
+    bert_pts = int(round_breakdown.get("ai", (0, []))[0])
+    crib_pts = int(round_breakdown.get("crib", (0, []))[0])
+    posture = bert_persona.level5_play_posture(
+        {"player_score": player_score, "bert_score": bert_score}
+    )
+    return {
+        "player_score": player_score,
+        "bert_score": bert_score,
+        "score_gap": bert_score - player_score,
+        "posture": posture,
+        "pegging_total": int(get_pegging_total()) if pegging_pile else 0,
+        "player_pegging_points": int(pegging_points[0]),
+        "bert_pegging_points": int(pegging_points[1]),
+        "bert_is_dealer": bool(session.dealer == 1),
+        "player_hand_points": player_pts,
+        "bert_hand_points": bert_pts,
+        "crib_points": crib_pts,
+    }
+
+
 def _speak_bert_event(event: str, *, force: bool = False) -> None:
     phrase = bert_persona.choose_line(
         event=event,
         style=_SETTINGS.bert_voice_style,
         dad_ai_level=dad_ai_level,
+        context=_bert_voice_context(),
     )
     if not phrase:
         return
@@ -280,29 +322,29 @@ def _sync_runtime_from_classic_session() -> None:
     message = _CLASSIC_SESSION.message
 
 
-def _canonical_deck_labels():
+def _canonical_deck_labels() -> list[str]:
     suits = ["clubs", "diamonds", "hearts", "spades"]
     ranks = ["ace", "2", "3", "4", "5", "6", "7", "8", "9", "10", "jack", "queen", "king"]
     return [f"{rank}_of_{suit}" for suit in suits for rank in ranks]
 
 
 class CardSprite:
-    def __init__(self, image, pos, label):
+    def __init__(self, image: pygame.Surface, pos: tuple[int, int], label: str):
         self.image = pygame.transform.smoothscale(image, (CARD_WIDTH, CARD_HEIGHT))
         self.rect = self.image.get_rect(topleft=pos)
         self.label = label
         self.dragging = False
 
-    def update(self, mouse_pos):
+    def update(self, mouse_pos: tuple[int, int]) -> None:
         if self.dragging:
             self.rect.center = mouse_pos
 
-    def draw(self, screen):
+    def draw(self, screen: pygame.Surface) -> None:
         screen.blit(self.image, self.rect)
 
 
 class _LabelCard:
-    def __init__(self, label):
+    def __init__(self, label: str):
         self.label = label
 
 
@@ -311,7 +353,7 @@ _ASSETS_DIR = _ROOT_DIR / "assets"
 _CARDS_DIR = _ASSETS_DIR / "cards"
 
 
-def _ensure_card_pngs_from_svgs():
+def _ensure_card_pngs_from_svgs() -> None:
     """Best-effort: if card SVGs exist but PNGs are missing, attempt conversion.
 
     This connects the game to the repo's converter scripts without making them a hard dependency.
@@ -334,7 +376,7 @@ def _ensure_card_pngs_from_svgs():
         return
 
     try:
-        import convert_all_svg_to_png as _converter
+        _converter = import_module("convert_all_svg_to_png")
     except Exception as e:
         print(f"[assets] SVGs found but converter unavailable: {e}")
         return
@@ -357,8 +399,8 @@ def _load_image(path: Path) -> pygame.Surface:
     return surf.convert_alpha()
 
 
-def load_card_images():
-    loaded = {}
+def load_card_images() -> dict[str, pygame.Surface]:
+    loaded: dict[str, pygame.Surface] = {}
     if _CARDS_DIR.exists():
         for path in _CARDS_DIR.glob("*.png"):
             stem = path.stem.lower()
@@ -373,7 +415,7 @@ def load_card_images():
                 continue
 
     # Always return a full 52-card dictionary.
-    card_images = {}
+    card_images: dict[str, pygame.Surface] = {}
     for label in _canonical_deck_labels():
         if label in loaded:
             card_images[label] = loaded[label]
@@ -385,7 +427,12 @@ def load_card_images():
     return card_images
 
 
-def fixed_hand_positions(player, n, screen_width, screen_height):
+def fixed_hand_positions(
+    player: int,
+    n: int,
+    screen_width: int,
+    screen_height: int,
+) -> list[tuple[int, int]]:
     margin = 60
     available_width = screen_width - 2 * margin
     spacing = min((available_width - CARD_WIDTH) // (n - 1), CARD_WIDTH + 20) if n > 1 else 0
@@ -395,7 +442,13 @@ def fixed_hand_positions(player, n, screen_width, screen_height):
     return [(start_x + i * spacing, y) for i in range(n)]
 
 
-def _row_positions(n, screen_width, y, card_width, margin=60):
+def _row_positions(
+    n: int,
+    screen_width: int,
+    y: int,
+    card_width: int,
+    margin: int = 60,
+) -> list[tuple[int, int]]:
     available_width = screen_width - 2 * margin
     spacing = min((available_width - card_width) // (n - 1), card_width + 18) if n > 1 else 0
     row_w = card_width if n <= 1 else card_width + spacing * (n - 1)
@@ -1206,6 +1259,7 @@ def main():
     capture_max_frames = max(60, int(args.capture_video_max_seconds * FPS))
 
     if capture_video_pending:
+        assert capture_video_path is not None
         capture_video_frames_dir = capture_video_path.parent / f"{capture_video_path.stem}_frames"
         capture_video_frames_dir.mkdir(parents=True, exist_ok=True)
         for stale in capture_video_frames_dir.glob("frame_*.png"):
@@ -1454,7 +1508,7 @@ def main():
     _stock_labels = []
 
     # Intro screen difficulty buttons and state
-    difficulty_buttons = {}
+    difficulty_buttons: dict[int, pygame.Rect] = {}
     online_btn_rect = None
     settings_btn_rect = None
     settings_open = False
@@ -1847,7 +1901,7 @@ def main():
         if (
             action_type == "KEYDOWN"
             and settings_open
-            and raw_event is not None
+            and isinstance(raw_event, pygame.event.Event)
             and _handle_settings_text_key(raw_event)
         ):
             return False
@@ -1943,7 +1997,7 @@ def main():
 
     running = True
     while running:
-        if _EFFECTS is not None and _SETTINGS.animations_enabled:
+        if _SETTINGS.animations_enabled:
             _EFFECTS.update(clock.get_time())
 
         if _CLASSIC_SESSION.phase == "intro":
@@ -2057,7 +2111,7 @@ def main():
             screen.blit(_name_surf, (_bx, _by))
             screen.blit(_wl_surf, (_bx + _name_surf.get_width(), _by))
 
-            intro_controls = draw_intro_controls(
+            intro_controls: IntroControlsLayout = draw_intro_controls(
                 screen=screen,
                 sw=sw,
                 sh=sh,
@@ -2141,7 +2195,7 @@ def main():
             pegging_y_base=PEGGING_Y,
         )
 
-        if _EFFECTS is not None and _SETTINGS.animations_enabled:
+        if _SETTINGS.animations_enabled:
             _EFFECTS.draw(screen)
             shake_x, shake_y = _EFFECTS.shake_offset()
             if shake_x or shake_y:

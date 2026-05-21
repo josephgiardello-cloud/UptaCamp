@@ -5,13 +5,13 @@
   "ui_style": "premium_tabletop",
   "bert_voice_enabled": true,
   "bert_voice_style": "downeast",
-  "bert_voice_backend": "sapi",
-  "bert_local_model_path": "",
-  "bert_local_exe_path": "piper",
+  "bert_voice_backend": "local_ai",
+  "bert_local_model_path": "bert_voice_models/en_US-joe-medium.onnx",
+  "bert_local_exe_path": ".venv/Scripts/piper.exe",
   "bert_rvc_enabled": false,
   "bert_rvc_exe_path": "rvc_infer",
   "bert_rvc_model_path": "",
   "bert_rvc_index_path": "",
-  "bert_rvc_pitch_shift": 0,
+  "bert_rvc_pitch_shift": 9,
   "player_name": "Player"
 }
