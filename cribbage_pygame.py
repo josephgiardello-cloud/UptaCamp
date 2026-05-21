@@ -121,6 +121,13 @@ _UI_STYLE_LABELS = {
     "broadcast_table": "Broadcast Table",
     "premium_tabletop": "Premium Tabletop",
 }
+_BACKGROUND_THEME_LABELS = {
+    "classic": "Existing Table",
+    "auto": "Auto (Bert uses Wharf)",
+    "wharf": "Maine Wharf",
+    "dark_shadows": "Dark Shadows Building",
+}
+_SECRET_DARK_SHADOWS_CODE = "collinwood"
 
 
 def _check_for_winner(session: GameState | None = None):
@@ -1398,17 +1405,60 @@ def main():
             except pygame.error:
                 intro_background = None
 
-    gameplay_background = None
-    for candidate in ("name_entry_bg.jpg", "table.jpg", "table.png", "board.jpg"):
-        path = _ASSETS_DIR / candidate
-        if not path.exists():
-            continue
-        try:
-            gameplay_background = _load_image(path)
-            break
-        except pygame.error:
-            gameplay_background = None
-            continue
+    def _load_first_existing_surface(candidates: tuple[str, ...]) -> pygame.Surface | None:
+        for candidate in candidates:
+            path = _ASSETS_DIR / candidate
+            if not path.exists():
+                continue
+            try:
+                return _load_image(path)
+            except pygame.error:
+                continue
+        return None
+
+    gameplay_backgrounds: dict[str, pygame.Surface | None] = {
+        "classic": _load_first_existing_surface(("name_entry_bg.jpg", "table.jpg", "table.png", "board.jpg")),
+        "wharf": _load_first_existing_surface(
+            (
+                "maine_wharf.jpg",
+                "maine_wharf.png",
+                "wharf.jpg",
+                "wharf.png",
+                "bert_wharf.jpg",
+                "bert_wharf.png",
+                "maine.jpg",
+            )
+        ),
+        "dark_shadows": _load_first_existing_surface(
+            (
+                "dark_shadows_building.jpg",
+                "dark_shadows_building.png",
+                "dark_shadows.jpg",
+                "dark_shadows.png",
+                "collinwood.jpg",
+                "collinwood.png",
+            )
+        ),
+    }
+
+    def _resolved_gameplay_background(ai_level: int) -> pygame.Surface | None:
+        theme = _SETTINGS.background_theme
+        if theme == "dark_shadows" and not _SETTINGS.dark_shadows_unlocked:
+            theme = "auto"
+
+        chosen_theme = theme
+        if theme == "auto":
+            chosen_theme = "wharf" if ai_level in (4, 5) else "classic"
+
+        selected = gameplay_backgrounds.get(chosen_theme)
+        if selected is not None:
+            return selected
+
+        if chosen_theme != "classic":
+            fallback = gameplay_backgrounds.get("classic")
+            if fallback is not None:
+                return fallback
+        return None
 
     maine_back = _ASSETS_DIR / "maine.jpg"
     if maine_back.exists():
@@ -1557,6 +1607,9 @@ def main():
     settings_open = False
     settings_rects: dict[str, pygame.Rect] = {}
     settings_text_active = None
+    secret_key_buffer = ""
+    intro_banner_text = ""
+    intro_banner_until_ms = 0
     difficulty_descriptions = {
         1: "Random play\nEasy wins",
         2: "Monte Carlo\nMixed strategy",
@@ -1694,6 +1747,27 @@ def main():
         _UI_STYLE = _SETTINGS.ui_style
         _persist_settings()
 
+    def _available_background_themes() -> list[str]:
+        themes = ["classic", "auto", "wharf"]
+        if _SETTINGS.dark_shadows_unlocked:
+            themes.append("dark_shadows")
+        return themes
+
+    def _cycle_background_theme(delta: int) -> None:
+        themes = _available_background_themes()
+        current_theme = _SETTINGS.background_theme
+        if current_theme not in themes:
+            current_theme = "auto"
+        current_idx = themes.index(current_theme)
+        _SETTINGS.background_theme = themes[(current_idx + delta) % len(themes)]
+        _persist_settings()
+
+    def _background_theme_labels_for_current_settings() -> dict[str, str]:
+        labels = dict(_BACKGROUND_THEME_LABELS)
+        if not _SETTINGS.dark_shadows_unlocked:
+            labels["dark_shadows"] = "Dark Shadows Building (Locked)"
+        return labels
+
     def _begin_classic_round(*, announce: bool) -> tuple[int, object, str]:
         d, sc, msg = _start_fresh_game()
         _transition_phase("discard")
@@ -1710,6 +1784,8 @@ def main():
         settings_ai_right_rect = settings_rects.get("settings_ai_right_rect")
         settings_style_left_rect = settings_rects.get("settings_style_left_rect")
         settings_style_right_rect = settings_rects.get("settings_style_right_rect")
+        settings_theme_left_rect = settings_rects.get("settings_theme_left_rect")
+        settings_theme_right_rect = settings_rects.get("settings_theme_right_rect")
         settings_voice_style_rect = settings_rects.get("settings_voice_style_rect")
         settings_voice_backend_rect = settings_rects.get("settings_voice_backend_rect")
         settings_rvc_toggle_rect = settings_rects.get("settings_rvc_toggle_rect")
@@ -1745,6 +1821,12 @@ def main():
             return
         if settings_style_right_rect is not None and settings_style_right_rect.collidepoint(pos):
             _cycle_ui_style(1)
+            return
+        if settings_theme_left_rect is not None and settings_theme_left_rect.collidepoint(pos):
+            _cycle_background_theme(-1)
+            return
+        if settings_theme_right_rect is not None and settings_theme_right_rect.collidepoint(pos):
+            _cycle_background_theme(1)
             return
         if settings_voice_style_rect is not None and settings_voice_style_rect.collidepoint(pos):
             _SETTINGS.bert_voice_style = "robot" if _SETTINGS.bert_voice_style == "downeast" else "downeast"
@@ -1795,6 +1877,26 @@ def main():
 
         settings_text_active = None
         settings_open = False
+
+    def _register_secret_keypress(raw_event: pygame.event.Event) -> None:
+        nonlocal secret_key_buffer, intro_banner_text, intro_banner_until_ms
+
+        if _SETTINGS.dark_shadows_unlocked:
+            return
+        typed = str(getattr(raw_event, "unicode", "") or "").lower()
+        if not typed.isalpha():
+            return
+
+        secret_key_buffer = (secret_key_buffer + typed)[-len(_SECRET_DARK_SHADOWS_CODE):]
+        if not secret_key_buffer.endswith(_SECRET_DARK_SHADOWS_CODE):
+            return
+
+        _SETTINGS.dark_shadows_unlocked = True
+        _SETTINGS.background_theme = "dark_shadows"
+        _persist_settings()
+        intro_banner_text = "Secret unlocked: Dark Shadows background is now active."
+        intro_banner_until_ms = pygame.time.get_ticks() + 5000
+        secret_key_buffer = ""
 
     def _start_next_round_from_end() -> None:
         global dealer, starter_card, message
@@ -1978,6 +2080,9 @@ def main():
                 message = msg
             return False
 
+        if action_type == "KEYDOWN" and not settings_open and isinstance(raw_event, pygame.event.Event):
+            _register_secret_keypress(raw_event)
+
         if action_type == "MOUSEBUTTONDOWN":
             pos = action.get("pos")
             if not isinstance(pos, tuple):
@@ -2158,6 +2263,25 @@ def main():
             screen.blit(_name_surf, (_bx, _by))
             screen.blit(_wl_surf, (_bx + _name_surf.get_width(), _by))
 
+            if intro_banner_text and pygame.time.get_ticks() < intro_banner_until_ms:
+                banner_font = pygame.font.SysFont("segoe ui", 18, bold=True)
+                banner_surface = banner_font.render(intro_banner_text, True, (246, 226, 201))
+                banner_rect = pygame.Rect(
+                    sw // 2 - banner_surface.get_width() // 2 - 14,
+                    _badge_rect.bottom + 10,
+                    banner_surface.get_width() + 28,
+                    36,
+                )
+                pygame.draw.rect(screen, (54, 34, 30), banner_rect, border_radius=10)
+                pygame.draw.rect(screen, (164, 110, 92), banner_rect, width=2, border_radius=10)
+                screen.blit(
+                    banner_surface,
+                    (
+                        banner_rect.centerx - banner_surface.get_width() // 2,
+                        banner_rect.centery - banner_surface.get_height() // 2,
+                    ),
+                )
+
             intro_controls: IntroControlsLayout = draw_intro_controls(
                 screen=screen,
                 sw=sw,
@@ -2181,6 +2305,7 @@ def main():
                     settings_text_active=settings_text_active,
                     ai_level_labels=AI_LEVELS,
                     ui_style_labels=_UI_STYLE_LABELS,
+                    background_theme_labels=_background_theme_labels_for_current_settings(),
                 )
 
             if _handle_intro_capture_outputs():
@@ -2200,7 +2325,7 @@ def main():
         sw, sh = screen.get_width(), screen.get_height()
         _LAST_SCREEN_SIZE = (sw, sh)
         hud_renderer.draw_gameplay_backdrop(
-            gameplay_background=gameplay_background,
+            gameplay_background=_resolved_gameplay_background(dad_ai_level),
             playfield_alpha=PLAYFIELD_ALPHA,
         )
 
