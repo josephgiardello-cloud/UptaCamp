@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+# pyright: reportConstantRedefinition=false
+
 import json
 import random
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 @dataclass(frozen=True)
@@ -173,7 +175,9 @@ def _load_json_file(path: Path) -> dict[str, Any] | None:
         parsed = json.loads(raw)
     except (OSError, json.JSONDecodeError):
         return None
-    return parsed if isinstance(parsed, dict) else None
+    if isinstance(parsed, dict):
+        return cast(dict[str, Any], parsed)
+    return None
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -191,7 +195,7 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
         if isinstance(parsed, dict):
-            rows.append(parsed)
+            rows.append(cast(dict[str, Any], parsed))
     return rows
 
 
@@ -205,24 +209,29 @@ def _load_external_generator_data() -> None:
     if cfg:
         event_theme = cfg.get("event_theme_category")
         if isinstance(event_theme, dict):
-            for event, category in event_theme.items():
-                if isinstance(event, str) and isinstance(category, str):
+            for event, category in cast(dict[str, Any], event_theme).items():
+                if isinstance(category, str):
                     _EVENT_THEME_CATEGORY[event] = category
 
         themed = cfg.get("thematic_phrases")
         if isinstance(themed, dict):
-            for category, values in themed.items():
-                if not isinstance(category, str) or not isinstance(values, list):
+            for category, values in cast(dict[str, Any], themed).items():
+                if not isinstance(values, list):
                     continue
-                cleaned = tuple(v for v in values if isinstance(v, str) and v.strip())
+                cleaned = tuple(
+                    v
+                    for v in cast(list[Any], values)
+                    if isinstance(v, str) and v.strip()
+                )
                 if cleaned:
                     _THEMATIC_PHRASES[category] = cleaned
 
         repetition = cfg.get("repetition_policy")
         if isinstance(repetition, dict):
-            immediate = repetition.get("immediate_repeat_window")
-            same_event = repetition.get("same_event_repeat_window")
-            callback_spacing = repetition.get("session_callback_spacing")
+            rep = cast(dict[str, Any], repetition)
+            immediate = rep.get("immediate_repeat_window")
+            same_event = rep.get("same_event_repeat_window")
+            callback_spacing = rep.get("session_callback_spacing")
             if isinstance(immediate, int) and immediate > 0:
                 _IMMEDIATE_REPEAT_WINDOW = immediate
             if isinstance(same_event, int) and same_event > 0:
@@ -232,11 +241,12 @@ def _load_external_generator_data() -> None:
 
         legal = cfg.get("legal_guardrails")
         if isinstance(legal, dict):
-            forbidden = legal.get("forbidden_verbatim_fragments")
+            legal_cfg = cast(dict[str, Any], legal)
+            forbidden = legal_cfg.get("forbidden_verbatim_fragments")
             if isinstance(forbidden, list):
                 cleaned = tuple(
                     part.strip().lower()
-                    for part in forbidden
+                    for part in cast(list[Any], forbidden)
                     if isinstance(part, str) and part.strip()
                 )
                 if cleaned:

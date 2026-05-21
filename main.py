@@ -121,7 +121,7 @@ class RuntimeController:
             self.screen.blit(paused, rect)
 
 
-def _run_state_client(args):
+def _run_state_client(args: Any) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s"
     )
@@ -159,6 +159,8 @@ def _run_state_client(args):
         controller.render()
         pygame.display.flip()
         clock.tick(60)
+
+    return 0
 
 
 def _run_once(args: Any) -> int:

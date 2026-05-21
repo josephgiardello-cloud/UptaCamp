@@ -5,7 +5,7 @@ This module remains only for compatibility with existing tests and migration too
 New runtime wiring should be implemented in src/ modules, not here.
 """
 
-# pyright: reportConstantRedefinition=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownLambdaType=false, reportUnusedFunction=false, reportUnusedVariable=false
+# pyright: reportConstantRedefinition=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownLambdaType=false, reportUnusedFunction=false, reportUnusedVariable=false, reportAttributeAccessIssue=false
 
 import argparse
 import math
@@ -1802,7 +1802,9 @@ def main():
         dealer = d
         starter_card = sc
         message = msg
-        app.game_controller.transition_phase("discard")
+        controller = app.game_controller
+        if controller is not None:
+            controller.transition_phase("discard")
 
     def _handle_end_phase_action(action: dict[str, object]) -> None:
         action_type = str(action.get("type", ""))
@@ -1818,13 +1820,17 @@ def main():
     def _handle_game_over_action(action: dict[str, object]) -> None:
         action_type = str(action.get("type", ""))
         if action_type == "KEYDOWN" and action.get("key") == pygame.K_r:
-            app.game_controller.transition_phase("intro")
+            controller = app.game_controller
+            if controller is not None:
+                controller.transition_phase("intro")
             return
         if action_type == "MOUSEBUTTONDOWN" and action.get("button") == 1:
             sw, sh = screen.get_width(), screen.get_height()
             pos = action.get("pos")
             if isinstance(pos, tuple) and _primary_button_rect(sw, sh).collidepoint(pos):
-                app.game_controller.transition_phase("intro")
+                controller = app.game_controller
+                if controller is not None:
+                    controller.transition_phase("intro")
 
     def _handle_gameplay_action(action: dict[str, object]) -> bool:
         global message, dad_ai_level

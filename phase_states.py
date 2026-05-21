@@ -92,14 +92,15 @@ class DiscardState(BasePhaseState):
         event_dict = cast(dict[str, Any], event)
         if event_dict.get("action") != "discard":
             return None
-        selected = cast(list[int], event_dict.get("selected_indices", []))
-        if not isinstance(selected, list):
+        selected_obj = event_dict.get("selected_indices", [])
+        if not isinstance(selected_obj, list):
             return None
+        selected = cast(list[int], selected_obj)
         if len(selected) != 2:
             return None
-        if len({i for i in selected if isinstance(i, int)}) != 2:
+        if len(set(selected)) != 2:
             return None
-        if any(not isinstance(i, int) or i < 0 or i >= len(engine.state.player_hand) for i in selected):
+        if any(i < 0 or i >= len(engine.state.player_hand) for i in selected):
             return None
         engine.handle_discard(selected)
         return engine.state.phase if engine.state.phase != self.phase_name.value else None
@@ -130,14 +131,14 @@ class PeggingState(BasePhaseState):
                 current_total=current_total,
                 value_for_15=cribbage_cards.value_for_fifteen,
                 parse_label=cribbage_cards.parse_card_label,
-                score_pegging_play=cribbage_cards.score_pegging_play,
+                score_pegging_play=lambda pile: cribbage_cards.score_pegging_play(list(pile)),
                 label_card_factory=lambda label: type("_CardRef", (), {"label": label})(),
             )
             if isinstance(ai_index, int):
                 engine.play_pegging_card(
                     player_idx=1,
                     card_index=ai_index,
-                    score_pegging_play=cribbage_cards.score_pegging_play,
+                    score_pegging_play=lambda pile: cribbage_cards.score_pegging_play(list(pile)),
                     value_for_15=cribbage_cards.value_for_fifteen,
                     parse_label=cribbage_cards.parse_card_label,
                 )
@@ -191,7 +192,7 @@ class PeggingState(BasePhaseState):
         engine.play_pegging_card(
             player_idx=0,
             card_index=card_index,
-            score_pegging_play=cribbage_cards.score_pegging_play,
+            score_pegging_play=lambda pile: cribbage_cards.score_pegging_play(list(pile)),
             value_for_15=cribbage_cards.value_for_fifteen,
             parse_label=cribbage_cards.parse_card_label,
             player_name=engine.state.player_name or "Player",
