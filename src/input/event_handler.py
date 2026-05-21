@@ -4,7 +4,7 @@ Processes pygame events and translates them to game actions.
 Initially acts as a facade, then contains direct implementations.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 
 class EventHandler:
@@ -16,9 +16,9 @@ class EventHandler:
 
     def __init__(self):
         """Initialize event handler."""
-        self._last_actions: list[Dict[str, Any]] = []
+        self._last_actions: list[dict[str, Any]] = []
 
-    def poll_events(self) -> list[Dict[str, Any]]:
+    def poll_events(self) -> list[dict[str, Any]]:
         """Poll pygame for events and convert to action dictionaries.
 
         Returns:
@@ -27,7 +27,7 @@ class EventHandler:
         """
         import pygame
 
-        actions: list[Dict[str, Any]] = []
+        actions: list[dict[str, Any]] = []
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 actions.append({"type": "QUIT", "raw_event": event})
@@ -95,7 +95,7 @@ class EventHandler:
         self._last_actions = actions
         return actions
 
-    def get_actions(self) -> list[Dict[str, Any]]:
+    def get_actions(self) -> list[dict[str, Any]]:
         """Return the latest polled actions.
 
         This mirrors the migration-plan naming while preserving poll_events()
@@ -103,7 +103,7 @@ class EventHandler:
         """
         return self.poll_events()
 
-    def handle_keyboard(self, key: int, modifiers: int = 0) -> Dict[str, Any] | None:
+    def handle_keyboard(self, key: int, modifiers: int = 0) -> dict[str, Any] | None:
         """Handle keyboard event.
 
         Args:
@@ -141,7 +141,7 @@ class EventHandler:
             return {"type": "AI_LEVEL_SELECT", "level": level, "mod": modifiers}
         return None
 
-    def handle_mouse_click(self, pos: tuple[int, int], button: int = 1) -> Dict[str, Any] | None:
+    def handle_mouse_click(self, pos: tuple[int, int], button: int = 1) -> dict[str, Any] | None:
         """Handle mouse click event.
 
         Args:
@@ -155,7 +155,7 @@ class EventHandler:
             return None
         return {"type": "MOUSEBUTTONDOWN", "pos": pos, "button": button}
 
-    def handle_settings_input(self, key: int, text: str = "") -> Dict[str, Any] | None:
+    def handle_settings_input(self, key: int, text: str = "") -> dict[str, Any] | None:
         """Handle input while settings modal is open.
 
         Args:

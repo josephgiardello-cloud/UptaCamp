@@ -1,18 +1,19 @@
-﻿"""Legacy compatibility module.
+﻿"""Deprecated legacy compatibility module.
 
-The primary game client is now main.py + states/.
-This module remains for compatibility with existing tests and migration tooling.
+The primary game client path is main.py via src.compat.run_classic_client().
+This module remains only for compatibility with existing tests and migration tooling.
+New runtime wiring should be implemented in src/ modules, not here.
 """
 
 # pyright: reportConstantRedefinition=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownLambdaType=false, reportUnusedFunction=false, reportUnusedVariable=false
 
 import argparse
-from importlib import import_module
 import math
 import random
 import shutil
 import subprocess
 import sys
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -27,17 +28,15 @@ from app_context import AppContext
 from assets.maine_shape import maine_shape as MAINE_SHAPE
 from audio_manager import AudioManager
 from engine import CribbageEngine
-from game_state import GameState
 from phase_states import PhaseStateMachine
 from settings_manager import GameSettings, load_settings, save_settings
-from src.controllers import GameController
+from src.controllers import GameApplication, GameController
 from src.input import EventHandler
 from src.renderer import BoardRenderer, RenderingContext
 from src.renderer.intro_controls_renderer import IntroControlsLayout, draw_intro_controls
 from src.renderer.settings_modal_renderer import draw_settings_modal, voice_startup_warning_text
 from stats_manager import get_player_profile, record_game_result, record_hand_stats
 from voice_manager import VoiceManager
-
 
 # --- Constants ---
 CARD_WIDTH = 120
@@ -75,7 +74,6 @@ player2_hand: list[Any] = []
 pegging_pile: list[Any] = []
 player_scores: list[int] = [0, 0]
 player_turn: int = 0
-show_computer_hand: bool = False
 player_name: str = "Player"
 message: str = "Select 2 cards to discard to the crib."
 
@@ -87,7 +85,6 @@ _stock_labels: list[str] = []
 player1_kept: list[Any] = []
 player2_kept: list[Any] = []
 
-winner_index: int | None = None  # 0 = player, 1 = dealer, None = no winner yet
 dad_ai_level: int = 2
 pegging_passes: list[bool] = [False, False]
 last_pegging_player: int | None = None
@@ -114,9 +111,7 @@ _CARD_BACK_CACHE: dict[tuple[int, int], pygame.Surface] = {}
 _AUDIO: AudioManager | None = None
 _VOICE: VoiceManager | None = None
 _SETTINGS = GameSettings()
-ctx = AppContext()
-state: GameState = ctx.game_state
-_CLASSIC_SESSION = state
+_CLASSIC_SESSION = AppContext().game_state
 _UI_STYLE = "classic"
 _UI_STYLES = ["classic", "competitive_minimal", "broadcast_table", "premium_tabletop"]
 _UI_STYLE_LABELS = {
@@ -128,29 +123,23 @@ _UI_STYLE_LABELS = {
 
 
 def _check_for_winner():
-    global winner_index
     scores = list(player_scores)
     _CLASSIC_SESSION.scores = list(player_scores)
     if scores[0] >= MAX_SCORE and scores[1] >= MAX_SCORE:
-        winner_index = -1  # tie
-        _CLASSIC_SESSION.winner = winner_index
-        return winner_index
+        _CLASSIC_SESSION.winner = -1
+        return -1
     if scores[0] >= MAX_SCORE:
-        winner_index = 0
-        _CLASSIC_SESSION.winner = winner_index
-        return winner_index
+        _CLASSIC_SESSION.winner = 0
+        return 0
     if scores[1] >= MAX_SCORE:
-        winner_index = 1
-        _CLASSIC_SESSION.winner = winner_index
-        return winner_index
-    winner_index = None
-    _CLASSIC_SESSION.winner = winner_index
-    return winner_index
+        _CLASSIC_SESSION.winner = 1
+        return 1
+    _CLASSIC_SESSION.winner = None
+    return None
 
 
 # --- Helper Functions ---
 _parse_label = cribbage_cards.parse_card_label
-_rank_index = cribbage_cards.rank_index
 _value_for_15 = cribbage_cards.value_for_fifteen
 _label_to_model_card = cribbage_cards.label_to_card
 
@@ -1197,7 +1186,7 @@ def handle_counting():
 
 # --- Main Entry ---
 def main():
-    global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, winner_index, dad_ai_level, last_pegging_player, discard_analysis_message, _UI_STYLE
+    global message, dealer, player1_hand, player2_hand, game_phase, player_name, pegging_pile, starter_card, _deck_labels, _stock_labels, player_scores, dad_ai_level, last_pegging_player, discard_analysis_message, _UI_STYLE
     global _ENGINE, _ADAPTER, _PHASE_SM, _EFFECTS, _LAST_SCREEN_SIZE, _MAINE_BACK_SURFACE, _CARD_BACK_CACHE, _AUDIO, _VOICE, _SETTINGS
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--online-url", dest="online_url", default="http://127.0.0.1:8787")
@@ -1248,6 +1237,12 @@ def main():
     _UI_STYLE = _SETTINGS.ui_style
     save_settings(_SETTINGS)
     player_name = _SETTINGS.player_name or "Player"
+
+    app = GameApplication()
+    app.settings = _SETTINGS
+    app.player_name = player_name
+    app.ui_style = _UI_STYLE
+    app.game_state = _CLASSIC_SESSION
 
     capture_video_path = Path(args.capture_video).resolve() if capture_video_pending else None
     capture_video_frames_dir = None
@@ -1318,6 +1313,9 @@ def main():
     screen = pygame.display.set_mode((1280, 900), pygame.RESIZABLE)
     pygame.display.set_caption("Upta - The Camp Cribbage Game")
     clock = pygame.time.Clock()
+    app.screen = screen
+    app.clock = clock
+    app.initialize(width=1280, height=900)
     _AUDIO = AudioManager(volume=_SETTINGS.volume)
     _VOICE = VoiceManager(
         enabled=_SETTINGS.bert_voice_enabled,
@@ -1379,7 +1377,6 @@ def main():
     card_images = load_card_images()
 
     def _start_fresh_game():
-        global winner_index
         nonlocal card_images
         global pegging_points, round_breakdown, discard_analysis_message
         # Fresh game from intro
@@ -1387,7 +1384,7 @@ def main():
         round_breakdown = {"player": (0, []), "ai": (0, []), "crib": (0, [])}
         discard_analysis_message = ""
         player_scores[:] = [0, 0]
-        winner_index = None
+        _CLASSIC_SESSION.winner = None
         pegging_pile.clear()
         crib.clear()
         selected_cards.clear()
@@ -1546,6 +1543,9 @@ def main():
         _SETTINGS.player_name = _SETTINGS.player_name or "Player"
         save_settings(_SETTINGS)
         player_name = _SETTINGS.player_name
+        app.settings = _SETTINGS
+        app.player_name = player_name
+        app.ui_style = _UI_STYLE
         if _AUDIO is not None:
             _AUDIO.set_volume(_SETTINGS.volume)
         if _VOICE is not None:
@@ -1756,7 +1756,7 @@ def main():
         dealer = d
         starter_card = sc
         message = msg
-        game_controller.transition_phase("discard")
+        app.game_controller.transition_phase("discard")
 
     def _handle_end_phase_action(action: dict[str, object]) -> None:
         action_type = str(action.get("type", ""))
@@ -1772,13 +1772,13 @@ def main():
     def _handle_game_over_action(action: dict[str, object]) -> None:
         action_type = str(action.get("type", ""))
         if action_type == "KEYDOWN" and action.get("key") == pygame.K_r:
-            game_controller.transition_phase("intro")
+            app.game_controller.transition_phase("intro")
             return
         if action_type == "MOUSEBUTTONDOWN" and action.get("button") == 1:
             sw, sh = screen.get_width(), screen.get_height()
             pos = action.get("pos")
             if isinstance(pos, tuple) and _primary_button_rect(sw, sh).collidepoint(pos):
-                game_controller.transition_phase("intro")
+                app.game_controller.transition_phase("intro")
 
     def _handle_gameplay_action(action: dict[str, object]) -> bool:
         global message, dad_ai_level
@@ -1880,13 +1880,13 @@ def main():
 
     def _handle_intro_action(action: dict[str, object], mouse_pos: tuple[int, int]) -> bool:
         global dad_ai_level, dealer, starter_card, message
-        nonlocal running, settings_open, settings_text_active
+        nonlocal settings_open, settings_text_active
 
         action_type = str(action.get("type", ""))
         raw_event = action.get("raw_event")
 
         if action_type == "QUIT":
-            running = False
+            app.running = False
             return False
 
         if (
@@ -1992,11 +1992,12 @@ def main():
 
         selected_cards = []
 
-    game_controller = GameController(_ENGINE, legacy_module=sys.modules[__name__])
-    event_handler = EventHandler()
+    app.game_controller = GameController(_ENGINE, legacy_module=sys.modules[__name__])
+    if app.event_handler is None:
+        app.event_handler = EventHandler()
 
-    running = True
-    while running:
+    app.running = True
+    while app.running:
         if _SETTINGS.animations_enabled:
             _EFFECTS.update(clock.get_time())
 
@@ -2027,12 +2028,6 @@ def main():
             title_shadow_font = pygame.font.SysFont("constantia", 108, bold=True)
             subtitle_font = pygame.font.SysFont("palatino linotype", 26, bold=True)
             subtitle_small_font = pygame.font.SysFont("candara", 18, bold=True)
-            start_font = pygame.font.SysFont("bahnschrift", 24, bold=True)
-            glyph_font = pygame.font.SysFont("segoe ui symbol", 20, bold=True)
-            # Card typography — modern, 2026
-            card_name_font = pygame.font.SysFont("segoe ui variable", 29, bold=True)
-            card_badge_font = pygame.font.SysFont("segoe ui variable", 11)
-            card_desc_font = pygame.font.SysFont("segoe ui variable", 13)
 
             title = title_font.render("Upta", True, MAINE_COLORS["cream"])
             title_outline = title_shadow_font.render("Upta", True, (40, 31, 18))
@@ -2144,7 +2139,7 @@ def main():
 
             mouse_pos = pygame.mouse.get_pos()
 
-            actions = event_handler.get_actions()
+            actions = app.event_handler.get_actions()
             for action in actions:
                 if _handle_intro_action(action, mouse_pos):
                     return
@@ -2157,19 +2152,19 @@ def main():
             playfield_alpha=PLAYFIELD_ALPHA,
         )
 
-        actions = event_handler.get_actions()
+        actions = app.event_handler.get_actions()
         for action in actions:
             if _handle_gameplay_action(action):
-                running = False
+                app.running = False
                 break
 
-        game_controller.process(actions)
+        app.game_controller.process(actions)
 
         # Let the game logic advance even when there are no input events.
         if not capture_gameplay_pending:
             if capture_video_pending and _CLASSIC_SESSION.phase == "discard":
                 _auto_discard_player_hand()
-            game_controller.update(auto_player=capture_video_pending)
+            app.game_controller.update(auto_player=capture_video_pending)
 
         hud_renderer.context.screen = screen
         hud_renderer.context.ui_style = _UI_STYLE

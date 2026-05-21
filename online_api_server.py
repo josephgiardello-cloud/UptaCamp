@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, cast
@@ -15,6 +17,92 @@ LOGGER = logging.getLogger(__name__)
 
 class OnlineApiHandler(BaseHTTPRequestHandler):
     backend: OnlineBackend
+    # Basic in-process throttling. This is intentionally lightweight and
+    # primarily protects local/dev servers from bursts.
+    RATE_LIMIT_WINDOW_S = 60.0
+    RATE_LIMIT_PER_IP = 180
+    RATE_LIMIT_PER_PLAYER = 120
+    _rate_limit_lock = threading.Lock()
+    _ip_hits: dict[str, list[float]] = {}
+    _player_hits: dict[str, list[float]] = {}
+
+    def end_headers(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Authorization, Content-Type, X-Requested-With",
+        )
+        self.send_header("Access-Control-Max-Age", "600")
+        super().end_headers()
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _client_ip(self) -> str:
+        forwarded = self.headers.get("X-Forwarded-For", "").strip()
+        if forwarded:
+            return forwarded.split(",", 1)[0].strip()
+        host = self.client_address[0] if self.client_address else "unknown"
+        return str(host)
+
+    def _log_suspicious(self, reason: str, *, player_id: str | None = None) -> None:
+        LOGGER.warning(
+            "suspicious_request: reason=%s ip=%s method=%s path=%s player_id=%s",
+            reason,
+            self._client_ip(),
+            self.command,
+            self.path,
+            player_id,
+        )
+
+    @classmethod
+    def _allow_hit(
+        cls,
+        bucket: dict[str, list[float]],
+        key: str,
+        now: float,
+        *,
+        limit: int,
+        window_s: float,
+    ) -> bool:
+        with cls._rate_limit_lock:
+            hits = bucket.setdefault(key, [])
+            cutoff = now - window_s
+            while hits and hits[0] < cutoff:
+                hits.pop(0)
+            if len(hits) >= limit:
+                return False
+            hits.append(now)
+            return True
+
+    def _enforce_rate_limit(self, *, player_id: str | None = None) -> bool:
+        now = time.monotonic()
+        ip = self._client_ip()
+        if not self._allow_hit(
+            self._ip_hits,
+            ip,
+            now,
+            limit=self.RATE_LIMIT_PER_IP,
+            window_s=self.RATE_LIMIT_WINDOW_S,
+        ):
+            self._log_suspicious("rate_limit_ip", player_id=player_id)
+            self._send_json(HTTPStatus.TOO_MANY_REQUESTS, {"error": "Rate limit exceeded"})
+            return False
+
+        if player_id and not self._allow_hit(
+            self._player_hits,
+            player_id,
+            now,
+            limit=self.RATE_LIMIT_PER_PLAYER,
+            window_s=self.RATE_LIMIT_WINDOW_S,
+        ):
+            self._log_suspicious("rate_limit_player", player_id=player_id)
+            self._send_json(HTTPStatus.TOO_MANY_REQUESTS, {"error": "Rate limit exceeded"})
+            return False
+        return True
 
     def _extract_bearer(self) -> str | None:
         auth = self.headers.get("Authorization", "")
@@ -26,8 +114,10 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
     def _require_auth(self, player_id: str) -> str:
         token = self._extract_bearer()
         if not token:
+            self._log_suspicious("missing_bearer", player_id=player_id)
             raise PermissionError("Missing bearer token")
         if not self.backend.verify_session_token(player_id, token):
+            self._log_suspicious("invalid_bearer", player_id=player_id)
             raise PermissionError("Invalid session token")
         return token
 
@@ -55,6 +145,8 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         parts = [p for p in parsed.path.split("/") if p]
+        if not self._enforce_rate_limit():
+            return
         try:
             if parts == ["health"]:
                 self._send_json(HTTPStatus.OK, {"status": "ok"})
@@ -91,6 +183,7 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {"messages": rows})
                 return
 
+            self._log_suspicious("unknown_get_route")
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
         except PermissionError as exc:
             self._send_json(HTTPStatus.UNAUTHORIZED, {"error": str(exc)})
@@ -102,6 +195,13 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         parts = [p for p in parsed.path.split("/") if p]
         payload = self._read_json_body()
+        player_hint = payload.get("player_id") or payload.get("host_player_id") or payload.get(
+            "guest_player_id"
+        )
+        if player_hint is not None and not isinstance(player_hint, str):
+            player_hint = str(player_hint)
+        if not self._enforce_rate_limit(player_id=cast(str | None, player_hint)):
+            return
 
         try:
             if parts == ["players", "login"]:
@@ -222,6 +322,7 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {"inserted": count})
                 return
 
+            self._log_suspicious("unknown_post_route", player_id=cast(str | None, player_hint))
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
         except PermissionError as exc:
             self._send_json(HTTPStatus.UNAUTHORIZED, {"error": str(exc)})

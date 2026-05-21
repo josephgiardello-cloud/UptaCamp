@@ -33,6 +33,11 @@ class GameState:
     current_phase: Any | None = None
     phase_name: str = "intro"
 
+    def reset(self) -> None:
+        fresh = type(self)()
+        self.__dict__.clear()
+        self.__dict__.update(fresh.__dict__)
+
     def transition_to(self, new_phase_class: type[Any], ctx: Any = None) -> None:
         if self.current_phase is not None and hasattr(self.current_phase, "exit"):
             self.current_phase.exit(self, ctx)

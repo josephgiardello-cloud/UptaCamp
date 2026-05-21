@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+from engine import CribbageEngine
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -396,6 +398,12 @@ class OnlineBackend:
             "phase_progress": 0,
             "scores": [0, 0],
             "dealer": 0,
+            "deal_ready": [],
+            "discard_by_player": {},
+            "pegging_pile": [],
+            "pegging_running_total": 0,
+            "pegging_passes": [False, False],
+            "last_pegging_player": None,
             "last_action": None,
         }
         conn.execute(
@@ -487,9 +495,14 @@ class OnlineBackend:
                 raise ValueError("Pegging phase requires peg action")
             if not isinstance(payload.get("card"), str):
                 raise ValueError("Peg action requires card label")
-            running_total = payload.get("running_total")
-            if not isinstance(running_total, int) or running_total < 0 or running_total > 31:
-                raise ValueError("Peg action requires running_total between 0 and 31")
+            if "running_total" in payload:
+                running_total = payload.get("running_total")
+                if not isinstance(running_total, int):
+                    raise ValueError("Peg action requires integer running_total")
+            if "points" in payload:
+                points = payload.get("points")
+                if not isinstance(points, int) or points < 0 or points > 12:
+                    raise ValueError("Peg action points must be between 0 and 12")
             return
         if phase == "counting":
             points = payload.get("points")
@@ -662,11 +675,15 @@ class OnlineBackend:
                     ),
                 )
 
-                if action_type in ("peg", "count"):
-                    points = payload.get("points")
-                    if isinstance(points, int):
-                        idx = 0 if player_id == match["player_one_id"] else 1
-                        state["scores"][idx] += points
+                engine = CribbageEngine()
+                engine.load_remote_snapshot(state)
+                state = engine.apply_remote_action(
+                    player_id=player_id,
+                    player_one_id=str(match["player_one_id"]),
+                    player_two_id=str(match["player_two_id"]),
+                    action_type=action_type,
+                    payload=payload,
+                )
 
                 state["last_action"] = {
                     "turn_index": turn_index,
@@ -676,14 +693,12 @@ class OnlineBackend:
                 }
 
                 current_phase = str(state.get("phase", "deal"))
-                progress = int(state.get("phase_progress", 0)) + 1
+                progress = 0 if current_phase != phase else int(state.get("phase_progress", 0)) + 1
                 state["phase_progress"] = progress
 
                 target = self.PHASE_TURN_TARGET.get(current_phase, 0)
                 if target and progress >= target:
-                    next_phase_index = min(
-                        int(state.get("phase_index", 0)) + 1, len(self.PHASES) - 1
-                    )
+                    next_phase_index = min(int(state.get("phase_index", 0)) + 1, len(self.PHASES) - 1)
                     next_phase = self.PHASES[next_phase_index]
                     state["phase_index"] = next_phase_index
                     state["phase"] = next_phase

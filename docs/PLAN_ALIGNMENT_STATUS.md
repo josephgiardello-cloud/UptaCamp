@@ -13,9 +13,8 @@ This file tracks alignment against the requested implementation plan.
   - Remaining: factor large intro/settings conditionals into dedicated input/controller components
 - [x] 1.2 Mixed state management baseline (`CribbageEngine.state` is primary state model)
 - [x] 1.2 Debug validation method exists and now runs after key mutating engine methods
-- [~] 1.3 Global variables encapsulation
-  - Current: `GameApplication` class exists in `src/controllers/game_controller.py`
-  - Remaining: route all runtime globals in `cribbage_pygame.py` through `GameApplication`
+- [x] 1.3 Global variables encapsulation (runtime-scoped)
+  - Current: classic runtime loop now flows through `GameApplication` fields for controller, event handler, running state, and settings/name/style sync.
 - [x] 1.4 Dependency injection baseline
   - Added `CribbageEngine.ai_discard(strategy=None)` for injectable strategy in tests
 
@@ -86,3 +85,21 @@ This file tracks alignment against the requested implementation plan.
 - Removed accidental early bootstrap `main` block from `cribbage_pygame.py` to avoid pre-initialization execution.
 - Switched gameplay loop in `cribbage_pygame.py` from direct `pygame.event.get()` phase dispatch to `EventHandler` action polling + `GameController.process(actions)`.
 - Migrated intro/settings event handling in `cribbage_pygame.py` to action-driven processing via `EventHandler.get_actions()`.
+- Fixed `VoiceManager` RVC executable detection bug (`shutil_which` typo to `shutil.which`) in `voice_manager.py`.
+- Validated voice manager unit coverage remains green with `.venv\\Scripts\\python.exe -m pytest tests/test_voice_manager.py -q` (9 passed).
+- Routed `cribbage_pygame.main()` runtime control through `GameApplication` (`game_controller`, `event_handler`, `running`, and settings/name/style sync).
+- Added `GameApplication` lifecycle tests in `tests/test_game_controller.py`.
+- Validated migration-focused regressions with `.venv\\Scripts\\python.exe -m pytest tests/test_game_controller.py tests/test_main_entrypoint.py -q` (12 passed).
+- Added `src/compat.py` and updated `main.py` to import classic mode entrypoint from `src.compat` rather than directly from `cribbage_pygame`.
+- Updated `tests/test_main_entrypoint.py` to mock `run_classic_client` at the `main.py` boundary.
+- Re-ran focused entry/controller tests after compat boundary refactor (`.venv\\Scripts\\python.exe -m pytest tests/test_main_entrypoint.py tests/test_game_controller.py -q`, all passing).
+- Started 6.4.2 cleanup by removing dead legacy global `show_computer_hand` from `cribbage_pygame.py` (no callsites).
+- Fixed indentation regression in gameplay action loop and re-validated focused suites (`.venv\\Scripts\\python.exe -m pytest tests/test_main_entrypoint.py tests/test_game_controller.py tests/test_game_logic.py -q`, 22 passed).
+- Continued 6.4.2 cleanup by removing additional dead globals `ctx` and `state` from `cribbage_pygame.py`.
+- Continued 6.4.2 cleanup by removing dead `winner_index` global and routing winner state solely through `_CLASSIC_SESSION.winner`.
+- Continued 6.4.2 cleanup by removing dead legacy alias `_rank_index` from `cribbage_pygame.py`.
+- Completed a full safe global sweep for 6.4.2; no additional removable globals were found without breaking legacy compatibility references.
+- Marked `cribbage_pygame.py` as deprecated at module header level and documented `main.py -> src.compat.run_classic_client()` as the supported runtime path.
+- Cleared repo Ruff lint baseline (`.venv\\Scripts\\python.exe -m ruff check .` -> all checks passed).
+- Re-validated focused suites including voice manager tests (`.venv\\Scripts\\python.exe -m pytest tests/test_main_entrypoint.py tests/test_game_controller.py tests/test_game_logic.py tests/test_voice_manager.py -q` -> 31 passed).
+- Ran full test suite (`.venv\\Scripts\\python.exe -m pytest -q`) -> 139 passed.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pygame
 
+import cards as cribbage_cards
 from online_client import MatchEventStream
 
 from .base import GameStateBase
@@ -17,6 +18,72 @@ class OnlineMatchState(GameStateBase):
         if app.stream is None:
             app.stream = MatchEventStream(app.client, self.match_id, ws_url=app.ws_url)
             app.stream.start()
+
+    @staticmethod
+    def _card_labels(cards: list[object] | None) -> list[str]:
+        if not isinstance(cards, list):
+            return []
+        labels: list[str] = []
+        for card in cards:
+            label = getattr(card, "label", card)
+            labels.append(str(label))
+        return labels
+
+    @staticmethod
+    def _pick_discard_indices(hand_labels: list[str]) -> list[int]:
+        if len(hand_labels) < 2:
+            return []
+        ranked = sorted(
+            range(len(hand_labels)),
+            key=lambda idx: cribbage_cards.value_for_fifteen(
+                cribbage_cards.parse_card_label(hand_labels[idx])[0]
+            ),
+            reverse=True,
+        )
+        return sorted(ranked[:2], reverse=True)
+
+    @staticmethod
+    def _pick_pegging_card(hand_labels: list[str], running_total: int) -> str | None:
+        legal: list[tuple[int, str]] = []
+        fallback: str | None = None
+        for label in hand_labels:
+            rank, _ = cribbage_cards.parse_card_label(label)
+            value = cribbage_cards.value_for_fifteen(rank)
+            if fallback is None:
+                fallback = label
+            if running_total + value <= 31:
+                legal.append((value, label))
+        if legal:
+            legal.sort(key=lambda item: item[0])
+            return legal[0][1]
+        return fallback
+
+    @staticmethod
+    def _hand_from_snapshot(snapshot: dict[str, object], player_id: str | None) -> list[str]:
+        game_state = snapshot.get("game_state", {})
+        if not isinstance(game_state, dict):
+            return []
+        if player_id and player_id == snapshot.get("summary", {}).get("player_one_id"):
+            return OnlineMatchState._card_labels(game_state.get("player_hand"))
+        if player_id and player_id == snapshot.get("summary", {}).get("player_two_id"):
+            return OnlineMatchState._card_labels(game_state.get("ai_hand"))
+        return OnlineMatchState._card_labels(game_state.get("player_hand"))
+
+    def _pick_count_points(self, snapshot: dict[str, object]) -> int:
+        game_state = snapshot.get("game_state", {})
+        if not isinstance(game_state, dict):
+            return 4
+        starter = game_state.get("starter_card")
+        player_hand = self._card_labels(game_state.get("player_kept"))
+        if not starter or len(player_hand) != 4:
+            return 4
+        try:
+            model_hand = [cribbage_cards.label_to_card(lbl) for lbl in player_hand]
+            model_starter = cribbage_cards.label_to_card(str(starter))
+            total, _ = cribbage_cards.score_hand(model_hand, model_starter, is_crib=False)
+            return int(total)
+        except Exception:
+            return 4
 
     def handle_event(self, event, engine, assets, app):
         if event.type == pygame.KEYDOWN:
@@ -47,22 +114,35 @@ class OnlineMatchState(GameStateBase):
                 app.client.submit_turn(self.match_id, "deal_ready", {"ready": True})
                 self.last_action_msg = "Deal ready submitted"
             elif phase == "discard":
+                hand_labels = self._hand_from_snapshot(snapshot, app.player_id)
+                discard_indices = self._pick_discard_indices(hand_labels)
+                discard_cards = [hand_labels[idx] for idx in discard_indices] if discard_indices else [
+                    "5_of_hearts",
+                    "king_of_clubs",
+                ]
                 app.client.submit_turn(
                     self.match_id,
                     "discard",
-                    {"cards": ["5_of_hearts", "king_of_clubs"]},
+                    {"cards": discard_cards},
                 )
                 self.last_action_msg = "Discard submitted"
             elif phase == "pegging":
-                running_total = (snapshot["summary"]["turns_played"] * 3) % 31
+                game_state = snapshot["game_state"] if isinstance(snapshot.get("game_state"), dict) else {}
+                running_total = int(game_state.get("pegging_running_total", 0)) if isinstance(game_state, dict) else 0
+                hand_labels = self._hand_from_snapshot(snapshot, app.player_id)
+                card_label = self._pick_pegging_card(hand_labels, running_total)
+                if not card_label:
+                    self.last_action_msg = "No legal pegging card available"
+                    return
                 app.client.submit_turn(
                     self.match_id,
                     "peg",
-                    {"card": "7_of_spades", "running_total": running_total, "points": 1},
+                    {"card": card_label},
                 )
                 self.last_action_msg = "Peg submitted"
             elif phase == "counting":
-                app.client.submit_turn(self.match_id, "count", {"points": 4})
+                points = self._pick_count_points(snapshot)
+                app.client.submit_turn(self.match_id, "count", {"points": points})
                 self.last_action_msg = "Counting submitted"
             else:
                 self.last_action_msg = "Match already finished"

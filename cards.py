@@ -105,11 +105,11 @@ def card_label(card_or_label) -> str:
     return str(getattr(card_or_label, "label", card_or_label))
 
 
-def pegging_total(pile) -> int:
+def pegging_total(pile: list) -> int:
     return sum(value_for_fifteen(parse_card_label(card_label(item))[0]) for item in pile)
 
 
-def score_pegging_play(pile, new_card=None) -> int:
+def score_pegging_play(pile: list, new_card: object | None = None) -> int:
     working_pile = list(pile)
     if new_card is not None:
         working_pile.append(new_card)
@@ -151,8 +151,8 @@ def score_pegging_play(pile, new_card=None) -> int:
     return points
 
 
-def score_15s(cards):
-    breakdown = []
+def score_15s(cards: list) -> list[tuple[str, list[str], int]]:
+    breakdown: list[tuple[str, list[str], int]] = []
     for r in range(2, len(cards) + 1):
         for combo in itertools.combinations(cards, r):
             if sum(card.value() for card in combo) == 15:
@@ -161,20 +161,19 @@ def score_15s(cards):
 
 
 # Score pairs
-def score_pairs(cards):
-    breakdown = []
+def score_pairs(cards: list) -> list[tuple[str, list[str], int]]:
+    breakdown: list[tuple[str, list[str], int]] = []
     ranks = [_normalize_rank(card.rank) for card in cards]
-    for rank in set(ranks):
-        n = ranks.count(rank)
-        if n >= 2:
-            pairs = (n * (n - 1)) // 2
-            for _ in range(pairs):
-                pair_cards = [card for card in cards if _normalize_rank(card.rank) == rank][:2]
-                breakdown.append(("Pair", [str(card) for card in pair_cards], 2))
+    for rank in sorted(set(ranks)):
+        matched = [card for card in cards if _normalize_rank(card.rank) == rank]
+        if len(matched) < 2:
+            continue
+        for combo in itertools.combinations(matched, 2):
+            breakdown.append(("Pair", [str(card) for card in combo], 2))
     return breakdown
 
 
-def find_all_runs(cards):
+def find_all_runs(cards: list) -> list[tuple[int, int, list]]:
     ranks_map = {
         "A": 1,
         "2": 2,
@@ -190,57 +189,76 @@ def find_all_runs(cards):
         "Q": 12,
         "K": 13,
     }
+    if not cards:
+        return []
+
     rank_values = [ranks_map[_normalize_rank(card.rank)] for card in cards]
     counts = Counter(rank_values)
-    unique = sorted(counts.keys())
+    unique_sorted = sorted(counts.keys())
 
-    for run_len in range(len(unique), 2, -1):
-        runs = []
-        for start in range(1, 15 - run_len):
-            seq = list(range(start, start + run_len))
-            if all(v in counts for v in seq):
-                multiplicity = 1
-                for v in seq:
-                    multiplicity *= counts[v]
-                runs.append((run_len, multiplicity, seq))
-        if runs:
-            return runs
-    return []
+    runs = []
+    i = 0
+    while i < len(unique_sorted):
+        j = i
+        while j + 1 < len(unique_sorted) and unique_sorted[j + 1] == unique_sorted[j] + 1:
+            j += 1
+
+        if j - i + 1 >= 3:
+            run_len = j - i + 1
+            multiplicity = 1
+            for k in range(i, j + 1):
+                multiplicity *= counts[unique_sorted[k]]
+            run_cards = [
+                card for card in cards if ranks_map[_normalize_rank(card.rank)] in unique_sorted[i : j + 1]
+            ]
+            runs.append((run_len, multiplicity, run_cards))
+
+        i = j + 1
+
+    return runs
+
+
+def _run_card_combinations(cards: list) -> list[tuple]:
+    by_rank = {}
+    for card in cards:
+        key = rank_index(card.rank)
+        by_rank.setdefault(key, []).append(card)
+
+    ordered_ranks = sorted(by_rank.keys())
+    return list(itertools.product(*(by_rank[rank] for rank in ordered_ranks)))
 
 
 # Score runs
-def score_runs(cards):
+def score_runs(cards: list) -> list[tuple[str, list[str], int]]:
     runs = find_all_runs(cards)
     if not runs:
         return []
 
     breakdown = []
-    for run_len, multiplicity, _ in runs:
-        points = run_len * multiplicity
-        breakdown.append(
-            (f"Run of {run_len} x{multiplicity}", [str(card) for card in cards], points)
-        )
+    for run_len, multiplicity, run_cards in runs:
+        for combo in _run_card_combinations(run_cards):
+            breakdown.append((f"Run of {run_len} (x{multiplicity})", [str(card) for card in combo], run_len))
     return breakdown
 
 
 # Score flush
-def score_flush(hand, starter, is_crib=False):
+def score_flush(hand: list, starter, is_crib: bool = False) -> list[tuple[str, list[str], int]]:
     suits = [card.suit for card in hand]
-    if all(s == suits[0] for s in suits):
-        # In crib, flush only scores if starter matches (5-card flush).
-        if is_crib:
-            if starter.suit == suits[0]:
-                return [("Flush (5 crib)", [str(card) for card in hand] + [str(starter)], 5)]
-            return []
-        # Non-crib hand: 4-card flush allowed.
+    if not suits or not all(s == suits[0] for s in suits):
+        return []
+
+    if is_crib:
         if starter.suit == suits[0]:
-            return [("Flush (5)", [str(card) for card in hand] + [str(starter)], 5)]
-        return [("Flush (4)", [str(card) for card in hand], 4)]
-    return []
+            return [("Flush (5 crib)", [str(card) for card in hand] + [str(starter)], 5)]
+        return []
+
+    if starter.suit == suits[0]:
+        return [("Flush (5)", [str(card) for card in hand] + [str(starter)], 5)]
+    return [("Flush (4)", [str(card) for card in hand], 4)]
 
 
 # Score nobs (Jack of same suit as starter)
-def score_nobs(hand, starter):
+def score_nobs(hand: list, starter) -> list[tuple[str, list[str], int]]:
     starter_suit = str(starter.suit).strip().lower()
     for card in hand:
         if _normalize_rank(card.rank) == "J" and str(card.suit).strip().lower() == starter_suit:
@@ -249,8 +267,8 @@ def score_nobs(hand, starter):
 
 
 # Total hand score
-def score_hand(hand, starter, is_crib=False):
-    breakdown = []
+def score_hand(hand: list, starter, is_crib: bool = False) -> tuple[int, list[tuple[str, list[str], int]]]:
+    breakdown: list[tuple[str, list[str], int]] = []
     breakdown += score_15s(hand + [starter])
     breakdown += score_pairs(hand + [starter])
     breakdown += score_runs(hand + [starter])

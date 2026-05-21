@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import types
 
 import pygame
@@ -39,12 +38,12 @@ class _FakeScreen:
 def test_main_defaults_to_classic_client(monkeypatch):
     called = {"value": False}
 
-    def _classic_main():
+    def _classic_runner():
         called["value"] = True
         return 123
 
     monkeypatch.setattr(main, "_run_state_client", lambda args: 999)
-    monkeypatch.setitem(sys.modules, "cribbage_pygame", types.SimpleNamespace(main=_classic_main))
+    monkeypatch.setattr(main, "run_classic_client", _classic_runner)
     monkeypatch.setattr(
         main.argparse.ArgumentParser,
         "parse_known_args",

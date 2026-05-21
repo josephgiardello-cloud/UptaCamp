@@ -10,6 +10,7 @@ import pygame
 from app_context import AppContext
 from asset_manager import AssetManager
 from cribbage_engine import CribbageEngine
+from src.compat import run_classic_client
 from states.intro import IntroState
 
 
@@ -163,9 +164,7 @@ def _run_state_client(args):
 def _run_once(args: Any) -> int:
     # Default path: classic gameplay renderer/loop that matches screenshot-era visuals and mechanics.
     if not args.new_client:
-        import cribbage_pygame as classic_client
-
-        return int(classic_client.main() or 0)
+        return int(run_classic_client() or 0)
 
     return int(_run_state_client(args) or 0)
 

@@ -183,7 +183,7 @@ class VoiceManager:
 
         model_ok = bool(self.rvc_model_path) and Path(self.rvc_model_path).exists()
         exe = self.rvc_exe_path or "rvc_infer"
-        exe_ok = shutil_which(exe) is not None or Path(exe).exists()
+        exe_ok = shutil.which(exe) is not None or Path(exe).exists()
         if not model_ok or not exe_ok:
             return wav_path
 

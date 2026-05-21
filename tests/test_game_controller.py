@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.controllers import GameController
+from src.controllers import GameApplication, GameController
 
 
 class _LegacyStub:
@@ -94,3 +94,37 @@ def test_process_routes_mouse_action_to_pegging_when_in_pegging_phase():
     controller.process([{"type": "MOUSEBUTTONDOWN", "pos": (30, 40), "button": 1}])
 
     assert legacy.calls == [("pegging", ({"type": "MOUSEBUTTONDOWN", "pos": (30, 40), "button": 1}, False))]
+
+
+def test_game_application_initialize_creates_event_handler():
+    app = GameApplication()
+
+    app.initialize()
+
+    assert app.event_handler is not None
+
+
+def test_game_application_handle_input_processes_actions_and_quit():
+    app = GameApplication()
+
+    processed: list[list[dict[str, object]]] = []
+
+    class _EventHandlerStub:
+        def should_quit(self):
+            return False
+
+        def get_actions(self):
+            return [{"type": "MOUSEBUTTONDOWN", "pos": (1, 2), "button": 1}, {"type": "QUIT"}]
+
+    class _ControllerStub:
+        def process(self, actions):
+            processed.append(actions)
+
+    app.event_handler = _EventHandlerStub()
+    app.game_controller = _ControllerStub()
+
+    should_continue = app.handle_input()
+
+    assert should_continue is False
+    assert len(processed) == 1
+    assert processed[0][0]["type"] == "MOUSEBUTTONDOWN"

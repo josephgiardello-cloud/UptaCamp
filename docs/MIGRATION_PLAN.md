@@ -25,13 +25,13 @@
 ## Phase 2: Event Handling → src/input/
 
 ### EventHandler Tasks
-- [ ] **6.2.1** Extract pygame.event.get() polling
-- [ ] **6.2.2** Extract mouse event handlers (card selection)
-- [ ] **6.2.3** Extract keyboard event handlers (settings, AI level)
-- [ ] **6.2.4** Extract settings modal input handling
-- [ ] **6.2.5** Return action dict instead of direct state mutation
-- [ ] **6.2.6** Integrate into main loop via `handle_events(event)`
-- [ ] **6.2.7** Test + commit
+- [x] **6.2.1** Extract pygame.event.get() polling
+- [x] **6.2.2** Extract mouse event handlers (card selection)
+- [x] **6.2.3** Extract keyboard event handlers (settings, AI level)
+- [x] **6.2.4** Extract settings modal input handling
+- [x] **6.2.5** Return action dict instead of direct state mutation
+- [x] **6.2.6** Integrate into main loop via normalized action pipeline
+- [x] **6.2.7** Add coverage for action dispatch paths
 
 ## Phase 3: Game Loop → src/controllers/
 
@@ -44,19 +44,19 @@
 - [ ] **6.3.6** Test + commit
 
 ### GameApplication Tasks
-- [ ] **6.3.7** Move pygame.init(), screen setup to `initialize()`
-- [ ] **6.3.8** Move asset loading to `initialize()`
-- [ ] **6.3.9** Encapsulate globals (player_name, settings, etc.)
-- [ ] **6.3.10** Create main() that uses GameApplication
-- [ ] **6.3.11** Test + commit
+- [x] **6.3.7** Move pygame.init(), screen setup to `initialize()`
+- [x] **6.3.8** Move asset loading to `initialize()`
+- [x] **6.3.9** Encapsulate runtime globals (`settings`, `player_name`, `ui_style`) through `GameApplication`
+- [x] **6.3.10** Route classic main loop through `GameApplication` lifecycle fields (controller, event handler, running)
+- [x] **6.3.11** Test verification complete (focused controller + entrypoint suite)
 
 ## Phase 4: Integration & Cleanup
 
-- [ ] **6.4.1** Update main.py to import from src/
-- [ ] **6.4.2** Delete unused global variables from cribbage_pygame.py
-- [ ] **6.4.3** Create src/compat.py for any transition utilities
-- [ ] **6.4.4** Full test suite + ruff check
-- [ ] **6.4.5** Final commit + mark cribbage_pygame.py deprecated
+- [x] **6.4.1** Update main.py to import classic entrypoint via src compatibility layer
+- [x] **6.4.2** Delete unused global variables from cribbage_pygame.py (completed safe sweep; removed `show_computer_hand`, `ctx`, `state`, `winner_index`, `_rank_index`)
+- [x] **6.4.3** Create src/compat.py for transition utilities
+- [x] **6.4.4** Full test suite + ruff check
+- [~] **6.4.5** Final commit + mark cribbage_pygame.py deprecated (deprecated module header added; final commit pending)
 
 ## Metrics
 - **Starting**: 1 file (cribbage_pygame.py ~3500 LOC)
@@ -75,3 +75,9 @@
 - Add compat layer in src/ if needed
 - Run full test suite after each phase
 - Commits are atomic and describe phase+phase_num
+
+## Current Reality Check (May 20, 2026)
+- `src/input/event_handler.py` and `GameController.process(actions)` are active in gameplay and intro/settings loops.
+- `GameApplication` now owns the classic runtime loop handles (controller/event handler/running) and syncs runtime settings/name/style.
+- `main.py` now routes classic mode via `src.compat.run_classic_client()` instead of importing `cribbage_pygame` directly.
+- Renderer extraction is in progress (`BoardRenderer`, `AnimationManager` exist), but legacy draw helpers in `cribbage_pygame.py` are still heavily used.
