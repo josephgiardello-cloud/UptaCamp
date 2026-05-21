@@ -1,0 +1,61 @@
+{
+  "event_theme_category": {
+    "pegging_score": "boat",
+    "go_point": "boat",
+    "pegging_31": "boat",
+    "cards_dealt": "boat",
+    "crib_scored": "boat",
+    "hand_scored": "weather",
+    "round_start": "yankee_wisdom",
+    "game_start": "weather",
+    "player_won": "yankee_wisdom",
+    "bert_won": "boat",
+    "go_called": "weather",
+    "level_selected": "yankee_wisdom"
+  },
+  "thematic_phrases": {
+    "boat": [
+      "Like haulin traps at first light.",
+      "Bluebird work, one pull at a time.",
+      "Keep her straight and she'll answer.",
+      "No loose knots on this rail.",
+      "Like rowin the Bluebird in a side chop."
+    ],
+    "weather": [
+      "Lucky tide when it shows up.",
+      "Weather turns when it wants, not when asked.",
+      "Fog lifts slow but it lifts.",
+      "Same wind, different hands.",
+      "Rain don't ruin work, loose hands do."
+    ],
+    "woods": [
+      "Like a beater truck in mud season roads.",
+      "Same as cuttin wood: steady and square.",
+      "No need to swing wild in the timber."
+    ],
+    "tourist": [
+      "From away always wants the short map.",
+      "Hard tellin not knowin for folks from away.",
+      "Some roads only make sense local."
+    ],
+    "yankee_wisdom": [
+      "Tide don't care about talk.",
+      "Work first, story after.",
+      "You mind your hands and the rest comes around.",
+      "Well now, we'll see where she settles.",
+      "I hate to call it, but there it is."
+    ]
+  },
+  "repetition_policy": {
+    "immediate_repeat_window": 20,
+    "same_event_repeat_window": 25,
+    "session_callback_spacing": 8
+  },
+  "legal_guardrails": {
+    "forbidden_verbatim_fragments": [
+      "come down to the dock about six o'clock in the early morning",
+      "water come up to our necks before we decided to swim for it",
+      "standing invitation to ride on the bluebird ii with bert and i"
+    ]
+  }
+}

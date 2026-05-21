@@ -6,6 +6,7 @@ delegating to the legacy compatibility module during migration.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from src.input import EventHandler
@@ -43,11 +44,58 @@ class GameController:
 
     def handle_discard(self, event: Any) -> None:
         """Run discard-phase handler for a single event."""
-        self._get_legacy_module().handle_discard(event)
+        self._get_legacy_module().handle_discard(self._to_legacy_event(event))
 
     def handle_pegging(self, event: Any | None = None, *, auto_player: bool = False) -> None:
         """Run pegging-phase handler for a single event or auto-tick."""
-        self._get_legacy_module().handle_pegging(event, auto_player=auto_player)
+        self._get_legacy_module().handle_pegging(
+            self._to_legacy_event(event), auto_player=auto_player
+        )
+
+    def _to_legacy_event(self, payload: Any) -> Any:
+        """Convert normalized action dicts into pygame-like event objects.
+
+        Migration sends action dictionaries through controller.process(), while
+        legacy handlers still expect pygame event instances with .type/.pos.
+        """
+        if payload is None or not isinstance(payload, dict):
+            return payload
+
+        raw = payload.get("raw_event")
+        if raw is not None:
+            return raw
+
+        legacy = self._get_legacy_module()
+        pg = getattr(legacy, "pygame", None)
+        if pg is None:
+            return payload
+
+        action_type = str(payload.get("type", "")).upper()
+        mapped_type = {
+            "MOUSEBUTTONDOWN": getattr(pg, "MOUSEBUTTONDOWN", 0),
+            "MOUSEDOWN": getattr(pg, "MOUSEBUTTONDOWN", 0),
+            "MOUSEBUTTONUP": getattr(pg, "MOUSEBUTTONUP", 0),
+            "MOUSEUP": getattr(pg, "MOUSEBUTTONUP", 0),
+            "MOUSEMOTION": getattr(pg, "MOUSEMOTION", 0),
+            "MOUSEMOVE": getattr(pg, "MOUSEMOTION", 0),
+            "KEYDOWN": getattr(pg, "KEYDOWN", 0),
+            "KEYUP": getattr(pg, "KEYUP", 0),
+            "TEXTINPUT": getattr(pg, "TEXTINPUT", 0),
+        }.get(action_type, 0)
+
+        if mapped_type == 0:
+            return payload
+
+        return SimpleNamespace(
+            type=mapped_type,
+            pos=payload.get("pos"),
+            button=payload.get("button", 1),
+            rel=payload.get("rel", (0, 0)),
+            buttons=payload.get("buttons", (0, 0, 0)),
+            key=payload.get("key"),
+            mod=payload.get("mod", 0),
+            text=payload.get("text", ""),
+        )
 
     def handle_counting(self) -> None:
         """Run counting-phase handler."""

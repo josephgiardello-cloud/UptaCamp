@@ -1,5 +1,6 @@
 import argparse
 import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -159,6 +160,16 @@ def _run_state_client(args):
         clock.tick(60)
 
 
+def _run_once(args: Any) -> int:
+    # Default path: classic gameplay renderer/loop that matches screenshot-era visuals and mechanics.
+    if not args.new_client:
+        import cribbage_pygame as classic_client
+
+        return int(classic_client.main() or 0)
+
+    return int(_run_state_client(args) or 0)
+
+
 def main():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--debug-play", action="store_true")
@@ -172,15 +183,28 @@ def main():
         action="store_true",
         help="Run the new state-machine client (includes online UI). Default is classic gameplay client.",
     )
+    parser.add_argument(
+        "--auto-relaunch",
+        action="store_true",
+        help="Relaunch automatically after the game window closes.",
+    )
+    parser.add_argument(
+        "--relaunch-delay",
+        type=float,
+        default=0.75,
+        help="Seconds to wait before relaunch when --auto-relaunch is enabled.",
+    )
     args, _ = parser.parse_known_args()
 
-    # Default path: classic gameplay renderer/loop that matches screenshot-era visuals and mechanics.
-    if not args.new_client:
-        import cribbage_pygame as classic_client
+    if not bool(getattr(args, "auto_relaunch", False)):
+        return _run_once(args)
 
-        return classic_client.main()
-
-    return _run_state_client(args)
+    delay_s = max(0.0, float(getattr(args, "relaunch_delay", 0.75)))
+    while True:
+        code = _run_once(args)
+        print(f"[main] Game closed (exit={code}). Relaunching in {delay_s:.2f}s...")
+        if delay_s > 0:
+            time.sleep(delay_s)
 
 
 if __name__ == "__main__":

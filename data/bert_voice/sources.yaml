@@ -1,0 +1,57 @@
+sources:
+  - id: bert_and_i_opening_1958
+    title: Bert and I (opening story)
+    era: 1958
+    speaker: Marshall Dodge
+    confidence: high
+    allowed_for_style_use: true
+    source_url: https://www.quakermarine.com/blogs/journal/the-voice-of-downeast-maine
+    excerpt: >-
+      Bert and I come down to the dock about six o'clock in the early morning...
+      (opening Bluebird story excerpt; mishap, fog, rescue, invitation)
+    notes: Direct-era material used as canonical cadence anchor.
+
+  - id: which_way_to_millinocket_1958
+    title: Which Way to Millinocket?
+    era: 1958
+    speaker: Marshall Dodge
+    confidence: high
+    allowed_for_style_use: true
+    source_url: https://www.youtube.com/
+    excerpt: >-
+      Come to think of it, you can't get there from here.
+    notes: Directional meander plus dry stinger archetype.
+
+  - id: downeast_smile_in_1970
+    title: PBS Downeast Smile-In performance
+    era: 1970
+    speaker: Marshall Dodge
+    confidence: high
+    allowed_for_style_use: true
+    source_url: https://www.pbs.org/video/down-east-smile-in-marshall-dodge/
+    excerpt: >-
+      Throw 'em aboard, Burt... Cut engine, Burt...
+      (live retelling with sound effects)
+    notes: Performance pacing and deadpan escalation reference.
+
+  - id: tim_sample_reflects_2017
+    title: Tim Sample reflects on a life with Maine humor
+    era: 2017
+    speaker: Tim Sample interview
+    confidence: medium_high
+    allowed_for_style_use: true
+    source_url: https://www.boothbayregister.com/node/85333
+    excerpt: >-
+      They had not just the dialect, but the attitude... unflappable to a high degree.
+    notes: Cultural attitude and delivery guide; not a linguistic corpus.
+
+  - id: wayback_what_about_bert_and_i_2006
+    title: What about Bert and I?
+    era: 2006
+    speaker: Tim Sample
+    confidence: medium
+    allowed_for_style_use: true
+    source_url: https://web.archive.org/web/20060307170920/http://www.timsample.com/bertandi.html
+    excerpt: >-
+      The original recordings have been preserved and are available again.
+    notes: Provenance and performer context.

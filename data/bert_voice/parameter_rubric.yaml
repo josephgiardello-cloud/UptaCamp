@@ -1,0 +1,50 @@
+rubric:
+  neutral:
+    idiom_density: 3
+    directness: 3
+    sharpness: 2
+    verbosity: 3
+    humor_dryness: 5
+    dialect_marker_rate: 3
+  frustrated:
+    idiom_density: 4
+    directness: 3
+    sharpness: 3
+    verbosity: 2
+    humor_dryness: 5
+    dialect_marker_rate: 3
+  hot:
+    idiom_density: 4
+    directness: 4
+    sharpness: 4
+    verbosity: 2
+    humor_dryness: 5
+    dialect_marker_rate: 3
+  boiling:
+    idiom_density: 4
+    directness: 4
+    sharpness: 5
+    verbosity: 1
+    humor_dryness: 5
+    dialect_marker_rate: 3
+  focused:
+    idiom_density: 3
+    directness: 4
+    sharpness: 2
+    verbosity: 2
+    humor_dryness: 5
+    dialect_marker_rate: 2
+  stoic:
+    idiom_density: 4
+    directness: 3
+    sharpness: 2
+    verbosity: 2
+    humor_dryness: 5
+    dialect_marker_rate: 3
+  clinical:
+    idiom_density: 3
+    directness: 5
+    sharpness: 3
+    verbosity: 1
+    humor_dryness: 5
+    dialect_marker_rate: 2

@@ -533,7 +533,12 @@ class BoardRenderer:
         if self.context.screen is None:
             return
 
-        btn = legacy._primary_button_rect(sw, sh)
+        button_rect = getattr(legacy, "_primary_button_rect", None)
+        if callable(button_rect):
+            btn = button_rect(sw, sh)
+        else:
+            w, h = 260, 60
+            btn = pygame.Rect(sw // 2 - w // 2, sh - 180, w, h)
         is_hover = btn.collidepoint(pygame.mouse.get_pos())
         if is_hover:
             btn = btn.move(0, -2)
@@ -587,7 +592,7 @@ class BoardRenderer:
 
         dealer_name = "Bert" if dad_ai_level in (4, 5) else "AI"
         playfield = legacy._playfield_rect(self.context.screen)
-        panel_w, panel_h = 252, 172
+        panel_w, panel_h = 252, 194
         panel_margin = 20
         dealer_row_bottom = 170 + 159
         panel_x = playfield.right - panel_w - panel_margin
@@ -657,6 +662,23 @@ class BoardRenderer:
             small_font,
             (164, 177, 208) if self.context.ui_style == "competitive_minimal" else (214, 203, 174),
         )
+
+        if dad_ai_level == 5:
+            try:
+                posture = legacy.bert_persona.level5_play_posture(
+                    {"player_score": int(scores[0]), "bert_score": int(scores[1])}
+                )
+            except Exception:
+                posture = "balanced"
+            legacy._draw_label(
+                self.context.screen,
+                f"Bert Posture: {posture.title()}",
+                (panel_rect.x + 18, panel_rect.y + 168),
+                small_font,
+                (154, 173, 209)
+                if self.context.ui_style == "competitive_minimal"
+                else (196, 215, 174),
+            )
 
     def draw_header(self, message: str) -> None:
         """Draw game header with message.

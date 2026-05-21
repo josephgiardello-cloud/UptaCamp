@@ -19,12 +19,34 @@ class BertAgent:
     each hand, applying the same terminal reward to each visited state-action.
     """
 
-    def __init__(self, learning_rate: float = 0.1, discount: float = 0.95, epsilon: float = 0.2):
+    def __init__(self, learning_rate: float = 0.12, discount: float = 0.93, epsilon: float = 0.18):
         self.q_table: defaultdict[tuple[str, Any], float] = defaultdict(float)
         self.lr = float(learning_rate)
         self.gamma = float(discount)
         self.epsilon = float(epsilon)
         self._trajectory: list[tuple[str, Any]] = []
+        self.games_played = 0
+        self.posture = "balanced"
+
+    def set_posture(self, posture: str) -> None:
+        valid = {"balanced", "aggressive", "deliberate", "cutthroat"}
+        self.posture = posture if posture in valid else "balanced"
+
+    def get_posture_from_score(self, bert_score: int, player_score: int) -> str:
+        """Map score gap to play posture for strategy/dialogue sync.
+
+        Gap is bert_score - player_score.
+        """
+        gap = int(bert_score) - int(player_score)
+        if gap <= -22:
+            return "cutthroat"
+        if gap <= -12:
+            return "aggressive"
+        if gap >= 18:
+            return "deliberate"
+        if gap >= 9:
+            return "balanced"
+        return "balanced"
 
     def _discard_state_key(self, hand_labels: Sequence[str], state: GameState) -> str:
         hand_vals = tuple(
@@ -50,18 +72,66 @@ class BertAgent:
             last_val = cards.value_for_fifteen(cards.parse_card_label(last)[0])
         return f"pegging|total{int(current_total)}|hand{hand_vals}|last{last_val}|scores{scores}"
 
-    def choose_discard(self, hand_labels: Sequence[str], state: GameState) -> tuple[int, int]:
+    def _discard_posture_bonus(
+        self,
+        hand_labels: Sequence[str],
+        action: tuple[int, int],
+        state: GameState,
+        posture: str | None = None,
+    ) -> float:
+        posture = posture or self.posture
+        if posture == "balanced":
+            return 0.0
+
+        keep_idxs = [i for i in range(len(hand_labels)) if i not in action]
+        keep_vals = [
+            cards.value_for_fifteen(cards.parse_card_label(hand_labels[i])[0]) for i in keep_idxs
+        ]
+        discard_vals = [
+            cards.value_for_fifteen(cards.parse_card_label(hand_labels[i])[0]) for i in action
+        ]
+
+        low_keep = sum(1 for v in keep_vals if v <= 5)
+        fives_keep = sum(1 for v in keep_vals if v == 5)
+        discard_crib_risk = sum(1 for v in discard_vals if v in {5, 10})
+
+        if posture == "cutthroat":
+            # High-pressure catch-up mode: keep volatile scorers and punish crib leaks.
+            return 0.28 * low_keep + 0.48 * fives_keep - 0.15 * discard_crib_risk
+
+        if posture == "aggressive":
+            # Chase volatile scoring by preserving low/five-heavy pegging potential.
+            return 0.24 * low_keep + 0.42 * fives_keep
+
+        # deliberate: reduce obvious crib leaks and prefer steadier keeps.
+        dealer_is_bert = state.dealer == 1
+        crib_risk_penalty = -0.22 * discard_crib_risk
+        if dealer_is_bert:
+            crib_risk_penalty *= -0.4  # Dealer can tolerate/select for crib value more.
+        return crib_risk_penalty + 0.06 * low_keep
+
+    def choose_discard(
+        self,
+        hand_labels: Sequence[str],
+        state: GameState,
+        posture: str | None = None,
+    ) -> tuple[int, int]:
         from itertools import combinations
 
         actions = list(combinations(range(len(hand_labels)), 2))
         if not actions:
             return (0, 1)
 
+        posture = posture or self.posture
         state_key = self._discard_state_key(hand_labels, state)
         if random.random() < self.epsilon:
             action = random.choice(actions)
         else:
-            action = max(actions, key=lambda a: self.q_table[(state_key, a)])
+            action = max(
+                actions,
+                key=lambda a: self.q_table[(state_key, a)]
+                + self._discard_posture_bonus(hand_labels, a, state, posture),
+            )
 
         self._trajectory.append((state_key, action))
         return action
@@ -71,6 +141,7 @@ class BertAgent:
         hand_labels: Sequence[str],
         current_total: int,
         state: GameState,
+        posture: str | None = None,
     ) -> int | None:
         legal = [
             i
@@ -80,11 +151,37 @@ class BertAgent:
         if not legal:
             return None
 
+        posture = posture or self.posture
         state_key = self._pegging_state_key(hand_labels, current_total, state)
         if random.random() < self.epsilon:
             action = random.choice(legal)
         else:
-            action = max(legal, key=lambda i: self.q_table[(state_key, i)])
+            def _pegging_posture_bonus(idx: int) -> float:
+                rank = cards.parse_card_label(hand_labels[idx])[0]
+                val = cards.value_for_fifteen(rank)
+                new_total = current_total + val
+
+                if posture in {"aggressive", "cutthroat"}:
+                    bonus = 0.0
+                    if new_total >= 24:
+                        bonus += 0.45
+                    if val <= 5:
+                        bonus += 0.24
+                    if posture == "cutthroat" and new_total in {26, 27, 28, 29, 30, 31}:
+                        bonus += 0.18
+                    return bonus
+
+                if posture == "deliberate":
+                    bonus = 0.0
+                    if new_total in {16, 17, 18, 24}:
+                        bonus += 0.22
+                    if val == 5 and current_total == 0:
+                        bonus -= 0.36
+                    return bonus
+
+                return 0.0
+
+            action = max(legal, key=lambda i: self.q_table[(state_key, i)] + _pegging_posture_bonus(i))
 
         self._trajectory.append((state_key, action))
         return action
@@ -94,12 +191,14 @@ class BertAgent:
         if not self._trajectory:
             return
 
+        self.games_played += 1
+        effective_lr = self.lr * (0.999 ** (self.games_played // 50))
         target = float(hand_reward)
         for depth, (state_key, action) in enumerate(reversed(self._trajectory)):
             decay = self.gamma**depth
             td_target = target * decay
             old = self.q_table[(state_key, action)]
-            self.q_table[(state_key, action)] = old + self.lr * (td_target - old)
+            self.q_table[(state_key, action)] = old + effective_lr * (td_target - old)
         self._trajectory.clear()
 
     def update(

@@ -81,67 +81,74 @@ def _pegging_episode_reward(
 def train(
     episodes: int,
     model_path: Path,
-    learning_rate: float,
-    discount: float,
-    epsilon: float,
-    epsilon_decay: float,
-    min_epsilon: float,
+    learning_rate: float = 0.12,
+    discount: float = 0.93,
+    epsilon: float = 0.35,
+    epsilon_decay: float = 0.9992,
+    min_epsilon: float = 0.03,
 ) -> BertAgent:
     deck = _canonical_deck_labels()
     agent = BertAgent(learning_rate=learning_rate, discount=discount, epsilon=epsilon)
 
+    print("Starting Bert training... Hard tellin' not knowin' how sharp he'll get.")
+
     for episode in range(episodes):
-        # Discard learning sample.
-        discard_state = GameState(
-            dealer=random.randint(0, 1),
-            scores=[random.randint(0, 120), random.randint(0, 120)],
-        )
+        # Discard learning sample with more realistic mid-game score distributions.
+        dealer = random.randint(0, 1)
+        scores = [random.randint(40, 110), random.randint(40, 110)]
+        discard_state = GameState(dealer=dealer, scores=scores)
+        posture = agent.get_posture_from_score(scores[1], scores[0])
+        agent.set_posture(posture)
+
         hand = random.sample(deck, 6)
-        action = agent.choose_discard(hand, discard_state)
+        action = agent.choose_discard(hand, discard_state, posture=posture)
         reward = _discard_episode_reward(
             hand_labels=hand,
             discard_indices=action,
-            dealer_is_dad=(discard_state.dealer == 1),
+            dealer_is_dad=(dealer == 1),
             deck_labels=deck,
-            trials=24,
+            trials=40 if episode < episodes // 2 else 80,
         )
         agent.end_of_hand_update(reward)
 
-        # Pegging learning sample.
-        pegging_state = GameState(scores=[random.randint(0, 120), random.randint(0, 120)])
-        pegging_hand = random.sample(deck, 4)
-        current_total = random.randint(0, 24)
-        current_pile = random.sample(deck, k=random.randint(0, 3))
-        pegging_state.pegging_pile = current_pile
+        # Pegging learning sample appears more often than discard-only turns.
+        if random.random() < 0.7:
+            pegging_state = GameState(dealer=dealer, scores=scores)
+            pegging_hand = random.sample(deck, 4)
+            current_total = random.randint(0, 26)
+            current_pile = random.sample(deck, k=random.randint(0, 4))
+            pegging_state.pegging_pile = current_pile
 
-        idx = agent.choose_pegging(pegging_hand, current_total, pegging_state)
-        if idx is not None:
-            peg_reward = _pegging_episode_reward(pegging_hand, idx, current_total, current_pile)
-            agent.end_of_hand_update(peg_reward)
-        else:
-            agent.reset_hand_memory()
+            idx = agent.choose_pegging(pegging_hand, current_total, pegging_state, posture=posture)
+            if idx is not None:
+                peg_reward = _pegging_episode_reward(pegging_hand, idx, current_total, current_pile)
+                agent.end_of_hand_update(peg_reward)
+            else:
+                agent.reset_hand_memory()
 
         agent.epsilon = max(min_epsilon, agent.epsilon * epsilon_decay)
 
         if (episode + 1) % max(1, episodes // 10) == 0:
             print(
-                f"episode={episode + 1}/{episodes} epsilon={agent.epsilon:.4f} "
+                f"Episode {episode + 1}/{episodes} | "
+                f"epsilon={agent.epsilon:.4f} | "
                 f"q_entries={len(agent.q_table)}"
             )
 
     agent.save(model_path)
+    print(f"Training finished. Model saved to {model_path}")
     return agent
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train Bert Learning AI model")
-    parser.add_argument("--episodes", type=int, default=5000)
+    parser = argparse.ArgumentParser(description="Train Bert Downeast Cribbage Agent")
+    parser.add_argument("--episodes", type=int, default=12000)
     parser.add_argument("--model-path", type=Path, default=Path("bert_model.pkl"))
-    parser.add_argument("--lr", type=float, default=0.12)
-    parser.add_argument("--discount", type=float, default=0.95)
-    parser.add_argument("--epsilon", type=float, default=0.35)
-    parser.add_argument("--epsilon-decay", type=float, default=0.9992)
-    parser.add_argument("--min-epsilon", type=float, default=0.03)
+    parser.add_argument("--lr", type=float, default=0.11)
+    parser.add_argument("--discount", type=float, default=0.93)
+    parser.add_argument("--epsilon", type=float, default=0.40)
+    parser.add_argument("--epsilon-decay", type=float, default=0.99915)
+    parser.add_argument("--min-epsilon", type=float, default=0.018)
     parser.add_argument("--seed", type=int, default=42)
     return parser
 
@@ -161,7 +168,6 @@ def main() -> None:
         epsilon_decay=float(args.epsilon_decay),
         min_epsilon=float(args.min_epsilon),
     )
-    print(f"Saved model to {args.model_path}")
 
 
 if __name__ == "__main__":

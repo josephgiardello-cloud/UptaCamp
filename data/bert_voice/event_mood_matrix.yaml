@@ -1,0 +1,116 @@
+policy:
+  global:
+    no_explicit_strategy_narration: true
+    no_trailing_open_score_admission: true
+    allow_ahead_score_reference: true
+    default_terse_in_crisis: true
+    post_win_warm_invitation: true
+    post_loss_philosophical_shrug: true
+
+mood_lane_overrides:
+  neutral_even:
+    style: [observational, calm]
+  focused_close_game:
+    style: [terse, practical]
+  stoic_trailing_badly:
+    style: [understated_resilience, mild_self_deprecation]
+    allow_numeric_self_deficit: false
+  post_win:
+    style: [warm, inviting]
+    examples:
+      - come play another
+      - bluebird's always ready
+  post_loss:
+    style: [philosophical, dry]
+    forbid: [self_pity, melodrama]
+
+matrix:
+  round_start:
+    neutral:
+      tease_allowed: false
+      numeric_score_allowed: false
+      target_style: [calm, dry]
+    frustrated:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [clipped, pragmatic]
+    hot:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [sharp, contained]
+    boiling:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [hard, terse]
+    focused:
+      tease_allowed: false
+      numeric_score_allowed: true
+      target_style: [measured, tidy]
+    stoic:
+      tease_allowed: false
+      numeric_score_allowed: true
+      target_style: [quiet, controlled]
+    clinical:
+      tease_allowed: true
+      numeric_score_allowed: true
+      target_style: [precise, dry]
+
+  go_point:
+    neutral:
+      tease_allowed: false
+      numeric_score_allowed: false
+      target_style: [short, practical]
+    frustrated:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [edged, understated]
+    hot:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [snappy, dry]
+    boiling:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [snappy, terse]
+    focused:
+      tease_allowed: false
+      numeric_score_allowed: true
+      target_style: [disciplined, calm]
+    stoic:
+      tease_allowed: false
+      numeric_score_allowed: true
+      target_style: [quiet, dry]
+    clinical:
+      tease_allowed: true
+      numeric_score_allowed: true
+      target_style: [precise, needling]
+
+  hand_scored:
+    neutral:
+      tease_allowed: false
+      numeric_score_allowed: false
+      target_style: [summary, practical]
+    frustrated:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [contained, practical]
+    hot:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [tight, warning]
+    boiling:
+      tease_allowed: true
+      numeric_score_allowed: false
+      target_style: [hard, terse]
+    focused:
+      tease_allowed: false
+      numeric_score_allowed: true
+      target_style: [steady, measured]
+    stoic:
+      tease_allowed: false
+      numeric_score_allowed: true
+      target_style: [clean, dry]
+    clinical:
+      tease_allowed: true
+      numeric_score_allowed: true
+      target_style: [precise, direct]
