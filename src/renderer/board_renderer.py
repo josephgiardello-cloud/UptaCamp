@@ -4,7 +4,8 @@ This module gradually migrates pygame drawing code from cribbage_pygame.py.
 Initially acts as a facade, then contains direct implementations.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 class RenderingContext:
@@ -102,6 +103,7 @@ class BoardRenderer:
     def draw_gameplay_backdrop(self, *, gameplay_background: Any, playfield_alpha: int) -> None:
         """Draw the gameplay table background for current style."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -156,6 +158,7 @@ class BoardRenderer:
     def draw_player_hand_lane(self, *, session: Any, sw: int, sh: int) -> None:
         """Draw player's hand cards with hover lift."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -188,6 +191,7 @@ class BoardRenderer:
     def draw_ai_hand_lane(self, *, session: Any, sw: int) -> None:
         """Draw opponent hand backs and label."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -220,6 +224,7 @@ class BoardRenderer:
     ) -> tuple[int, tuple[int, int]]:
         """Draw pegging lane and stacked pegging cards."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -266,6 +271,7 @@ class BoardRenderer:
     ) -> None:
         """Draw pegging running total chip."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -304,6 +310,7 @@ class BoardRenderer:
     ) -> None:
         """Draw end-of-hand scoring panels and round summary."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -376,6 +383,7 @@ class BoardRenderer:
     ) -> None:
         """Draw a breakdown panel for one side during end-of-hand scoring."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -444,6 +452,7 @@ class BoardRenderer:
     ) -> None:
         """Draw centered round summary popup."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -528,6 +537,7 @@ class BoardRenderer:
     def draw_end_or_game_over_button(self, *, phase: str, sw: int, sh: int) -> None:
         """Draw end/game over action button."""
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -574,6 +584,7 @@ class BoardRenderer:
             game_state: Current GameState object
         """
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:
@@ -732,6 +743,7 @@ class BoardRenderer:
             game_state: Current GameState object
         """
         import pygame
+
         import cribbage_pygame as legacy
 
         if self.context.screen is None:

@@ -34,6 +34,9 @@ class EngineAdapter:
         s.message = self.legacy.message
         s.dad_ai_level = self.legacy.dad_ai_level
         s.stock_labels = list(self.legacy._stock_labels)
+        s.winner = getattr(self.legacy, "winner", None)
+        s.player_name = getattr(self.legacy, "player_name", "")
+        s.ai_name = getattr(self.legacy, "ai_name", s.ai_name)
 
     def update_globals_from_engine(self) -> None:
         s = self.engine.state
@@ -53,3 +56,9 @@ class EngineAdapter:
         self.legacy.message = s.message
         self.legacy.dad_ai_level = s.dad_ai_level
         self.legacy._stock_labels[:] = s.stock_labels
+        if hasattr(self.legacy, "winner"):
+            self.legacy.winner = s.winner
+        if hasattr(self.legacy, "player_name"):
+            self.legacy.player_name = s.player_name
+        if hasattr(self.legacy, "ai_name"):
+            self.legacy.ai_name = s.ai_name

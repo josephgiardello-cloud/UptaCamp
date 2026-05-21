@@ -1,8 +1,8 @@
 """Renderer for intro-screen controls and difficulty cards."""
 
 import math
-from typing import TypedDict
 from collections.abc import Sequence
+from typing import TypedDict
 
 import pygame
 

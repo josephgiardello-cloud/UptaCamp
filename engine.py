@@ -11,6 +11,7 @@ from game_state import GameState
 class CribbageEngine:
     def __init__(self, *, debug_validate: bool = False):
         self.state = GameState()
+        self.voice: Any | None = None
         self.score_func = cribbage_cards.score_hand
         # Debug builds validate postconditions after mutating public methods.
         self._debug_validate = bool(debug_validate)
@@ -252,7 +253,7 @@ class CribbageEngine:
         self._validate_state_if_enabled()
         return True
 
-    def count_hands(self, label_to_model_card: Callable[[str], Any]) -> dict:
+    def count_hands(self, label_to_model_card: Callable[[str], Any]) -> dict[str, Any]:
         if self.state.starter_card is None:
             self.state.phase = "end"
             self.state.message = "No starter card available. Press R to reset."
@@ -315,3 +316,95 @@ class CribbageEngine:
     @staticmethod
     def _parse_label(label: str) -> tuple[str, str]:
         return cribbage_cards.parse_card_label(label)
+
+    def load_remote_snapshot(self, snapshot: dict[str, Any]) -> None:
+        state = self.state
+        for key, value in snapshot.items():
+            setattr(state, key, value)
+
+        # Remote match state stores a few ad-hoc orchestration fields.
+        if not hasattr(state, "deal_ready"):
+            state.deal_ready = []
+        if not hasattr(state, "discard_by_player"):
+            state.discard_by_player = {}
+        if not hasattr(state, "pegging_pile"):
+            state.pegging_pile = []
+        if not hasattr(state, "pegging_running_total"):
+            state.pegging_running_total = 0
+        if not hasattr(state, "pegging_passes"):
+            state.pegging_passes = [False, False]
+        if not hasattr(state, "last_pegging_player"):
+            state.last_pegging_player = None
+        if not hasattr(state, "last_action"):
+            state.last_action = None
+
+    def dump_remote_snapshot(self) -> dict[str, Any]:
+        state = self.state
+        return dict(vars(state))
+
+    def apply_remote_action(
+        self,
+        *,
+        player_id: str,
+        player_one_id: str,
+        player_two_id: str,
+        action_type: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        state = self.state
+        phase = str(getattr(state, "phase", "deal"))
+
+        if phase == "deal" and action_type == "deal_ready":
+            ready = set(getattr(state, "deal_ready", []))
+            ready.add(player_id)
+            state.deal_ready = sorted(ready)
+            if len(state.deal_ready) >= 2:
+                state.phase = "discard"
+                state.phase_index = 1
+                state.phase_progress = 0
+
+        elif phase == "discard" and action_type == "discard":
+            discards = dict(getattr(state, "discard_by_player", {}))
+            discards[player_id] = list(payload.get("cards", []))
+            state.discard_by_player = discards
+            if len(state.discard_by_player) >= 2:
+                state.phase = "pegging"
+                state.phase_index = 2
+                state.phase_progress = 0
+
+        elif phase == "pegging" and action_type == "peg":
+            idx = 0 if player_id == player_one_id else 1
+            card_label = str(payload.get("card"))
+            pile = list(getattr(state, "pegging_pile", []))
+            running_total = int(getattr(state, "pegging_running_total", 0))
+            rank, _ = cribbage_cards.parse_card_label(card_label)
+            projected_total = running_total + cribbage_cards.value_for_fifteen(rank)
+            if projected_total > 31:
+                pile = []
+                running_total = 0
+                projected_total = cribbage_cards.value_for_fifteen(rank)
+
+            pile.append(card_label)
+            pegging_points = int(cribbage_cards.score_pegging_play(pile))
+            state.scores[idx] += pegging_points
+            state.pegging_pile = pile
+            state.pegging_running_total = projected_total
+            state.last_pegging_player = idx
+            payload = {**payload, "running_total": projected_total, "points": pegging_points}
+            if projected_total == 31:
+                state.pegging_pile = []
+                state.pegging_running_total = 0
+                state.pegging_passes = [False, False]
+
+        elif phase == "counting" and action_type == "count":
+            points = payload.get("points")
+            if isinstance(points, int):
+                idx = 0 if player_id == player_one_id else 1
+                state.scores[idx] += points
+
+        state.last_action = {
+            "player_id": player_id,
+            "action_type": action_type,
+            "payload": payload,
+        }
+        return self.dump_remote_snapshot()

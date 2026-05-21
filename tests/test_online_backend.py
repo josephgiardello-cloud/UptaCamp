@@ -185,6 +185,49 @@ def test_phase_progression_auto_finishes_and_updates_elo(backend: OnlineBackend)
     assert p2_profile["games_played"] == 1
 
 
+def test_pegging_running_total_and_points_are_server_authoritative(backend: OnlineBackend) -> None:
+    p1 = backend.login_player("Alice", player_id="p1")
+    p2 = backend.login_player("Bob", player_id="p2")
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+
+    _submit_signed(backend, p1.session_token, match_id, "p1", "deal_ready", {"ready": True}, "s1")
+    _submit_signed(backend, p2.session_token, match_id, "p2", "deal_ready", {"ready": True}, "s2")
+    _submit_signed(
+        backend,
+        p1.session_token,
+        match_id,
+        "p1",
+        "discard",
+        {"cards": ["5_of_hearts", "6_of_hearts"]},
+        "s3",
+    )
+    _submit_signed(
+        backend,
+        p2.session_token,
+        match_id,
+        "p2",
+        "discard",
+        {"cards": ["7_of_hearts", "8_of_hearts"]},
+        "s4",
+    )
+
+    _submit_signed(
+        backend,
+        p1.session_token,
+        match_id,
+        "p1",
+        "peg",
+        {"card": "10_of_hearts", "running_total": 99, "points": 9},
+        "s5",
+    )
+
+    details = backend.get_match_details(match_id)
+    state = details["game_state"]
+    assert state["pegging_running_total"] == 10
+    assert state["scores"][0] == 0
+
+
 def test_finish_match_updates_elo_and_stats(backend: OnlineBackend) -> None:
     invite = backend.create_invite("p1")
     match_id = backend.accept_invite(invite, "p2")

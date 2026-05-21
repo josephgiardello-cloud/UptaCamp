@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
+import cards as cribbage_cards
 from bert_persona import choose_line
 from engine import CribbageEngine
 from voice_manager import VoiceManager
@@ -68,6 +69,23 @@ class DiscardState(BasePhaseState):
         engine.state.message = "Select two cards to discard to the crib."
         self._speak_event(engine, "cards_dealt", ctx)
 
+    def handle_event(
+        self,
+        event: Any,
+        engine: CribbageEngine,
+        ctx: dict[str, Any] | None = None,
+    ) -> str | None:
+        if not isinstance(event, dict):
+            return None
+        event_dict = cast(dict[str, Any], event)
+        if event_dict.get("action") != "discard":
+            return None
+        selected = cast(list[int], event_dict.get("selected_indices", []))
+        if not isinstance(selected, list):
+            return None
+        engine.handle_discard(selected)
+        return engine.state.phase if engine.state.phase != self.phase_name else None
+
 
 class PeggingState(BasePhaseState):
     phase_name = "pegging"
@@ -78,6 +96,65 @@ class PeggingState(BasePhaseState):
         engine.state.message = "Pegging phase."
         self._speak_event(engine, "round_start", ctx)
 
+    def update(self, engine: CribbageEngine) -> str | None:
+        # Auto-progress once both hands are exhausted.
+        if engine.finalize_pegging_if_complete(
+            lambda: cribbage_cards.pegging_total(engine.state.pegging_pile)
+        ):
+            return engine.state.phase
+
+        # Let AI make pegging plays in this phase when it's AI turn.
+        if engine.state.player_turn == 1 and engine.state.ai_hand:
+            current_total = cribbage_cards.pegging_total(engine.state.pegging_pile)
+            ai_index = engine.ai_pegging_move(
+                current_total=current_total,
+                value_for_15=cribbage_cards.value_for_fifteen,
+                parse_label=cribbage_cards.parse_card_label,
+                score_pegging_play=cribbage_cards.score_pegging_play,
+                label_card_factory=lambda label: type("_CardRef", (), {"label": label})(),
+            )
+            if isinstance(ai_index, int):
+                engine.play_pegging_card(
+                    player_idx=1,
+                    card_index=ai_index,
+                    score_pegging_play=cribbage_cards.score_pegging_play,
+                    value_for_15=cribbage_cards.value_for_fifteen,
+                    parse_label=cribbage_cards.parse_card_label,
+                )
+        return None
+
+    def handle_event(
+        self,
+        event: Any,
+        engine: CribbageEngine,
+        ctx: dict[str, Any] | None = None,
+    ) -> str | None:
+        if not isinstance(event, dict):
+            return None
+        event_dict = cast(dict[str, Any], event)
+        if event_dict.get("action") != "peg_play":
+            return None
+        if engine.state.player_turn != 0:
+            return None
+
+        card_index = cast(int | None, event_dict.get("card_index"))
+        if not isinstance(card_index, int):
+            return None
+
+        engine.play_pegging_card(
+            player_idx=0,
+            card_index=card_index,
+            score_pegging_play=cribbage_cards.score_pegging_play,
+            value_for_15=cribbage_cards.value_for_fifteen,
+            parse_label=cribbage_cards.parse_card_label,
+            player_name=engine.state.player_name or "Player",
+        )
+        if engine.finalize_pegging_if_complete(
+            lambda: cribbage_cards.pegging_total(engine.state.pegging_pile)
+        ):
+            return engine.state.phase
+        return None
+
 
 class CountingState(BasePhaseState):
     phase_name = "counting"
@@ -86,6 +163,20 @@ class CountingState(BasePhaseState):
     def enter(self, engine: CribbageEngine, ctx: dict[str, Any] | None = None) -> None:
         engine.state.message = "Counting hands and crib."
         self._speak_event(engine, "hand_scored", ctx)
+
+    def update(self, engine: CribbageEngine) -> str | None:
+        result = engine.count_hands(cribbage_cards.label_to_card)
+        winner = 0 if engine.state.scores[0] >= 121 else (1 if engine.state.scores[1] >= 121 else None)
+        if winner is not None:
+            engine.state.winner = winner
+            engine.state.phase = "game_over"
+            return "game_over"
+        engine.state.message = (
+            f"Round counted: You +{result['player']}, "
+            f"{engine.state.ai_name} +{result['ai']}, crib +{result['crib']}."
+        )
+        engine.state.phase = "end"
+        return "end"
 
 
 class EndState(BasePhaseState):
@@ -123,7 +214,7 @@ class PhaseStateMachine:
             "game_over": GameOverState(),
         }
         if self.voice is not None:
-            setattr(self.engine, "voice", self.voice)
+            self.engine.voice = self.voice
         self.current.enter(self.engine, None)
 
     @property

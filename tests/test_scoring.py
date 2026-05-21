@@ -66,7 +66,7 @@ def test_pegging_score_with_new_card_parameter():
     assert score_pegging_play(pile, "6_of_spades") >= 3
 
 
-def test_find_all_runs_returns_longest_runs_only():
+def test_find_all_runs_includes_multiple_lengths_and_multiplicity():
     cards = [
         Card("3", "Clubs"),
         Card("3", "Diamonds"),
@@ -76,5 +76,14 @@ def test_find_all_runs_returns_longest_runs_only():
     ]
     runs = find_all_runs(cards)
     assert runs
-    assert all(run_len == 4 for run_len, _, _ in runs)
-    assert sum(mult for _, mult, _ in runs) == 2
+    assert len(runs) == 1
+    run_len, multiplicity, run_cards = runs[0]
+    assert run_len == 4
+    assert multiplicity == 2
+    assert sorted(str(card) for card in run_cards) == [
+        "3 of Clubs",
+        "3 of Diamonds",
+        "4 of Hearts",
+        "5 of Spades",
+        "6 of Clubs",
+    ]
