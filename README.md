@@ -1,6 +1,6 @@
 # UptaCamp - The Camp Cribbage Game
 
-UptaCamp is a Python + Pygame cribbage game with a polished local client, a newer state-driven client path, and an online backend/websocket stack.
+UptaCamp is a Python + Pygame cribbage game with a state-driven local client and an online backend/websocket stack.
 
 ## Highlights
 
@@ -9,12 +9,14 @@ UptaCamp is a Python + Pygame cribbage game with a polished local client, a newe
   - hand scoring (`score_hand`)
   - pegging scoring (`score_pegging_play`)
   - run detection with multiplicity (`find_all_runs`)
-- Four AI levels:
+- Six AI tiers in the intro flow:
   - 1 Easy
   - 2 Medium
   - 3 Hard
-  - 4 Brutal
-- Classic visual client with animation/audio effects.
+  - 4 Bert
+  - 5 Old House (Barnabas)
+  - 6 Barnabas (unlock/progression gated)
+- State-driven visual client with animation/audio effects.
 - Online API + websocket stack with auth tokens, turn validation, idempotency, matchmaking, profile/leaderboard data.
 - Test and static-analysis gates integrated and actively used.
 
@@ -54,16 +56,10 @@ pip install -e .[dev]
 
 ## Running The Game
 
-### Default launch (classic client)
+### Default launch (state-driven client)
 
 ```bash
 python main.py
-```
-
-### State-driven client path
-
-```bash
-python main.py --new-client
 ```
 
 ### Play online with a friend (easy mode)
@@ -78,7 +74,7 @@ python online_ws_server.py --host 127.0.0.1 --port 8790 --db online_state.db
 2. Start the client:
 
 ```bash
-python main.py --new-client --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
+python main.py --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
 ```
 
 3. In-game flow:
@@ -92,17 +88,17 @@ python main.py --new-client --online-url http://127.0.0.1:8787 --online-ws-url w
 ### Online client path (advanced)
 
 ```bash
-python main.py --new-client --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
+python main.py --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
 ```
 
-## Controls (Classic Client)
+## Controls
 
 - `Enter`/`Space`: start from intro.
-- `1`/`2`/`3`/`4`: set AI level on intro.
-- `F2`: cycle AI level in-session.
-- Mouse click: select discard cards and play pegging cards.
+- Mouse click: choose difficulty on intro, select discard cards, and play pegging cards.
+- Click player-name field on intro: edit profile name, `Enter` to save.
 - `R`: next round (end screen) or back to intro (game over).
 - `O`: jump to online mode from intro.
+- `P`: jump to direct P2P lobby from intro.
 - `S`: settings modal on intro.
 
 ## Rules Coverage
@@ -123,13 +119,11 @@ Target score is 121.
 ```text
 .
 |- main.py
-|- cribbage_pygame.py
 |- engine.py
 |- game_state.py
 |- phase_states.py
 |- cards.py
 |- ai_strategy.py
-|- adapter.py
 |- app_context.py
 |- stats_manager.py
 |- online_api_server.py

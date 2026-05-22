@@ -1,4 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
+
+import subprocess
+import wave
 
 from voice_manager import VoiceManager
 
@@ -70,7 +73,7 @@ def test_prereq_report_contains_rvc_block():
     assert report["rvc"]["enabled"] is True
 
 
-def test_speak_bert_skips_when_already_speaking(monkeypatch):
+def test_speak_bert_skips_when_already_speaking_without_bypass(monkeypatch):
     vm = VoiceManager(enabled=True)
 
     calls = []
@@ -82,10 +85,51 @@ def test_speak_bert_skips_when_already_speaking(monkeypatch):
     monkeypatch.setattr(vm, "_speak_windows", _fake_speak_windows)
     monkeypatch.setattr(vm, "_is_speaking", lambda now=None: len(calls) > 0)
 
-    vm.speak_bert("First line", dad_ai_level=4, bypass_cooldown=True, voice_style="downeast")
-    vm.speak_bert("Second line", dad_ai_level=4, bypass_cooldown=True, voice_style="downeast")
+    vm.speak_bert("First line", dad_ai_level=4, bypass_cooldown=False, voice_style="downeast")
+    vm.speak_bert("Second line", dad_ai_level=4, bypass_cooldown=False, voice_style="downeast")
 
     assert len(calls) == 1
+
+
+def test_speak_bert_interrupts_when_already_speaking_with_bypass(monkeypatch):
+    vm = VoiceManager(enabled=True)
+
+    calls = []
+    stop_called = {"count": 0}
+
+    def _fake_speak_windows(text, dad_ai_level):
+        calls.append((text, dad_ai_level))
+
+    def _fake_stop():
+        stop_called["count"] += 1
+
+    monkeypatch.setattr(vm, "_is_windows", True)
+    monkeypatch.setattr(vm, "_speak_windows", _fake_speak_windows)
+    monkeypatch.setattr(vm, "_is_speaking", lambda now=None: True)
+    monkeypatch.setattr(vm, "stop", _fake_stop)
+
+    vm.speak_bert("Replacement line", dad_ai_level=4, bypass_cooldown=True, voice_style="downeast")
+
+    assert stop_called["count"] == 1
+    assert len(calls) == 1
+
+
+def test_speak_bert_allows_level6(monkeypatch):
+    vm = VoiceManager(enabled=True)
+
+    calls = []
+
+    def _fake_speak_windows(text, dad_ai_level):
+        calls.append((text, dad_ai_level))
+
+    monkeypatch.setattr(vm, "_is_windows", True)
+    monkeypatch.setattr(vm, "_speak_windows", _fake_speak_windows)
+    monkeypatch.setattr(vm, "_is_speaking", lambda now=None: False)
+
+    vm.speak_bert("Barnabas line", dad_ai_level=6, bypass_cooldown=True, voice_style="downeast")
+
+    assert len(calls) == 1
+    assert calls[0][1] == 6
 
 
 def test_is_speaking_true_when_sapi_process_running(monkeypatch):
@@ -113,3 +157,92 @@ def test_dynamic_sapi_rate_slows_for_longer_lines():
 
     assert short_rate >= medium_rate
     assert medium_rate >= long_rate
+
+
+def test_dynamic_sapi_rate_barnabas_is_slower_than_level6_for_same_line():
+    vm = VoiceManager(enabled=True)
+
+    line = "Cards on the wood and count every inch."
+    barnabas_rate = vm._dynamic_sapi_rate(line, dad_ai_level=5)
+    level6_rate = vm._dynamic_sapi_rate(line, dad_ai_level=6)
+
+    assert barnabas_rate <= level6_rate
+
+
+def test_shape_for_ai_level_voice_barnabas_adds_deliberate_cadence():
+    vm = VoiceManager(enabled=True)
+
+    shaped = vm._shape_for_ai_level_voice("One line. Another line.", dad_ai_level=5)
+
+    assert "..." in shaped
+
+
+def test_shape_for_ai_level_voice_other_levels_unchanged():
+    vm = VoiceManager(enabled=True)
+
+    text = "One line. Another line."
+    assert vm._shape_for_ai_level_voice(text, dad_ai_level=4) == text
+    assert vm._shape_for_ai_level_voice(text, dad_ai_level=6) == text
+
+
+def test_speak_windows_uses_ssml_for_barnabas(monkeypatch):
+    vm = VoiceManager(enabled=True)
+    captured: dict[str, list[str]] = {}
+
+    class _FakeProc:
+        def poll(self):
+            return None
+
+    def _fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+
+    vm._speak_windows("Night falls", dad_ai_level=5)
+
+    script = " ".join(captured.get("cmd", []))
+    assert "SpeakSsml" in script
+    assert "pitch=\"-10%\"" in script
+    assert "Name -notmatch 'Guy|David'" in script
+    assert "catch { $synth.Speak($text) }" in script
+
+
+def test_speak_windows_uses_plain_speak_for_non_barnabas(monkeypatch):
+    vm = VoiceManager(enabled=True)
+    captured: dict[str, list[str]] = {}
+
+    class _FakeProc:
+        def poll(self):
+            return None
+
+    def _fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+
+    vm._speak_windows("Cards on the wood", dad_ai_level=4)
+
+    script = " ".join(captured.get("cmd", []))
+    assert "SpeakSsml" not in script
+    assert "Speak($text)" in script
+
+
+def test_apply_barnabas_vocal_fx_lowers_sample_rate(tmp_path):
+    vm = VoiceManager(enabled=False)
+
+    wav_path = tmp_path / "line.wav"
+    with wave.open(str(wav_path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(22050)
+        w.writeframes(b"\x00\x00" * 2205)
+
+    out_path = vm._apply_barnabas_vocal_fx(wav_path)
+    assert out_path.exists()
+
+    with wave.open(str(out_path), "rb") as out_w:
+        assert out_w.getframerate() < 22050

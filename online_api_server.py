@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import threading
 import time
 from http import HTTPStatus
@@ -22,12 +23,34 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
     RATE_LIMIT_WINDOW_S = 60.0
     RATE_LIMIT_PER_IP = 180
     RATE_LIMIT_PER_PLAYER = 120
+    CORS_ALLOWED_ORIGINS = tuple(
+        origin.strip()
+        for origin in os.getenv(
+            "UPTACAMP_ALLOWED_ORIGINS",
+            "http://127.0.0.1,http://localhost",
+        ).split(",")
+        if origin.strip()
+    )
     _rate_limit_lock = threading.Lock()
     _ip_hits: dict[str, list[float]] = {}
     _player_hits: dict[str, list[float]] = {}
 
+    def _cors_allow_origin(self) -> str:
+        allowed = self.CORS_ALLOWED_ORIGINS
+        if not allowed:
+            return "null"
+        if "*" in allowed:
+            return "*"
+        request_origin = self.headers.get("Origin", "").strip()
+        if request_origin and request_origin in allowed:
+            return request_origin
+        return allowed[0]
+
     def end_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        cors_origin = self._cors_allow_origin()
+        self.send_header("Access-Control-Allow-Origin", cors_origin)
+        if cors_origin != "*":
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header(
             "Access-Control-Allow-Headers",
@@ -121,6 +144,14 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
             raise PermissionError("Invalid session token")
         return token
 
+    @staticmethod
+    def _query_single(parsed_query: dict[str, list[str]], key: str) -> str | None:
+        values = parsed_query.get(key, [])
+        if not values:
+            return None
+        value = str(values[0]).strip()
+        return value or None
+
     def _send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
         raw = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -144,6 +175,7 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
         parts = [p for p in parsed.path.split("/") if p]
         if not self._enforce_rate_limit():
             return
@@ -153,17 +185,28 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
                 return
 
             if len(parts) == 2 and parts[0] == "matches":
-                details = self.backend.get_match_details(parts[1])
+                requester_id = self._query_single(qs, "player_id")
+                if not requester_id:
+                    raise PermissionError("player_id query parameter is required")
+                token = self._require_auth(requester_id)
+                details = self.backend.get_match_details(
+                    parts[1],
+                    requester_player_id=requester_id,
+                    session_token=token,
+                )
                 self._send_json(HTTPStatus.OK, details)
                 return
 
             if len(parts) == 2 and parts[0] == "players":
+                requester_id = parts[1]
+                self._require_auth(requester_id)
                 profile = self.backend.get_player_profile(parts[1])
                 self._send_json(HTTPStatus.OK, profile)
                 return
 
             if len(parts) == 3 and parts[0] == "players" and parts[2] == "matches":
-                qs = parse_qs(parsed.query)
+                requester_id = parts[1]
+                self._require_auth(requester_id)
                 limit = int(qs.get("limit", ["20"])[0])
                 rows = self.backend.list_recent_matches(parts[1], limit=limit)
                 self._send_json(HTTPStatus.OK, {"matches": rows})
@@ -177,9 +220,17 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
                 return
 
             if len(parts) == 3 and parts[0] == "matches" and parts[2] == "chat":
-                qs = parse_qs(parsed.query)
+                requester_id = self._query_single(qs, "player_id")
+                if not requester_id:
+                    raise PermissionError("player_id query parameter is required")
+                token = self._require_auth(requester_id)
                 limit = int(qs.get("limit", ["100"])[0])
-                rows = self.backend.list_chat_messages(parts[1], limit=limit)
+                rows = self.backend.list_chat_messages(
+                    parts[1],
+                    limit=limit,
+                    requester_player_id=requester_id,
+                    session_token=token,
+                )
                 self._send_json(HTTPStatus.OK, {"messages": rows})
                 return
 
@@ -277,9 +328,14 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
 
             if len(parts) == 3 and parts[0] == "matches" and parts[2] == "finish":
                 owner = payload.get("player_id")
-                if owner:
-                    self._require_auth(owner)
-                self.backend.finish_match(parts[1], payload.get("winner_player_id"))
+                if not owner or not isinstance(owner, str):
+                    raise PermissionError("player_id is required")
+                self._require_auth(owner)
+                self.backend.finish_match(
+                    parts[1],
+                    payload.get("winner_player_id"),
+                    finisher_player_id=owner,
+                )
                 self._send_json(HTTPStatus.OK, {"ok": True})
                 return
 

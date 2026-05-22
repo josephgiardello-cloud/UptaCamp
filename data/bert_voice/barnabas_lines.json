@@ -1,0 +1,133 @@
+﻿{
+  "downeast_lines": {
+    "level_selected": [
+      "Barnabas Collins is at table. Conduct yourself accordingly, my dear.",
+      "Old House is open, and I mean to keep control of it.",
+      "I have endured two centuries in darkness. A card table does not frighten me."
+    ],
+    "game_start": [
+      "Let us begin. I prefer candlelight to this modern glare, but necessity is necessity.",
+      "We play now, and we play with discipline. The Collins name permits no sloppiness.",
+      "I have lived many lives and buried most of my illusions. Deal."
+    ],
+    "cards_dealt": [
+      "The hand is in. Every discard is a confession, whether you intend it or not.",
+      "Choose carefully, my dear. I rarely receive a second warning from fate.",
+      "I dislike modern noise. Fortunately, the cards still speak plainly."
+    ],
+    "round_start": [
+      "Another hand. Another test of restraint.",
+      "New round. I will be gentleman first, monster only if required.",
+      "We continue. Control is everything."
+    ],
+    "go_called": [
+      "Go? Then I shall proceed.",
+      "No play from you. I will not waste the invitation.",
+      "Very well. I take the lane."
+    ],
+    "go_point": [
+      "One for me. Small advantages become destiny.",
+      "A quiet point, but useful all the same.",
+      "Mark it. I do not surrender what is mine."
+    ],
+    "last_card": [
+      "Last card to Barnabas.",
+      "The final card is mine; survival favors precision.",
+      "Last card. We keep what we can in this world."
+    ],
+    "pegging_score": [
+      "A clean peg. Method over impulse.",
+      "Point secured. Control maintained.",
+      "There. Order restored."
+    ],
+    "pegging_31": [
+      "Thirty-one. Exactness is a kind of power.",
+      "Thirty-one, perfectly placed.",
+      "Thirty-one to Barnabas."
+    ],
+    "player_won": [
+      "You won this hand. Do not confuse one victory with safety.",
+      "Very well. I acknowledge it and adapt.",
+      "You have this round, my dear. I will remember."
+    ],
+    "bert_won": [
+      "Barnabas takes the hand. We proceed.",
+      "This one is mine. The house remains under my protection.",
+      "I win. Necessity required no kindness tonight."
+    ],
+    "hand_scored": [
+      "Hand counted. The arithmetic is rarely merciful.",
+      "Scoring complete. Reason prevails over sentiment.",
+      "The hand is tallied. We continue."
+    ],
+    "crib_scored": [
+      "Crib scored. Value extracted.",
+      "The crib yields what it must.",
+      "Crib counted. Nothing wasted."
+    ]
+  },
+  "robot_lines": {
+    "level_selected": [
+      "BARNABUS PROFILE ENGAGED.",
+      "OLD HOUSE DIRECTIVE ACTIVE."
+    ],
+    "game_start": [
+      "BARNABUS SESSION START.",
+      "BARNABUS PRIMARY DIRECTIVE: SURVIVE."
+    ],
+    "cards_dealt": [
+      "DEAL STATE ACQUIRED.",
+      "DISCARD ANALYSIS IN PROGRESS."
+    ],
+    "round_start": [
+      "ROUND RESET COMPLETE.",
+      "CONTROL LOOP CONTINUES."
+    ],
+    "go_called": [
+      "GO ACCEPTED. EXECUTING LINE.",
+      "NO VALID RESPONSE DETECTED. ADVANCING."
+    ],
+    "go_point": [
+      "POINT SECURED.",
+      "RESOURCE ACQUIRED: GO_POINT."
+    ],
+    "last_card": [
+      "LAST CARD BONUS SECURED.",
+      "TERMINAL CARD CAPTURED."
+    ],
+    "pegging_score": [
+      "PEGGING POINT CAPTURED.",
+      "TACTICAL PEG EXECUTED."
+    ],
+    "pegging_31": [
+      "THIRTY-ONE CAPTURE CONFIRMED.",
+      "COUNT PEAK ACHIEVED: 31."
+    ],
+    "player_won": [
+      "RESULT: OPPONENT HAND VICTORY. MODEL ADAPTING.",
+      "LOSS EVENT LOGGED. RETALIATORY ADJUSTMENT PENDING."
+    ],
+    "bert_won": [
+      "RESULT: BARNABUS VICTORY.",
+      "WIN EVENT CONFIRMED. CONTROL RETAINED."
+    ],
+    "hand_scored": [
+      "HAND SCORING FINALIZED.",
+      "HAND VALUE RESOLVED."
+    ],
+    "crib_scored": [
+      "CRIB SCORING FINALIZED.",
+      "CRIB VALUE RESOLVED."
+    ]
+  },
+  "gentleman_tails": [
+    "Compose yourself, my dear. We shall proceed as civilized adversaries.",
+    "The Collins family does not panic; it endures.",
+    "Control, restraint, and memory. That is how one survives centuries."
+  ],
+  "vampire_tails": [
+    "Do not mistake courtesy for weakness.",
+    "My restraint has limits, and you are nearing them.",
+    "When cornered, I become what the curse made of me."
+  ]
+}

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-_DEFAULT_STATS_PATH = Path(__file__).resolve().parent / "player_stats.json"
+_LEGACY_STATS_PATH = Path(__file__).resolve().parent / "player_stats.json"
+_PLAYER_STATS_DIR = Path(__file__).resolve().parent / "player_profiles"
 
 
 def _empty_bucket() -> dict[str, Any]:
@@ -29,21 +31,92 @@ def _empty_bucket() -> dict[str, Any]:
     }
 
 
-def _load_store(path: Path) -> dict[str, Any]:
-    default_store: dict[str, Any] = {"single_player": {}, "online": {}}
+def _default_store() -> dict[str, Any]:
+    return {
+        "single_player": {},
+        "online": {},
+        "difficulty_wins": {},
+    }
+
+
+def _player_key(player_name: str) -> str:
+    return str(player_name).strip() or "Player"
+
+
+def _player_slug(player_name: str) -> str:
+    key = _player_key(player_name)
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", key).strip("._-")
+    return slug or "Player"
+
+
+def _default_stats_path_for_player(player_name: str) -> Path:
+    return _PLAYER_STATS_DIR / f"{_player_slug(player_name)}.json"
+
+
+def _resolve_stats_path(player_name: str, path: Path | None) -> Path:
+    return path or _default_stats_path_for_player(player_name)
+
+
+def _load_store_from(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return default_store
+        return _default_store()
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return default_store
+        return _default_store()
 
     if not isinstance(loaded, dict):
-        return default_store
+        return _default_store()
 
     loaded.setdefault("single_player", {})
     loaded.setdefault("online", {})
+    loaded.setdefault("difficulty_wins", {})
     return loaded
+
+
+def _bootstrap_player_store(player_name: str, stats_path: Path, *, migrate_legacy: bool = True) -> None:
+    if stats_path.exists():
+        return
+
+    player_key = _player_key(player_name)
+    store = _default_store()
+
+    # Migrate legacy per-player progress on first profile creation.
+    if migrate_legacy and _LEGACY_STATS_PATH.exists() and stats_path != _LEGACY_STATS_PATH:
+        legacy = _load_store_from(_LEGACY_STATS_PATH)
+        for mode in ("single_player", "online"):
+            src_mode = legacy.get(mode, {})
+            if isinstance(src_mode, dict):
+                src_bucket = src_mode.get(player_key)
+                if isinstance(src_bucket, dict):
+                    store[mode][player_key] = dict(src_bucket)
+
+        src_wins = legacy.get("difficulty_wins", {})
+        if isinstance(src_wins, dict):
+            src_player_wins = src_wins.get(player_key)
+            if isinstance(src_player_wins, dict):
+                store["difficulty_wins"][player_key] = dict(src_player_wins)
+
+    _save_store(stats_path, store)
+
+
+def create_player_profile(player_name: str, *, path: Path | None = None) -> Path:
+    use_default_path = path is None
+    stats_path = _resolve_stats_path(player_name, path)
+    _bootstrap_player_store(player_name, stats_path, migrate_legacy=use_default_path)
+    store = _load_store(stats_path)
+    key = _player_key(player_name)
+    _ensure_player(store, key, "single_player")
+    _ensure_player(store, key, "online")
+    wins_store = store.setdefault("difficulty_wins", {})
+    if isinstance(wins_store, dict):
+        wins_store.setdefault(key, {})
+    _save_store(stats_path, store)
+    return stats_path
+
+
+def _load_store(path: Path) -> dict[str, Any]:
+    return _load_store_from(path)
 
 
 def _save_store(path: Path, store: dict[str, Any]) -> None:
@@ -83,7 +156,9 @@ def record_hand_stats(
     mode: str = "single_player",
     path: Path | None = None,
 ) -> None:
-    stats_path = path or _DEFAULT_STATS_PATH
+    use_default_path = path is None
+    stats_path = _resolve_stats_path(player_name, path)
+    _bootstrap_player_store(player_name, stats_path, migrate_legacy=use_default_path)
     store = _load_store(stats_path)
     bucket = _ensure_player(store, player_name, mode)
 
@@ -110,7 +185,9 @@ def record_game_result(
     mode: str = "single_player",
     path: Path | None = None,
 ) -> None:
-    stats_path = path or _DEFAULT_STATS_PATH
+    use_default_path = path is None
+    stats_path = _resolve_stats_path(player_name, path)
+    _bootstrap_player_store(player_name, stats_path, migrate_legacy=use_default_path)
     store = _load_store(stats_path)
     bucket = _ensure_player(store, player_name, mode)
 
@@ -145,7 +222,9 @@ def get_player_profile(
     mode: str = "single_player",
     path: Path | None = None,
 ) -> dict[str, Any]:
-    stats_path = path or _DEFAULT_STATS_PATH
+    use_default_path = path is None
+    stats_path = _resolve_stats_path(player_name, path)
+    _bootstrap_player_store(player_name, stats_path, migrate_legacy=use_default_path)
     store = _load_store(stats_path)
     bucket = _ensure_player(store, player_name, mode)
 
@@ -196,7 +275,9 @@ def reset_player_stats(
     mode: str = "single_player",
     path: Path | None = None,
 ) -> bool:
-    stats_path = path or _DEFAULT_STATS_PATH
+    use_default_path = path is None
+    stats_path = _resolve_stats_path(player_name, path)
+    _bootstrap_player_store(player_name, stats_path, migrate_legacy=use_default_path)
     store = _load_store(stats_path)
     if mode in store and isinstance(store[mode], dict) and player_name in store[mode]:
         store[mode][player_name] = _empty_bucket()
@@ -214,3 +295,53 @@ def get_bert_stats_comment(profile: dict[str, Any]) -> str:
     if win_pct >= 35.0:
         return "You're scrapin along. Tide'll turn if you keep at her."
     return "Rough water for ya lately. Keep your hands steady, deah."
+
+
+def record_difficulty_win(
+    player_name: str,
+    difficulty_key: str,
+    *,
+    path: Path | None = None,
+) -> None:
+    use_default_path = path is None
+    stats_path = _resolve_stats_path(player_name, path)
+    _bootstrap_player_store(player_name, stats_path, migrate_legacy=use_default_path)
+    store = _load_store(stats_path)
+
+    wins_store = store.setdefault("difficulty_wins", {})
+    if not isinstance(wins_store, dict):
+        wins_store = {}
+        store["difficulty_wins"] = wins_store
+
+    player_key = _player_key(player_name)
+    player_bucket = wins_store.setdefault(player_key, {})
+    if not isinstance(player_bucket, dict):
+        player_bucket = {}
+        wins_store[player_key] = player_bucket
+
+    key = str(difficulty_key).strip().lower()
+    player_bucket[key] = max(0, int(player_bucket.get(key, 0))) + 1
+    _save_store(stats_path, store)
+
+
+def get_difficulty_wins(
+    player_name: str,
+    difficulty_key: str,
+    *,
+    path: Path | None = None,
+) -> int:
+    use_default_path = path is None
+    stats_path = _resolve_stats_path(player_name, path)
+    _bootstrap_player_store(player_name, stats_path, migrate_legacy=use_default_path)
+    store = _load_store(stats_path)
+    wins_store = store.get("difficulty_wins", {})
+    if not isinstance(wins_store, dict):
+        return 0
+
+    player_key = _player_key(player_name)
+    player_bucket = wins_store.get(player_key, {})
+    if not isinstance(player_bucket, dict):
+        return 0
+
+    key = str(difficulty_key).strip().lower()
+    return max(0, int(player_bucket.get(key, 0)))

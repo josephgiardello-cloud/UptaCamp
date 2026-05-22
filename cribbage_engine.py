@@ -10,17 +10,50 @@ from game_state import GameState
 
 
 class CribbageEngine:
+    GAME_POINT = 121
+
     def __init__(self, *, seed: int | None = None):
         self.state = GameState()
         self.current_phase = self.state.phase
         self.players: list[str] = []
         self.ai_agents: dict[str, Any] = {}
         self.deck: list[cribbage_cards.Card] = []
+        self.voice: Any = None
         self._rng = random.Random(seed)
 
     def _sync_phase(self, phase: str) -> None:
         self.current_phase = phase
         self.state.phase = phase
+
+    def _declare_winner_if_reached(self) -> bool:
+        p0 = int(self.state.scores[0])
+        p1 = int(self.state.scores[1])
+        if p0 < self.GAME_POINT and p1 < self.GAME_POINT:
+            return False
+
+        if p0 > p1:
+            self.state.winner = 0
+            self.state.message = f"{self.state.player_name or 'You'} wins at {self.GAME_POINT}!"
+        elif p1 > p0:
+            self.state.winner = 1
+            self.state.message = f"{self.state.ai_name or 'Bert'} wins at {self.GAME_POINT}!"
+        else:
+            self.state.winner = None
+            self.state.message = f"Tie game at {self.GAME_POINT}."
+
+        self._sync_phase("game_over")
+        return True
+
+    def _add_points(self, player_idx: int, points: int) -> int:
+        pts = max(0, int(points))
+        if pts <= 0:
+            return 0
+        current = int(self.state.scores[player_idx])
+        room = max(0, self.GAME_POINT - current)
+        awarded = min(pts, room)
+        self.state.scores[player_idx] = current + awarded
+        self._declare_winner_if_reached()
+        return awarded
 
     @staticmethod
     def _card_to_label(card: cribbage_cards.Card) -> str:
@@ -74,6 +107,7 @@ class CribbageEngine:
         self.state.player_name = player_name
         self.state.ai_name = opponent_type
         self.state.scores = [0, 0]
+        self.state.winner = None
         self.state.dealer = 0
         self._create_deck()
         self._shuffle_and_deal()
@@ -91,6 +125,7 @@ class CribbageEngine:
 
     def start_next_round(self) -> GameState:
         self.state.dealer = 1 - int(self.state.dealer)
+        self.state.winner = None
         self._create_deck()
         self._shuffle_and_deal()
         self.state.crib = []
@@ -182,7 +217,7 @@ class CribbageEngine:
                 and self.state.last_pegging_player is not None
             ):
                 points = 1
-                self.state.scores[self.state.last_pegging_player] += 1
+                points = self._add_points(self.state.last_pegging_player, 1)
             self.state.pegging_pile = []
             self.state.pegging_passes = [False, False]
             if self.state.last_pegging_player is not None:
@@ -219,11 +254,19 @@ class CribbageEngine:
         played = hand.pop(card_index)
         self.state.pegging_pile.append(played)
         self.state.pegging_passes = [False, False]
-        points = cribbage_cards.score_pegging_play(self.state.pegging_pile)
+        raw_points = cribbage_cards.score_pegging_play(self.state.pegging_pile)
         scorer = self.state.player_turn
-        self.state.scores[scorer] += points
+        points = self._add_points(scorer, raw_points)
         total = self._current_pegging_total()
         self.state.last_pegging_player = scorer
+
+        if self.state.phase == "game_over":
+            return {
+                "ok": True,
+                "points": points,
+                "total": total,
+                "next_turn": self.state.player_turn,
+            }
 
         if total == 31:
             self.state.pegging_pile = []
@@ -231,7 +274,14 @@ class CribbageEngine:
 
         if not self.state.player_hand and not self.state.ai_hand:
             if self.state.pegging_pile and total != 31 and self.state.last_pegging_player is not None:
-                self.state.scores[self.state.last_pegging_player] += 1
+                self._add_points(self.state.last_pegging_player, 1)
+            if self.state.phase == "game_over":
+                return {
+                    "ok": True,
+                    "points": points,
+                    "total": total,
+                    "next_turn": self.state.player_turn,
+                }
             self._sync_phase("counting")
         else:
             self.state.player_turn = 1 - scorer
@@ -267,22 +317,35 @@ class CribbageEngine:
             cribbage_cards.score_hand(crib_cards, starter, is_crib=True) if len(crib_cards) == 4 else (0, [])
         )
 
-        self.state.scores[0] += p_total
-        self.state.scores[1] += a_total
-        self.state.scores[self.state.dealer] += c_total
+        awarded_player = self._add_points(0, p_total)
+        if self.state.phase == "game_over":
+            return {
+                "player": awarded_player,
+                "ai": 0,
+                "crib": 0,
+                "player_breakdown": p_breakdown,
+                "ai_breakdown": [],
+                "crib_breakdown": [],
+            }
 
-        if self.state.scores[0] >= 121 and self.state.scores[1] >= 121:
-            self.state.winner = -1
-        elif self.state.scores[0] >= 121:
-            self.state.winner = 0
-        elif self.state.scores[1] >= 121:
-            self.state.winner = 1
+        awarded_ai = self._add_points(1, a_total)
+        if self.state.phase == "game_over":
+            return {
+                "player": awarded_player,
+                "ai": awarded_ai,
+                "crib": 0,
+                "player_breakdown": p_breakdown,
+                "ai_breakdown": a_breakdown,
+                "crib_breakdown": [],
+            }
 
-        self._sync_phase("end")
+        awarded_crib = self._add_points(self.state.dealer, c_total)
+        if self.state.phase != "game_over":
+            self._sync_phase("end")
         return {
-            "player": p_total,
-            "ai": a_total,
-            "crib": c_total,
+            "player": awarded_player,
+            "ai": awarded_ai,
+            "crib": awarded_crib,
             "player_breakdown": p_breakdown,
             "ai_breakdown": a_breakdown,
             "crib_breakdown": c_breakdown,

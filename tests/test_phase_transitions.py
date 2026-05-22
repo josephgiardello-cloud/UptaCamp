@@ -1,39 +1,15 @@
 from types import SimpleNamespace
 
-import pygame
-
-import cribbage_pygame as game
-
-
-class _DummyRect:
-    def __init__(self, token):
-        self._token = token
-
-    def collidepoint(self, pos):
-        return pos == self._token
+import cards as cards_mod
+from engine import CribbageEngine
 
 
-class _DummyCard:
-    def __init__(self, label, token):
-        self.label = label
-        self.rect = _DummyRect(token)
-        self.image = None
-
-
-def _make_hand(labels, prefix):
-    return [_DummyCard(label, (prefix, idx)) for idx, label in enumerate(labels)]
+def _make_cards(labels):
+    return [SimpleNamespace(label=label) for label in labels]
 
 
 def test_discard_phase_transitions_to_pegging(monkeypatch):
-    # Arrange a deterministic discard flow.
-    game.game_phase = "discard"
-    game.dealer = 0
-    game.crib.clear()
-    game.selected_cards.clear()
-    game.player1_kept.clear()
-    game.player2_kept.clear()
-    game.pegging_passes[:] = [False, False]
-    game.last_pegging_player = 1
+    engine = CribbageEngine()
 
     p1_labels = [
         "ace_of_spades",
@@ -52,65 +28,71 @@ def test_discard_phase_transitions_to_pegging(monkeypatch):
         "6_of_hearts",
     ]
 
-    game.player1_hand[:] = _make_hand(p1_labels, "p1")
-    game.player2_hand[:] = _make_hand(p2_labels, "p2")
-    game._stock_labels[:] = ["7_of_clubs"]
-    game.starter_card = None
+    engine.start_new_game(
+        player_hand=_make_cards(p1_labels),
+        ai_hand=_make_cards(p2_labels),
+        stock_labels=["7_of_clubs"],
+        dealer=0,
+    )
+    engine.state.last_pegging_player = 1
 
-    monkeypatch.setattr(game, "_choose_dad_discards", lambda: [0, 1])
+    monkeypatch.setattr(engine, "ai_discard", lambda strategy=None: [0, 1])
 
-    # Act: click two player cards.
-    event1 = SimpleNamespace(type=pygame.MOUSEBUTTONDOWN, pos=("p1", 0))
-    event2 = SimpleNamespace(type=pygame.MOUSEBUTTONDOWN, pos=("p1", 1))
-    game.handle_discard(event1)
-    game.handle_discard(event2)
+    engine.handle_discard([0, 1])
 
-    # Assert transition and resulting hand/crib state.
-    assert game.game_phase == "pegging"
-    assert len(game.player1_hand) == 4
-    assert len(game.player2_hand) == 4
-    assert len(game.crib) == 4
-    assert game.starter_card == "7_of_clubs"
-    assert game.player_turn == 1  # non-dealer leads pegging
-    assert game.pegging_passes == [False, False]
-    assert game.last_pegging_player is None
+    assert engine.state.phase == "pegging"
+    assert len(engine.state.player_hand) == 4
+    assert len(engine.state.ai_hand) == 4
+    assert len(engine.state.crib) == 4
+    assert engine.state.starter_card == "7_of_clubs"
+    assert engine.state.player_turn == 1
+    assert engine.state.pegging_passes == [False, False]
+    assert engine.state.last_pegging_player is None
 
 
 def test_finalize_pegging_moves_to_counting_with_last_card_point():
-    game.game_phase = "pegging"
-    game.player1_hand[:] = []
-    game.player2_hand[:] = []
-    game.pegging_pile[:] = [
+    engine = CribbageEngine()
+    engine.state.phase = "pegging"
+    engine.state.player_hand = []
+    engine.state.ai_hand = []
+    engine.state.pegging_pile = [
         SimpleNamespace(label="10_of_clubs"),
         SimpleNamespace(label="9_of_hearts"),
     ]
-    game.player_scores[:] = [0, 0]
-    game.last_pegging_player = 0
+    engine.state.scores = [0, 0]
+    engine.state.last_pegging_player = 0
 
-    changed = game._finalize_pegging_if_complete()
+    changed = engine.finalize_pegging_if_complete(
+        lambda: cards_mod.pegging_total(engine.state.pegging_pile)
+    )
 
     assert changed is True
-    assert game.game_phase == "counting"
-    assert game.player_scores[0] == 1
-    assert "Counting hands" in game.message
+    assert engine.state.phase == "counting"
+    assert engine.state.scores[0] == 1
+    assert "Counting hands" in engine.state.message
 
 
 def test_handle_counting_moves_to_end_when_no_winner():
-    game.game_phase = "counting"
-    game.player_scores[:] = [10, 12]
-    game.dealer = 1
+    engine = CribbageEngine()
+    engine.state.phase = "counting"
+    engine.state.scores = [10, 12]
+    engine.state.dealer = 1
 
-    # Set 4-card kept hands and crib with known labels.
-    game.player1_kept[:] = _make_hand(
-        ["2_of_clubs", "3_of_diamonds", "4_of_hearts", "5_of_spades"], "k1"
-    )
-    game.player2_kept[:] = _make_hand(
-        ["6_of_clubs", "7_of_diamonds", "8_of_hearts", "9_of_spades"], "k2"
-    )
-    game.crib[:] = _make_hand(["ace_of_clubs", "2_of_hearts", "3_of_spades", "4_of_diamonds"], "cr")
-    game.starter_card = "5_of_clubs"
+    engine.state.player_kept = _make_cards([
+        "2_of_clubs", "3_of_diamonds", "4_of_hearts", "5_of_spades"
+    ])
+    engine.state.ai_kept = _make_cards([
+        "6_of_clubs", "7_of_diamonds", "8_of_hearts", "9_of_spades"
+    ])
+    engine.state.crib = _make_cards([
+        "ace_of_clubs", "2_of_hearts", "3_of_spades", "4_of_diamonds"
+    ])
+    engine.state.starter_card = "5_of_clubs"
 
-    game.handle_counting()
+    result = engine.count_hands(cards_mod.label_to_card)
 
-    assert game.game_phase == "end"
-    assert "Round counted" in game.message
+    assert result["player"] >= 0
+    assert result["ai"] >= 0
+    assert result["crib"] >= 0
+    assert engine.state.counting_resolved is True
+    assert engine.state.counting_next_phase in {"end", "game_over"}

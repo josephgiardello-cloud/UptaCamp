@@ -1,9 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 # pyright: reportConstantRedefinition=false
 
 import json
 import random
+import re
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -99,6 +100,102 @@ _ROBOT_LINES: dict[str, list[str]] = {
     "crib_scored": ["CRIB EVALUATION COMPLETE.", "CRIB SCORED."],
 }
 
+_BARNABUS_DOWNEAST_LINES: dict[str, list[str]] = {
+    "level_selected": [
+        "Barnabas sits down and the room gets smaller.",
+        "Old House is open. Barnabas is in the chair.",
+        "Barnabas is at the table now. Keep your hands clean.",
+    ],
+    "game_start": [
+        "Cards on wood. Barnabas reads every edge.",
+        "Game on. Barnabas is already tracking your outs.",
+        "Settle in. Barnabas plays this board for keeps.",
+    ],
+    "cards_dealt": [
+        "Hand is in. Barnabas is counting your throw.",
+        "Cards dealt. Every discard tells on you.",
+        "Pick two. Barnabas already priced the crib.",
+    ],
+    "round_start": [
+        "New hand. Same pressure from Barnabas.",
+        "Fresh round. Barnabas keeps the screws tight.",
+        "Round starts. Barnabas takes the hard line.",
+    ],
+    "go_called": [
+        "Go called. Barnabas takes the lane.",
+        "No play? Barnabas will collect.",
+        "Go. Barnabas turns the count.",
+    ],
+    "go_point": [
+        "One for Barnabas. Tiny leaks sink games.",
+        "Barnabas pockets the go point.",
+        "Go point to Barnabas. Mark it.",
+    ],
+    "last_card": [
+        "Last card to Barnabas.",
+        "Barnabas takes last card and keeps moving.",
+        "Last card is mine. Barnabas closes clean.",
+    ],
+    "pegging_score": [
+        "Barnabas pegs and keeps pressure on.",
+        "Clean peg for Barnabas.",
+        "Barnabas finds a point in the noise.",
+    ],
+    "pegging_31": [
+        "Thirty-one. Barnabas times it right.",
+        "Barnabas lands on thirty-one.",
+        "Thirty-one to Barnabas. Exact work.",
+    ],
+    "player_won": [
+        "You got this hand. Barnabas logs the pattern.",
+        "You won this round. Barnabas adjusts.",
+        "You took it. Barnabas will answer next deal.",
+    ],
+    "bert_won": [
+        "Barnabas takes the table.",
+        "This one is Barnabas.",
+        "Barnabas wins the hand and keeps control.",
+    ],
+    "hand_scored": [
+        "Hand counted. Barnabas likes the math.",
+        "Barnabas tallies the hand.",
+        "Scoring complete. Barnabas keeps the edge.",
+    ],
+    "crib_scored": [
+        "Crib scored. Barnabas reads the value.",
+        "Barnabas counts the crib clean.",
+        "Crib is in. Barnabas takes what is there.",
+    ],
+}
+
+_BARNABUS_ROBOT_LINES: dict[str, list[str]] = {
+    "level_selected": ["BARNABUS MODE ENGAGED.", "OLD HOUSE PROFILE ONLINE."],
+    "game_start": ["BARNABUS SESSION START.", "BARNABUS PRESSURE PROFILE INITIALIZED."],
+    "cards_dealt": ["DEAL STATE ACQUIRED.", "DISCARD INFERENCE ACTIVE."],
+    "round_start": ["ROUND RESET COMPLETE.", "TACTICAL LOOP CONTINUES."],
+    "go_called": ["GO ACCEPTED. EXECUTING PRESSURE LINE."],
+    "go_point": ["GO POINT SECURED."],
+    "last_card": ["LAST CARD BONUS SECURED."],
+    "pegging_score": ["PEGGING POINT CAPTURED."],
+    "pegging_31": ["THIRTY-ONE CAPTURE CONFIRMED."],
+    "player_won": ["RESULT: PLAYER HAND VICTORY. MODEL ADAPTING."],
+    "bert_won": ["RESULT: BARNABUS VICTORY."],
+    "hand_scored": ["HAND SCORING FINALIZED."],
+    "crib_scored": ["CRIB SCORING FINALIZED."],
+}
+
+_BARNABUS_GENTLEMAN_TAILS: tuple[str, ...] = (
+    "Compose yourself, my dear. Precision decides this house.",
+    "A measured hand, and we shall proceed with decorum.",
+    "Family name first. Sentiment can wait.",
+)
+
+_BARNABUS_VAMPIRE_TAILS: tuple[str, ...] = (
+    "Do not mistake my restraint for mercy.",
+    "My patience is not inexhaustible.",
+    "When cornered, I do what necessity demands.",
+)
+
 _LEVEL5_LEARNED_CUES: set[str] = set()
 _RECENT_LINES: deque[str] = deque(maxlen=25)
 _EVENT_RECENT: dict[str, deque[str]] = {}
@@ -169,6 +266,14 @@ def _passes_legal_guardrails(line: str) -> bool:
     return True
 
 
+def _purge_bert_from_barnabas_text(line: str) -> str:
+    # Guardrail: Barnabas output should never leak Bert branding.
+    text = re.sub(r"\bbert\s*\+\b", "Barnabas", line, flags=re.IGNORECASE)
+    text = re.sub(r"\bbert plus\b", "Barnabas", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bbert\b", "Barnabas", text, flags=re.IGNORECASE)
+    return text
+
+
 def _load_json_file(path: Path) -> dict[str, Any] | None:
     try:
         raw = path.read_text(encoding="utf-8")
@@ -202,6 +307,8 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
 def _load_external_generator_data() -> None:
     global _IMMEDIATE_REPEAT_WINDOW, _SAME_EVENT_REPEAT_WINDOW, _SESSION_CALLBACK_SPACING
     global _FORBIDDEN_VERBATIM_FRAGMENTS
+    global _BARNABUS_DOWNEAST_LINES, _BARNABUS_ROBOT_LINES
+    global _BARNABUS_GENTLEMAN_TAILS, _BARNABUS_VAMPIRE_TAILS
 
     data_dir = Path(__file__).resolve().parent / "data" / "bert_voice"
 
@@ -265,6 +372,40 @@ def _load_external_generator_data() -> None:
         deduped = tuple(dict.fromkeys(values))
         if deduped:
             _EVENT_GOLD_TAILS[event] = deduped
+
+    barnabas_cfg = _load_json_file(data_dir / "barnabas_lines.json")
+    if barnabas_cfg:
+        def _extract_line_bank(raw: Any) -> dict[str, list[str]]:
+            if not isinstance(raw, dict):
+                return {}
+            parsed: dict[str, list[str]] = {}
+            for event, values in cast(dict[str, Any], raw).items():
+                if not isinstance(event, str) or not isinstance(values, list):
+                    continue
+                cleaned = [v.strip() for v in values if isinstance(v, str) and v.strip()]
+                if cleaned:
+                    parsed[event] = cleaned
+            return parsed
+
+        def _extract_tails(raw: Any) -> tuple[str, ...]:
+            if not isinstance(raw, list):
+                return tuple()
+            cleaned = tuple(v.strip() for v in raw if isinstance(v, str) and v.strip())
+            return cleaned
+
+        downeast_bank = _extract_line_bank(barnabas_cfg.get("downeast_lines"))
+        robot_bank = _extract_line_bank(barnabas_cfg.get("robot_lines"))
+        gentleman_tails = _extract_tails(barnabas_cfg.get("gentleman_tails"))
+        vampire_tails = _extract_tails(barnabas_cfg.get("vampire_tails"))
+
+        if downeast_bank:
+            _BARNABUS_DOWNEAST_LINES = downeast_bank
+        if robot_bank:
+            _BARNABUS_ROBOT_LINES = robot_bank
+        if gentleman_tails:
+            _BARNABUS_GENTLEMAN_TAILS = gentleman_tails
+        if vampire_tails:
+            _BARNABUS_VAMPIRE_TAILS = vampire_tails
 
 
 _load_external_generator_data()
@@ -1038,7 +1179,7 @@ def choose_line(
     dad_ai_level: int,
     context: dict[str, Any] | None = None,
 ) -> str:
-    if dad_ai_level not in (4, 5):
+    if dad_ai_level not in (4, 5, 6):
         return ""
 
     context = context or {}
@@ -1046,7 +1187,23 @@ def choose_line(
     bert_score = _to_int(context.get("bert_score"))
     score_gap = bert_score - player_score
 
-    # Keep Bert (4) slightly more grounded and Bert+ (5) a bit sharper.
+    if dad_ai_level == 5:
+        if style == "robot":
+            barnabas_lines = _BARNABUS_ROBOT_LINES.get(event)
+            if not barnabas_lines:
+                return ""
+            return _purge_bert_from_barnabas_text(random.choice(barnabas_lines))
+        barnabas_lines = _BARNABUS_DOWNEAST_LINES.get(event)
+        if not barnabas_lines:
+            return ""
+        line = random.choice(barnabas_lines)
+        if score_gap <= -8:
+            line = f"{line} {random.choice(_BARNABUS_VAMPIRE_TAILS)}"
+        elif score_gap >= 8:
+            line = f"{line} {random.choice(_BARNABUS_GENTLEMAN_TAILS)}"
+        return _purge_bert_from_barnabas_text(line)
+
+    # Keep Bert (4) grounded and level 6 as adaptive Bert+.
     if style == "robot":
         bank = _ROBOT_LINES
         lines = bank.get(event)
@@ -1068,9 +1225,9 @@ def choose_line(
         if overlay:
             choice = f"{choice} {overlay}"
 
-    if dad_ai_level == 5 and style == "robot":
+    if dad_ai_level == 6 and style == "robot":
         return f"{choice} ADAPTIVE PROFILE ACTIVE."
-    if dad_ai_level == 5 and style == "downeast":
+    if dad_ai_level == 6 and style == "downeast":
         learning_ack = _level5_learning_ack(event, context)
         if learning_ack:
             choice = f"{choice} {learning_ack}"

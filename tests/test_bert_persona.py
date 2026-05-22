@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import bert_persona
 
@@ -22,15 +22,45 @@ def test_choose_line_downeast_and_robot_banks_have_content():
 
 
 def test_choose_line_bert_plus_robot_gets_profile_suffix():
-    line = bert_persona.choose_line("game_start", "robot", dad_ai_level=5)
+    line = bert_persona.choose_line("game_start", "robot", dad_ai_level=6)
 
     assert "ADAPTIVE PROFILE ACTIVE" in line
 
 
 def test_choose_line_bert_plus_downeast_gets_strategy_suffix_for_key_events():
-    line = bert_persona.choose_line("bert_won", "downeast", dad_ai_level=5)
+    line = bert_persona.choose_line("bert_won", "downeast", dad_ai_level=6)
 
     assert "Bert Plus saw that line two plays ago." in line
+
+
+def test_choose_line_barnabas_level_has_distinct_signature():
+    line = bert_persona.choose_line("game_start", "robot", dad_ai_level=5)
+
+    assert ("BARNABUS" in line) or ("OLD HOUSE" in line)
+
+
+def test_level5_barnabas_lines_never_emit_bert_branding():
+    events = [
+        "level_selected",
+        "game_start",
+        "cards_dealt",
+        "round_start",
+        "go_called",
+        "go_point",
+        "last_card",
+        "pegging_score",
+        "pegging_31",
+        "player_won",
+        "bert_won",
+        "hand_scored",
+        "crib_scored",
+    ]
+    context = {"player_score": 90, "bert_score": 70, "crib_points": 6, "bert_is_dealer": False}
+
+    for event in events:
+        for style in ("robot", "downeast"):
+            line = bert_persona.choose_line(event, style, dad_ai_level=5, context=context)
+            assert "bert" not in line.lower()
 
 
 def test_choose_line_hand_scored_returns_content():
@@ -200,8 +230,8 @@ def test_choose_line_go_point_trailing_is_snappy():
 def test_level5_learning_acknowledges_new_player_pattern_once():
     context = {"player_hand_points": 12, "player_score": 70, "bert_score": 72}
 
-    first = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=5, context=context)
-    second = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=5, context=context)
+    first = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=6, context=context)
+    second = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=6, context=context)
 
     assert "remember" in first.lower()
     assert "remember" not in second.lower()
@@ -211,7 +241,7 @@ def test_level5_learning_ack_uses_downeast_warning_tone():
     line = bert_persona.choose_line(
         "crib_scored",
         "downeast",
-        dad_ai_level=5,
+        dad_ai_level=6,
         context={"crib_points": 7, "bert_is_dealer": False, "player_score": 80, "bert_score": 82},
     )
 

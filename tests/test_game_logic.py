@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 import cards as cards_mod
-import cribbage_pygame as game
+from engine import CribbageEngine
 
 
 def _mk(rank: str, suit: str = "Hearts") -> cards_mod.Card:
@@ -15,9 +15,9 @@ def _peg(label: str):
 
 
 def test_parse_label_supports_expected_formats():
-    assert game._parse_label("ace of spades") == ("ace", "spades")
-    assert game._parse_label("ace_of_spades") == ("ace", "spades")
-    assert game._parse_label("ace_spades") == ("ace", "spades")
+    assert cards_mod.parse_card_label("ace of spades") == ("ace", "spades")
+    assert cards_mod.parse_card_label("ace_of_spades") == ("ace", "spades")
+    assert cards_mod.parse_card_label("ace_spades") == ("ace", "spades")
 
 
 def test_pegging_score_15_and_31_from_pile_argument():
@@ -28,15 +28,15 @@ def test_pegging_score_15_and_31_from_pile_argument():
         _peg("10_of_clubs"),
         _peg("A_of_diamonds"),
     ]
-    assert game._score_pegging_play(pile_15) == 2
-    assert game._score_pegging_play(pile_31) == 2
+    assert cards_mod.score_pegging_play(pile_15) == 2
+    assert cards_mod.score_pegging_play(pile_31) == 2
 
 
 def test_pegging_pair_and_run_scoring():
     pair_pile = [_peg("7_of_hearts"), _peg("7_of_spades")]
     run_pile = [_peg("7_of_hearts"), _peg("8_of_clubs"), _peg("9_of_spades")]
-    assert game._score_pegging_play(pair_pile) == 2
-    assert game._score_pegging_play(run_pile) == 3
+    assert cards_mod.score_pegging_play(pair_pile) == 2
+    assert cards_mod.score_pegging_play(run_pile) == 3
 
 
 def test_crib_flush_requires_starter_match():
@@ -92,23 +92,31 @@ def test_pairs_treat_rank_variants_as_same_rank():
 
 
 def test_handle_go_awards_last_card_and_resets_count(monkeypatch):
-    game.pegging_pile[:] = [_peg("10_of_hearts"), _peg("5_of_clubs")]
-    game.pegging_passes[:] = [True, False]
-    game.last_pegging_player = 0
-    game.player_scores[:] = [0, 0]
-    game.player_turn = 1
+    engine = CribbageEngine()
+    engine.state.phase = "pegging"
+    engine.state.pegging_pile = [_peg("10_of_hearts"), _peg("5_of_clubs")]
+    engine.state.pegging_passes = [True, False]
+    engine.state.last_pegging_player = 0
+    engine.state.scores = [0, 0]
+    engine.state.player_turn = 1
 
-    game._handle_go(1)
+    result = engine.pass_pegging_turn(1)
 
-    assert game.player_scores[0] == 1
-    assert game.pegging_pile == []
-    assert game.pegging_passes == [False, False]
-    assert game.player_turn == 1
+    assert result["ok"] is True
+    assert result["go_completed"] is True
+    assert engine.state.scores[0] == 1
+    assert engine.state.pegging_pile == []
+    assert engine.state.pegging_passes == [False, False]
+    assert engine.state.player_turn == 1
 
 
 def test_check_for_winner_player_and_tie():
-    game.player_scores[:] = [121, 100]
-    assert game._check_for_winner() == 0
+    engine = CribbageEngine()
+    engine.state.scores = [121, 100]
+    assert engine._set_winner_if_needed() is True
+    assert engine.state.winner == 0
 
-    game.player_scores[:] = [121, 121]
-    assert game._check_for_winner() == -1
+    engine.state.phase = "pegging"
+    engine.state.scores = [121, 121]
+    assert engine._set_winner_if_needed() is True
+    assert engine.state.winner is None

@@ -1,35 +1,35 @@
 {
   "phase": "counting",
-  "dealer": 0,
+  "dealer": 1,
   "scores": [
-    112,
-    72
+    10,
+    12
   ],
   "player_hand": [],
   "ai_hand": [],
   "crib": [
-    "king_of_clubs",
-    "6_of_spades",
-    "8_of_diamonds",
-    "queen_of_hearts"
+    "ace_of_clubs",
+    "2_of_hearts",
+    "3_of_spades",
+    "4_of_diamonds"
   ],
   "pegging_pile": [
-    "3_of_spades",
-    "5_of_hearts"
+    "10_of_clubs",
+    "9_of_hearts"
   ],
   "player_kept": [
-    "5_of_hearts",
-    "7_of_diamonds",
-    "7_of_clubs",
-    "6_of_diamonds"
+    "2_of_clubs",
+    "3_of_diamonds",
+    "4_of_hearts",
+    "5_of_spades"
   ],
   "ai_kept": [
-    "2_of_hearts",
-    "2_of_spades",
-    "5_of_diamonds",
-    "3_of_spades"
+    "6_of_clubs",
+    "7_of_diamonds",
+    "8_of_hearts",
+    "9_of_spades"
   ],
-  "starter_card": "6_of_clubs",
+  "starter_card": "5_of_clubs",
   "player_turn": 1,
   "pegging_passes": [
     false,
@@ -37,7 +37,7 @@
   ],
   "last_pegging_player": 0,
   "message": "Last card for 1 point. Counting hands.",
-  "dad_ai_level": 5,
+  "dad_ai_level": 2,
   "stock_labels": [],
   "ai_level": 1,
   "player_name": "",

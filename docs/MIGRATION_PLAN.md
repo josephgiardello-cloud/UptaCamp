@@ -7,20 +7,20 @@
 ## Phase 1: Drawing Logic → src/renderer/
 
 ### BoardRenderer Tasks
-- [ ] **6.1.1** Extract `_draw_board_frame()` → `draw_background()`
-- [ ] **6.1.2** Extract `_draw_score_panel()` → `draw_scores()`
-- [ ] **6.1.3** Extract `_draw_crib_area()` → `draw_crib()`
-- [ ] **6.1.4** Extract `_draw_game_header()` → `draw_header()`
-- [ ] **6.1.5** Extract `_draw_label()` → helper utility
-- [ ] **6.1.6** Extract `_draw_scaled_card()` → helper utility
-- [ ] **6.1.7** Integrate into main loop via `draw_board(game_state)`
-- [ ] **6.1.8** Test + commit
+- [x] **6.1.1** Extract `_draw_board_frame()` → `draw_background()`
+- [x] **6.1.2** Extract `_draw_score_panel()` → `draw_scores()`
+- [x] **6.1.3** Extract `_draw_crib_area()` → `draw_crib()`
+- [x] **6.1.4** Extract `_draw_game_header()` → `draw_header()`
+- [x] **6.1.5** Extract `_draw_label()` → helper utility
+- [x] **6.1.6** Extract `_draw_scaled_card()` → helper utility
+- [x] **6.1.7** Integrate into main loop via `draw_board(game_state)`
+- [x] **6.1.8** Test + commit
 
 ### AnimationManager Tasks
-- [ ] **6.1.9** Extract card animation logic
-- [ ] **6.1.10** Extract phase transition animations
-- [ ] **6.1.11** Integrate into renderer update loop
-- [ ] **6.1.12** Test + commit
+- [x] **6.1.9** Extract card animation logic
+- [x] **6.1.10** Extract phase transition animations
+- [x] **6.1.11** Integrate into renderer update loop
+- [x] **6.1.12** Test + commit
 
 ## Phase 2: Event Handling → src/input/
 
@@ -41,7 +41,7 @@
 - [x] **6.3.3** Extract `_check_for_winner()` logic
 - [x] **6.3.4** Create `GameController.update()` orchestrator
 - [x] **6.3.5** Replace main game loop with controller calls
-- [ ] **6.3.6** Test + commit
+- [x] **6.3.6** Test + commit
 
 ### GameApplication Tasks
 - [x] **6.3.7** Move pygame.init(), screen setup to `initialize()`
@@ -56,7 +56,7 @@
 - [x] **6.4.2** Delete unused global variables from cribbage_pygame.py (completed safe sweep; removed `show_computer_hand`, `ctx`, `state`, `winner_index`, `_rank_index`)
 - [x] **6.4.3** Create src/compat.py for transition utilities
 - [x] **6.4.4** Full test suite + ruff check
-- [~] **6.4.5** Final commit + mark cribbage_pygame.py deprecated (deprecated module header added; final commit pending)
+- [x] **6.4.5** Retire legacy compatibility file and finalize migration closeout
 
 ## Metrics
 - **Starting**: 1 file (cribbage_pygame.py ~3500 LOC)
@@ -76,8 +76,9 @@
 - Run full test suite after each phase
 - Commits are atomic and describe phase+phase_num
 
-## Current Reality Check (May 20, 2026)
-- `src/input/event_handler.py` and `GameController.process(actions)` are active in gameplay and intro/settings loops.
-- `GameApplication` now owns the classic runtime loop handles (controller/event handler/running) and syncs runtime settings/name/style.
-- `main.py` now routes classic mode via `src.compat.run_classic_client()` instead of importing `cribbage_pygame` directly.
-- Renderer extraction is in progress (`BoardRenderer`, `AnimationManager` exist), but legacy draw helpers in `cribbage_pygame.py` are still heavily used.
+## Current Reality Check (May 21, 2026)
+- `src/input/event_handler.py` and `GameController.process(actions)` drive input routing.
+- `GameApplication` owns app lifecycle, controller wiring, and render/update flow.
+- `main.py` is the only supported runtime entrypoint.
+- Renderer and animation logic are owned in `src/renderer/`.
+- Legacy `cribbage_pygame.py` has been retired.

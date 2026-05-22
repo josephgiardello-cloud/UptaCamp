@@ -345,3 +345,36 @@ def test_rematch_requires_both_players_and_creates_new_match(backend: OnlineBack
     assert first["new_match_id"] is None
     assert second["status"] == "accepted"
     assert second["new_match_id"]
+
+
+def test_finish_match_rejects_non_participant_finisher(backend: OnlineBackend) -> None:
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+
+    with pytest.raises(PermissionError):
+        backend.finish_match(
+            match_id,
+            winner_player_id="p1",
+            finisher_player_id="p3",
+        )
+
+
+def test_get_match_details_requires_membership_when_requester_is_set(backend: OnlineBackend) -> None:
+    p1 = backend.login_player("Alice", player_id="p1")
+    p3 = backend.login_player("Chris", player_id="p3")
+    invite = backend.create_invite("p1")
+    match_id = backend.accept_invite(invite, "p2")
+
+    with pytest.raises(PermissionError):
+        backend.get_match_details(
+            match_id,
+            requester_player_id="p3",
+            session_token=p3.session_token,
+        )
+
+    details = backend.get_match_details(
+        match_id,
+        requester_player_id="p1",
+        session_token=p1.session_token,
+    )
+    assert details["summary"]["match_id"] == match_id

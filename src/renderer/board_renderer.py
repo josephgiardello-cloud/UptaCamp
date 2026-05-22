@@ -1,11 +1,27 @@
 """Board rendering logic.
 
-This module gradually migrates pygame drawing code from cribbage_pygame.py.
-Initially acts as a facade, then contains direct implementations.
+This module contains migrated board drawing behavior owned by src/renderer.
 """
 
 from collections.abc import Callable
 from typing import Any
+
+import bert_persona
+from cards import parse_card_label
+
+
+AI_LEVELS: dict[int, str] = {
+    1: "Easy",
+    2: "Standard",
+    3: "Hard",
+    4: "Gumption",
+    5: "Adaptive Bert",
+}
+
+THEME_OUTER_BG = (36, 22, 14)
+PLAYFIELD_ALPHA = 64
+CARD_WIDTH = 120
+CARD_HEIGHT = 180
 
 
 class RenderingContext:
@@ -16,6 +32,7 @@ class RenderingContext:
         screen: Any,
         assets: Any,
         ui_style: str = "classic",
+        background_theme: str = "auto",
     ):
         """Initialize rendering context.
 
@@ -23,10 +40,12 @@ class RenderingContext:
             screen: pygame display surface
             assets: AssetManager instance
             ui_style: UI style ("classic", "competitive_minimal", "broadcast_table", "premium_tabletop")
+            background_theme: Selected table background theme
         """
         self.screen = screen
         self.assets = assets
         self.ui_style = ui_style
+        self.background_theme = background_theme
         self.width = screen.get_width() if screen else 1920
         self.height = screen.get_height() if screen else 1080
 
@@ -40,8 +59,8 @@ class RenderingContext:
 class BoardRenderer:
     """Handles all game board rendering.
 
-    Facade that delegates to existing cribbage_pygame drawing functions
-    while gradually migrating implementations into this class.
+    Rendering is implemented locally in this class to avoid runtime
+    dependencies on legacy compatibility modules.
     """
 
     def __init__(self, context: RenderingContext):
@@ -51,6 +70,200 @@ class BoardRenderer:
             context: RenderingContext with screen, assets, ui_style
         """
         self.context = context
+
+    @staticmethod
+    def _fixed_hand_positions(player: int, n: int, screen_width: int, screen_height: int) -> list[tuple[int, int]]:
+        margin = 60
+        available_width = screen_width - 2 * margin
+        spacing = min((available_width - CARD_WIDTH) // (n - 1), CARD_WIDTH + 20) if n > 1 else 0
+        y = max(500, screen_height - CARD_HEIGHT - 84) if player == 1 else 160
+        row_w = CARD_WIDTH if n <= 1 else CARD_WIDTH + spacing * (n - 1)
+        start_x = max(margin, (screen_width - row_w) // 2)
+        return [(start_x + i * spacing, y) for i in range(n)]
+
+    @staticmethod
+    def _row_positions(
+        n: int,
+        screen_width: int,
+        y: int,
+        card_width: int,
+        margin: int = 60,
+    ) -> list[tuple[int, int]]:
+        available_width = screen_width - 2 * margin
+        spacing = min((available_width - card_width) // (n - 1), card_width + 18) if n > 1 else 0
+        row_w = card_width if n <= 1 else card_width + spacing * (n - 1)
+        start_x = max(margin, (screen_width - row_w) // 2)
+        return [(start_x + i * spacing, y) for i in range(n)]
+
+    @staticmethod
+    def _draw_label(screen: Any, text: str, pos: tuple[int, int], font: Any, color: tuple[int, int, int], shadow: tuple[int, int] = (0, 0), align_left: bool = True) -> None:
+        shadow_surf = font.render(text, True, (0, 0, 0))
+        text_surf = font.render(text, True, color)
+        x, y = pos
+        if not align_left:
+            x -= text_surf.get_width() // 2
+        if shadow != (0, 0):
+            screen.blit(shadow_surf, (x + shadow[0], y + shadow[1]))
+        screen.blit(text_surf, (x, y))
+
+    @staticmethod
+    def _draw_scaled_card(screen: Any, surface: Any, rect: Any, size: tuple[int, int]) -> None:
+        import pygame
+
+        scaled = pygame.transform.smoothscale(surface, size)
+        screen.blit(scaled, rect.topleft)
+
+    def _draw_card_back(self, screen: Any, rect: Any) -> None:
+        import pygame
+
+        if self.context.assets is not None and hasattr(self.context.assets, "card_back"):
+            back = getattr(self.context.assets, "card_back")
+            if back is not None:
+                scaled = pygame.transform.smoothscale(back, (rect.width, rect.height))
+                screen.blit(scaled, rect.topleft)
+                return
+
+        pygame.draw.rect(screen, (247, 242, 231), rect, border_radius=12)
+        pygame.draw.rect(screen, (118, 95, 64), rect, width=2, border_radius=12)
+
+    def _draw_shadowed_panel(
+        self,
+        screen: Any,
+        rect: Any,
+        fill: tuple[int, int, int],
+        border: tuple[int, int, int],
+        radius: int = 18,
+        shadow: tuple[int, int] = (6, 7),
+    ) -> None:
+        import pygame
+
+        if self.context.ui_style == "competitive_minimal":
+            pygame.draw.rect(screen, fill, rect, border_radius=radius)
+            pygame.draw.rect(screen, border, rect, width=1, border_radius=radius)
+            return
+
+        shadow_rect = rect.move(shadow)
+        pygame.draw.rect(screen, (0, 0, 0, 35), shadow_rect.inflate(10, 10), border_radius=radius + 8)
+        pygame.draw.rect(screen, (0, 0, 0, 70), shadow_rect.inflate(4, 4), border_radius=radius + 4)
+        pygame.draw.rect(screen, (0, 0, 0, 95), shadow_rect, border_radius=radius)
+        pygame.draw.rect(screen, fill, rect, border_radius=radius)
+        pygame.draw.rect(screen, border, rect, width=2, border_radius=radius)
+        pygame.draw.rect(
+            screen,
+            (255, 255, 255, 40),
+            rect.inflate(-6, -6),
+            width=1,
+            border_radius=max(4, radius - 4),
+        )
+
+    @staticmethod
+    def _playfield_rect(screen: Any) -> Any:
+        import pygame
+
+        sw, sh = screen.get_width(), screen.get_height()
+        board_rect = pygame.Rect(24, 24, sw - 48, sh - 48)
+        inner_rect = board_rect.inflate(-26, -26)
+        return inner_rect.inflate(-28, -28)
+
+    @staticmethod
+    def _crib_panel_rect(sw: int, sh: int) -> Any:
+        import pygame
+
+        ai_row_bottom = 170 + 159
+        player_row_top = max(510, sh - CARD_HEIGHT - 70)
+        gap_top = ai_row_bottom + 22
+        gap_bottom = player_row_top - 22
+        crib_h = 136
+        crib_y = max(gap_top, min((gap_top + gap_bottom - crib_h) // 2, gap_bottom - crib_h))
+
+        board_rect = pygame.Rect(24, 24, sw - 48, sh - 48)
+        inner_rect = board_rect.inflate(-26, -26)
+        playfield = inner_rect.inflate(-28, -28)
+        reserve_right = 296
+        usable_left = playfield.left + 18
+        usable_right = playfield.right - reserve_right
+        if usable_right - usable_left < 420:
+            usable_right = playfield.right - 18
+
+        usable_width = max(320, usable_right - usable_left)
+        crib_w = min(620, usable_width)
+        crib_x = usable_left + max(0, (usable_width - crib_w) // 2)
+        return pygame.Rect(crib_x, crib_y, crib_w, crib_h)
+
+    @staticmethod
+    def _primary_button_rect(sw: int, sh: int) -> Any:
+        import pygame
+
+        w, h = 260, 60
+        return pygame.Rect(sw // 2 - w // 2, sh - 180, w, h)
+
+    def _draw_board_frame(self, screen: Any) -> None:
+        import pygame
+
+        sw, sh = screen.get_width(), screen.get_height()
+
+        if self.context.ui_style == "competitive_minimal":
+            screen.fill((12, 14, 20))
+            playfield = self._playfield_rect(screen)
+            for x in range(playfield.left + 20, playfield.right, 140):
+                pygame.draw.line(screen, (24, 30, 40), (x, playfield.top), (x, playfield.bottom), 1)
+            for y in range(playfield.top + 20, playfield.bottom, 110):
+                pygame.draw.line(screen, (24, 30, 40), (playfield.left, y), (playfield.right, y), 1)
+            return
+
+        if self.context.ui_style == "broadcast_table":
+            screen.fill((11, 38, 28))
+            playfield = self._playfield_rect(screen)
+            pygame.draw.rect(screen, (8, 29, 22), playfield, border_radius=24)
+            pygame.draw.rect(screen, (203, 180, 118), playfield, width=2, border_radius=24)
+            for y in range(playfield.top + 30, playfield.bottom, 86):
+                pygame.draw.line(screen, (18, 58, 43), (playfield.left + 18, y), (playfield.right - 18, y), 1)
+            return
+
+        if self.context.ui_style == "premium_tabletop":
+            screen.fill((66, 40, 21))
+            board_rect = pygame.Rect(20, 20, sw - 40, sh - 40)
+            pygame.draw.rect(screen, (92, 58, 31), board_rect, border_radius=36)
+            pygame.draw.rect(screen, (186, 134, 74), board_rect, width=3, border_radius=36)
+            felt = board_rect.inflate(-40, -40)
+            pygame.draw.rect(screen, (26, 86, 56), felt, border_radius=30)
+            pygame.draw.rect(screen, (226, 196, 138), felt, width=2, border_radius=30)
+            return
+
+        screen.fill(THEME_OUTER_BG)
+        board_rect = pygame.Rect(24, 24, sw - 48, sh - 48)
+        pygame.draw.rect(screen, (158, 106, 64), board_rect, border_radius=34)
+        inner_rect = board_rect.inflate(-26, -26)
+        pygame.draw.rect(screen, (92, 60, 34), inner_rect, border_radius=28)
+
+        felt_rect = inner_rect.inflate(-28, -28)
+        felt_surface = pygame.Surface((felt_rect.width, felt_rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(felt_surface, (18, 82, 54), felt_surface.get_rect(), border_radius=22)
+
+        band_w = max(18, felt_rect.width // 18)
+        for x in range(felt_rect.left, felt_rect.right, band_w):
+            shade = (14, 68, 45) if ((x - felt_rect.left) // band_w) % 2 == 0 else (20, 90, 58)
+            local_band = pygame.Rect(x - felt_rect.left, 0, band_w, felt_rect.height)
+            pygame.draw.rect(felt_surface, shade, local_band.clip(felt_surface.get_rect()))
+
+        glow = pygame.Surface((felt_rect.width, felt_rect.height), pygame.SRCALPHA)
+        for i in range(5):
+            alpha = 22 - i * 4
+            pygame.draw.rect(
+                glow,
+                (226, 198, 122, alpha),
+                pygame.Rect(12 + i * 2, 12 + i * 2, felt_rect.width - 24 - i * 4, felt_rect.height - 24 - i * 4),
+                width=2,
+                border_radius=18,
+            )
+        felt_surface.blit(glow, (0, 0))
+
+        vignette = pygame.Surface((felt_rect.width, felt_rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(vignette, (0, 0, 0, 0), vignette.get_rect(), border_radius=22)
+        pygame.draw.rect(vignette, (0, 0, 0, 58), vignette.get_rect(), width=26, border_radius=22)
+        felt_surface.blit(vignette, (0, 0))
+        felt_surface.set_alpha(PLAYFIELD_ALPHA)
+        screen.blit(felt_surface, felt_rect.topleft)
 
     def draw_board(self, game_state: Any) -> None:
         """Draw the complete game board.
@@ -104,8 +317,6 @@ class BoardRenderer:
         """Draw the gameplay table background for current style."""
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
@@ -113,11 +324,11 @@ class BoardRenderer:
         sh = self.context.screen.get_height()
 
         if self.context.ui_style != "classic":
-            legacy._draw_board_frame(self.context.screen)
+            self._draw_board_frame(self.context.screen)
             return
 
         if gameplay_background is None:
-            legacy._draw_board_frame(self.context.screen)
+            self._draw_board_frame(self.context.screen)
             return
 
         bg = pygame.transform.smoothscale(gameplay_background, (sw, sh))
@@ -142,9 +353,9 @@ class BoardRenderer:
         zone_overlay = pygame.Surface((table_zone.width, table_zone.height), pygame.SRCALPHA)
         pygame.draw.rect(
             zone_overlay,
-            (15, 45, 33, playfield_alpha),
+            (44, 48, 54, playfield_alpha),
             zone_overlay.get_rect(),
-            border_radius=26,
+            border_radius=34,
         )
         pygame.draw.rect(
             zone_overlay,
@@ -159,12 +370,10 @@ class BoardRenderer:
         """Draw player's hand cards with hover lift."""
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
-        p1_pos = legacy.fixed_hand_positions(1, len(session.player_hand), sw, sh)
+        p1_pos = self._fixed_hand_positions(1, len(session.player_hand), sw, sh)
         mouse_pos = pygame.mouse.get_pos()
         for i, card in enumerate(session.player_hand):
             card.rect.topleft = p1_pos[i]
@@ -192,13 +401,11 @@ class BoardRenderer:
         """Draw opponent hand backs and label."""
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
         p2_size = (106, 159)
-        p2_pos = legacy._row_positions(len(session.ai_hand), sw, 170, p2_size[0], margin=60)
+        p2_pos = self._row_positions(len(session.ai_hand), sw, 170, p2_size[0], margin=60)
         if session.ai_hand:
             opp_font = pygame.font.SysFont("segoe ui", 18, bold=True)
             opp_label = opp_font.render("Opponent Hand", True, (218, 206, 174))
@@ -211,7 +418,7 @@ class BoardRenderer:
                 card.rect.x + 5, card.rect.y + 6, card.rect.width, card.rect.height
             )
             pygame.draw.rect(self.context.screen, (0, 0, 0, 80), shadow, border_radius=12)
-            legacy._draw_card_back(self.context.screen, card.rect)
+            self._draw_card_back(self.context.screen, card.rect)
 
     def draw_pegging_lane(
         self,
@@ -224,8 +431,6 @@ class BoardRenderer:
     ) -> tuple[int, tuple[int, int]]:
         """Draw pegging lane and stacked pegging cards."""
         import pygame
-
-        import cribbage_pygame as legacy
 
         if self.context.screen is None:
             return pegging_y_base, (92, 138)
@@ -241,7 +446,7 @@ class BoardRenderer:
             pegging_card_size[1] + 20,
         )
         if session.pegging_pile:
-            legacy._draw_shadowed_panel(
+            self._draw_shadowed_panel(
                 self.context.screen,
                 pegging_lane,
                 (21, 57, 42),
@@ -257,7 +462,7 @@ class BoardRenderer:
                 card.rect.x + 4, card.rect.y + 6, card.rect.width, card.rect.height
             )
             pygame.draw.rect(self.context.screen, (0, 0, 0, 75), shadow, border_radius=12)
-            legacy._draw_scaled_card(self.context.screen, card.image, card.rect, pegging_card_size)
+            self._draw_scaled_card(self.context.screen, card.image, card.rect, pegging_card_size)
 
         return pegging_y, pegging_card_size
 
@@ -272,14 +477,12 @@ class BoardRenderer:
         """Draw pegging running total chip."""
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
         total_font = pygame.font.SysFont("segoe ui", 20, bold=True)
         total_chip = pygame.Rect(sw // 2 - 154, pegging_y + pegging_card_size[1] - 4, 308, 46)
-        legacy._draw_shadowed_panel(
+        self._draw_shadowed_panel(
             self.context.screen,
             total_chip,
             (24, 36, 29),
@@ -311,8 +514,6 @@ class BoardRenderer:
         """Draw end-of-hand scoring panels and round summary."""
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
@@ -325,8 +526,8 @@ class BoardRenderer:
         self._draw_scoring_breakdown(1, p2_breakdown, p2_pts, player_name, dealer_name)
 
         if crib_pts > 0 or crib_breakdown:
-            playfield = legacy._playfield_rect(self.context.screen)
-            crib_panel = legacy._crib_panel_rect(sw, sh)
+            playfield = self._playfield_rect(self.context.screen)
+            crib_panel = self._crib_panel_rect(sw, sh)
             crib_w = 240
             crib_h = 140
             crib_x = crib_panel.centerx - crib_w // 2
@@ -338,12 +539,12 @@ class BoardRenderer:
             crib_x = max(playfield.left + 12, min(crib_x, playfield.right - crib_w - 12))
             crib_y = max(playfield.top + 12, min(crib_y, playfield.bottom - crib_h - 12))
             crib_rect = pygame.Rect(crib_x, crib_y, crib_w, crib_h)
-            legacy._draw_shadowed_panel(self.context.screen, crib_rect, (21, 71, 48), (199, 169, 102), radius=18)
+            self._draw_shadowed_panel(self.context.screen, crib_rect, (21, 71, 48), (199, 169, 102), radius=18)
 
             crib_font = pygame.font.SysFont("segoe ui", 16, bold=True)
             item_font = pygame.font.SysFont("segoe ui", 13)
             crib_label = "Crib" if session.dealer == 1 else "Opponent's Crib"
-            legacy._draw_label(
+            self._draw_label(
                 self.context.screen,
                 crib_label,
                 (crib_rect.x + 12, crib_rect.y + 10),
@@ -384,13 +585,11 @@ class BoardRenderer:
         """Draw a breakdown panel for one side during end-of-hand scoring."""
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
         sh = self.context.screen.get_height()
-        playfield = legacy._playfield_rect(self.context.screen)
+        playfield = self._playfield_rect(self.context.screen)
         panel_w = 220
         panel_h = 280
         if player_idx == 0:
@@ -401,13 +600,13 @@ class BoardRenderer:
         panel_y = max(playfield.top + 14, min(panel_y, playfield.bottom - panel_h - 14))
         panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
 
-        legacy._draw_shadowed_panel(self.context.screen, panel_rect, (29, 42, 33), (193, 167, 109), radius=18)
+        self._draw_shadowed_panel(self.context.screen, panel_rect, (29, 42, 33), (193, 167, 109), radius=18)
         header_font = pygame.font.SysFont("segoe ui", 16, bold=True)
         item_font = pygame.font.SysFont("segoe ui", 13)
         total_font = pygame.font.SysFont("segoe ui", 14, bold=True)
 
         player_label = player_name if player_idx == 0 else dealer_name
-        legacy._draw_label(
+        self._draw_label(
             self.context.screen,
             f"{player_label}'s Score",
             (panel_rect.x + 12, panel_rect.y + 10),
@@ -453,8 +652,6 @@ class BoardRenderer:
         """Draw centered round summary popup."""
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
@@ -476,7 +673,7 @@ class BoardRenderer:
             lines.append(current)
             return lines[:max_lines]
 
-        playfield = legacy._playfield_rect(self.context.screen)
+        playfield = self._playfield_rect(self.context.screen)
         panel_w = min(560, playfield.width - 80)
         panel_h = 260
         panel_rect = pygame.Rect(
@@ -489,7 +686,7 @@ class BoardRenderer:
         dim = pygame.Surface((playfield.width, playfield.height), pygame.SRCALPHA)
         dim.fill((0, 0, 0, 76))
         self.context.screen.blit(dim, playfield.topleft)
-        legacy._draw_shadowed_panel(
+        self._draw_shadowed_panel(
             self.context.screen,
             panel_rect,
             (23, 36, 31),
@@ -502,7 +699,7 @@ class BoardRenderer:
         row_font = pygame.font.SysFont("segoe ui", 19, bold=True)
         meta_font = pygame.font.SysFont("segoe ui", 15)
 
-        legacy._draw_label(
+        self._draw_label(
             self.context.screen,
             "Round Summary",
             (panel_rect.x + 22, panel_rect.y + 16),
@@ -538,21 +735,14 @@ class BoardRenderer:
         """Draw end/game over action button."""
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
-        button_rect = getattr(legacy, "_primary_button_rect", None)
-        if callable(button_rect):
-            btn = button_rect(sw, sh)
-        else:
-            w, h = 260, 60
-            btn = pygame.Rect(sw // 2 - w // 2, sh - 180, w, h)
+        btn = self._primary_button_rect(sw, sh)
         is_hover = btn.collidepoint(pygame.mouse.get_pos())
         if is_hover:
             btn = btn.move(0, -2)
-        legacy._draw_shadowed_panel(
+        self._draw_shadowed_panel(
             self.context.screen,
             btn,
             (34, 50, 40) if is_hover else (28, 40, 33),
@@ -572,10 +762,35 @@ class BoardRenderer:
 
     def draw_background(self) -> None:
         """Draw board background based on UI style."""
-        import cribbage_pygame as legacy
+        if self.context.screen is None:
+            return
 
-        if self.context.screen is not None:
-            legacy._draw_board_frame(self.context.screen)
+        theme_key = str(getattr(self.context, "background_theme", "auto"))
+        gameplay_background = None
+        assets = getattr(self.context, "assets", None)
+        if assets is not None:
+            if theme_key == "wharf":
+                gameplay_background = assets.get_background("Tony.jpg")
+            elif theme_key == "dark_shadows":
+                gameplay_background = assets.get_background("board.jpg")
+            else:
+                gameplay_background = (
+                    assets.get_background("table.jpg")
+                    or assets.get_background("table.png")
+                )
+
+            if gameplay_background is None:
+                gameplay_background = (
+                    assets.get_background("table.jpg")
+                    or assets.get_background("table.png")
+                    or assets.get_background("board.jpg")
+                    or assets.get_background("Tony.jpg")
+                )
+
+        self.draw_gameplay_backdrop(
+            gameplay_background=gameplay_background,
+            playfield_alpha=PLAYFIELD_ALPHA,
+        )
 
     def draw_scores(self, game_state: Any) -> None:
         """Draw score panels.
@@ -584,8 +799,6 @@ class BoardRenderer:
             game_state: Current GameState object
         """
         import pygame
-
-        import cribbage_pygame as legacy
 
         if self.context.screen is None:
             return
@@ -602,7 +815,7 @@ class BoardRenderer:
             player_name = str(getattr(game_state, "player_name", "Player"))
 
         dealer_name = "Bert" if dad_ai_level in (4, 5) else "AI"
-        playfield = legacy._playfield_rect(self.context.screen)
+        playfield = self._playfield_rect(self.context.screen)
         panel_w, panel_h = 252, 194
         panel_margin = 20
         dealer_row_bottom = 170 + 159
@@ -611,25 +824,25 @@ class BoardRenderer:
         panel_y = min(panel_y, playfield.bottom - panel_h - panel_margin)
         panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
         if self.context.ui_style == "competitive_minimal":
-            legacy._draw_shadowed_panel(self.context.screen, panel_rect, (18, 22, 30), (104, 120, 150), radius=20)
+            self._draw_shadowed_panel(self.context.screen, panel_rect, (18, 22, 30), (104, 120, 150), radius=20)
         elif self.context.ui_style == "broadcast_table":
-            legacy._draw_shadowed_panel(self.context.screen, panel_rect, (14, 33, 25), (189, 167, 112), radius=22)
+            self._draw_shadowed_panel(self.context.screen, panel_rect, (14, 33, 25), (189, 167, 112), radius=22)
         elif self.context.ui_style == "premium_tabletop":
-            legacy._draw_shadowed_panel(self.context.screen, panel_rect, (24, 54, 40), (230, 200, 144), radius=24)
+            self._draw_shadowed_panel(self.context.screen, panel_rect, (24, 54, 40), (230, 200, 144), radius=24)
         else:
-            legacy._draw_shadowed_panel(self.context.screen, panel_rect, (26, 38, 31), (201, 174, 108), radius=26)
+            self._draw_shadowed_panel(self.context.screen, panel_rect, (26, 38, 31), (201, 174, 108), radius=26)
 
         title_font = pygame.font.SysFont("cambria", 24, bold=True)
         body_font = pygame.font.SysFont("segoe ui", 16, bold=True)
         small_font = pygame.font.SysFont("segoe ui", 13)
-        legacy._draw_label(
+        self._draw_label(
             self.context.screen,
             "Cribbage",
             (panel_rect.x + 18, panel_rect.y + 12),
             title_font,
             (220, 230, 250) if self.context.ui_style == "competitive_minimal" else (240, 227, 188),
         )
-        legacy._draw_label(
+        self._draw_label(
             self.context.screen,
             f"Dealer: {'You' if dealer == 0 else dealer_name}",
             (panel_rect.x + 18, panel_rect.y + 46),
@@ -666,9 +879,9 @@ class BoardRenderer:
                 dad_chip.centery - dad_surf.get_height() // 2,
             ),
         )
-        legacy._draw_label(
+        self._draw_label(
             self.context.screen,
-            f"AI Difficulty: {legacy.AI_LEVELS[dad_ai_level]}",
+            f"AI Difficulty: {AI_LEVELS[dad_ai_level]}",
             (panel_rect.x + 18, panel_rect.y + 150),
             small_font,
             (164, 177, 208) if self.context.ui_style == "competitive_minimal" else (214, 203, 174),
@@ -676,12 +889,12 @@ class BoardRenderer:
 
         if dad_ai_level == 5:
             try:
-                posture = legacy.bert_persona.level5_play_posture(
+                posture = bert_persona.level5_play_posture(
                     {"player_score": int(scores[0]), "bert_score": int(scores[1])}
                 )
             except Exception:
                 posture = "balanced"
-            legacy._draw_label(
+            self._draw_label(
                 self.context.screen,
                 f"Bert Posture: {posture.title()}",
                 (panel_rect.x + 18, panel_rect.y + 168),
@@ -744,8 +957,6 @@ class BoardRenderer:
         """
         import pygame
 
-        import cribbage_pygame as legacy
-
         if self.context.screen is None:
             return
 
@@ -767,17 +978,17 @@ class BoardRenderer:
         label_font = pygame.font.SysFont("segoe ui", 18, bold=True)
         small_font = pygame.font.SysFont("segoe ui", 15)
 
-        crib_panel = legacy._crib_panel_rect(sw, sh)
+        crib_panel = self._crib_panel_rect(sw, sh)
         if self.context.ui_style == "competitive_minimal":
-            legacy._draw_shadowed_panel(self.context.screen, crib_panel, (18, 24, 34), (104, 120, 150), radius=20)
+            self._draw_shadowed_panel(self.context.screen, crib_panel, (18, 24, 34), (104, 120, 150), radius=20)
         elif self.context.ui_style == "broadcast_table":
-            legacy._draw_shadowed_panel(self.context.screen, crib_panel, (14, 54, 38), (194, 171, 113), radius=22)
+            self._draw_shadowed_panel(self.context.screen, crib_panel, (14, 54, 38), (194, 171, 113), radius=22)
         elif self.context.ui_style == "premium_tabletop":
-            legacy._draw_shadowed_panel(self.context.screen, crib_panel, (21, 74, 49), (232, 202, 147), radius=24)
+            self._draw_shadowed_panel(self.context.screen, crib_panel, (21, 74, 49), (232, 202, 147), radius=24)
         else:
-            legacy._draw_shadowed_panel(self.context.screen, crib_panel, (20, 66, 45), (206, 176, 108), radius=24)
+            self._draw_shadowed_panel(self.context.screen, crib_panel, (20, 66, 45), (206, 176, 108), radius=24)
         crib_owner_label = "Your Crib" if dealer == 0 else "Opponent's Crib"
-        legacy._draw_label(
+        self._draw_label(
             self.context.screen,
             crib_owner_label,
             (crib_panel.x + 22, crib_panel.y + 14),
@@ -785,7 +996,7 @@ class BoardRenderer:
             (208, 222, 248) if self.context.ui_style == "competitive_minimal" else (240, 227, 188),
         )
         if phase == "discard" and crib_count < 4:
-            legacy._draw_label(
+            self._draw_label(
                 self.context.screen,
                 "Drop 2 cards here",
                 (crib_panel.x + 22, crib_panel.y + 38),
@@ -798,7 +1009,7 @@ class BoardRenderer:
         for i in range(2):
             card_rect = pygame.Rect(card_group_left + i * 84, crib_panel.y + 20, card_w, card_h)
             if i < crib_count:
-                legacy._draw_card_back(self.context.screen, card_rect)
+                self._draw_card_back(self.context.screen, card_rect)
             else:
                 pygame.draw.rect(self.context.screen, (250, 241, 221, 38), card_rect, width=2, border_radius=12)
                 pygame.draw.rect(
@@ -812,7 +1023,7 @@ class BoardRenderer:
         starter_box = pygame.Rect(crib_panel.right - 118, crib_panel.y + 17, 100, 106)
         pygame.draw.rect(self.context.screen, (31, 43, 35), starter_box, border_radius=18)
         pygame.draw.rect(self.context.screen, (214, 184, 114), starter_box, width=2, border_radius=18)
-        legacy._draw_label(
+        self._draw_label(
             self.context.screen,
             "Starter",
             (starter_box.x + 21, starter_box.y + 8),
@@ -820,8 +1031,18 @@ class BoardRenderer:
             (238, 223, 186),
         )
         if starter_card is not None:
-            starter_surf = pygame.transform.smoothscale(card_images[starter_card], (62, 88))
-            self.context.screen.blit(starter_surf, (starter_box.x + 19, starter_box.y + 16))
+            starter_image = card_images.get(starter_card)
+            if starter_image is None:
+                rank_raw, suit_raw = parse_card_label(str(starter_card))
+                rank_map = {"a": "ace", "j": "jack", "q": "queen", "k": "king"}
+                rank_token = rank_map.get(rank_raw.lower(), rank_raw.lower())
+                starter_key = f"{rank_token}_of_{suit_raw.lower()}"
+                starter_image = card_images.get(starter_key)
+                if starter_image is None and self.context.assets is not None and hasattr(self.context.assets, "get_card_image"):
+                    starter_image = self.context.assets.get_card_image(starter_key)
+            if starter_image is not None:
+                starter_surf = pygame.transform.smoothscale(starter_image, (62, 88))
+                self.context.screen.blit(starter_surf, (starter_box.x + 19, starter_box.y + 16))
 
     def finalize_frame(self) -> None:
         """Update display after rendering all elements."""

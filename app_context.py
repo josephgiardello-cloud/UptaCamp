@@ -25,6 +25,9 @@ class AppContext:
     last_error: str = ""
     status_message: str = ""
     game_state: GameState = field(default_factory=GameState)
+    settings: Any = None
+    audio: Any = None
+    voice: Any = None
 
     # Direct P2P fields (no central server required)
     p2p_host: Any = None   # p2p.P2PHost when this player is hosting

@@ -1,3 +1,5 @@
 """Utility modules for game infrastructure."""
 
-__all__ = ["asset_loader", "settings"]
+from .asset_loader import AssetManager
+
+__all__ = ["AssetManager"]

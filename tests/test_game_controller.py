@@ -32,7 +32,7 @@ class _LegacyStub:
 
 def test_update_dispatches_pegging_handler_for_pegging_phase():
     legacy = _LegacyStub(phase="pegging")
-    controller = GameController(engine=None, legacy_module=legacy)
+    controller = GameController(engine=None, hooks=legacy)
 
     controller.update(auto_player=True)
 
@@ -41,7 +41,7 @@ def test_update_dispatches_pegging_handler_for_pegging_phase():
 
 def test_update_dispatches_counting_handler_for_counting_phase():
     legacy = _LegacyStub(phase="counting")
-    controller = GameController(engine=None, legacy_module=legacy)
+    controller = GameController(engine=None, hooks=legacy)
 
     controller.update()
 
@@ -50,7 +50,7 @@ def test_update_dispatches_counting_handler_for_counting_phase():
 
 def test_transition_and_check_for_winner_delegate_to_legacy():
     legacy = _LegacyStub(phase="discard")
-    controller = GameController(engine=None, legacy_module=legacy)
+    controller = GameController(engine=None, hooks=legacy)
 
     controller.transition_phase("intro")
     winner = controller.check_for_winner()
@@ -64,7 +64,7 @@ def test_transition_and_check_for_winner_delegate_to_legacy():
 
 def test_handle_action_transition_requires_phase():
     legacy = _LegacyStub(phase="discard")
-    controller = GameController(engine=None, legacy_module=legacy)
+    controller = GameController(engine=None, hooks=legacy)
 
     with pytest.raises(ValueError, match="requires a non-empty 'phase'"):
         controller.handle_action("transition", {})
@@ -72,7 +72,7 @@ def test_handle_action_transition_requires_phase():
 
 def test_handle_action_rejects_unknown_action():
     legacy = _LegacyStub(phase="discard")
-    controller = GameController(engine=None, legacy_module=legacy)
+    controller = GameController(engine=None, hooks=legacy)
 
     with pytest.raises(ValueError, match="Unsupported action_type"):
         controller.handle_action("unknown", None)
@@ -80,7 +80,7 @@ def test_handle_action_rejects_unknown_action():
 
 def test_process_routes_mouse_action_to_discard_when_in_discard_phase():
     legacy = _LegacyStub(phase="discard")
-    controller = GameController(engine=None, legacy_module=legacy)
+    controller = GameController(engine=None, hooks=legacy)
 
     controller.process([{"type": "MOUSEBUTTONDOWN", "pos": (10, 20), "button": 1}])
 
@@ -89,7 +89,7 @@ def test_process_routes_mouse_action_to_discard_when_in_discard_phase():
 
 def test_process_routes_mouse_action_to_pegging_when_in_pegging_phase():
     legacy = _LegacyStub(phase="pegging")
-    controller = GameController(engine=None, legacy_module=legacy)
+    controller = GameController(engine=None, hooks=legacy)
 
     controller.process([{"type": "MOUSEBUTTONDOWN", "pos": (30, 40), "button": 1}])
 

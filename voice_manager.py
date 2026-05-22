@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import os
@@ -7,9 +7,14 @@ import shutil
 import subprocess
 import threading
 import time
-import winsound
+import wave
 from pathlib import Path
 from typing import Any
+
+try:
+    import winsound
+except ImportError:  # pragma: no cover - non-Windows platforms
+    winsound = None
 
 
 class VoiceManager:
@@ -48,6 +53,26 @@ class VoiceManager:
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = bool(enabled)
 
+    def stop(self) -> None:
+        """Stop any in-flight speech playback immediately."""
+        with self._speech_guard:
+            proc = self._sapi_proc
+            self._sapi_proc = None
+            self._speaking_until = 0.0
+
+        if proc is not None:
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+            except OSError:
+                pass
+
+        if self._is_windows and winsound is not None:
+            try:
+                winsound.PlaySound(None, 0)
+            except RuntimeError:
+                pass
+
     def configure_backend(
         self,
         backend: str,
@@ -75,7 +100,7 @@ class VoiceManager:
         bypass_cooldown: bool = False,
         voice_style: str = "downeast",
     ) -> None:
-        if not self.enabled or dad_ai_level not in (4, 5):
+        if not self.enabled or dad_ai_level not in (4, 5, 6):
             return
 
         normalized = str(text).strip()
@@ -83,9 +108,17 @@ class VoiceManager:
             return
 
         spoken_text = self._shape_for_voice_style(normalized, voice_style)
+        spoken_text = self._shape_for_ai_level_voice(spoken_text, dad_ai_level)
 
         now = time.monotonic()
-        if self._is_speaking(now) or (
+        if self._is_speaking(now):
+            # UI-triggered lines should be able to replace currently speaking lines.
+            if bypass_cooldown:
+                self.stop()
+            else:
+                return
+
+        if (
             not bypass_cooldown
             and ((now - self._last_spoken_at) < self.min_interval_s or normalized == self._last_text)
         ):
@@ -96,7 +129,7 @@ class VoiceManager:
         self._set_speaking_window(spoken_text)
 
         if self.backend == "local_ai":
-            self._speak_local_ai_async(spoken_text)
+            self._speak_local_ai_async(spoken_text, dad_ai_level)
             return
 
         if self._is_windows:
@@ -113,15 +146,32 @@ class VoiceManager:
         shaped = re.sub(r"\bgoing\b", "goin'", shaped, flags=re.IGNORECASE)
         return shaped
 
-    def _speak_local_ai_async(self, text: str) -> None:
+    def _shape_for_ai_level_voice(self, text: str, dad_ai_level: int) -> str:
+        if dad_ai_level != 5:
+            return text
+
+        # Barnabas cadence: more deliberate and grave.
+        shaped = re.sub(r"\s+", " ", text).strip()
+        shaped = shaped.replace(". ", "... ")
+        if not shaped.endswith((".", "!", "?", "...")):
+            shaped += "."
+        return shaped
+
+    def _escape_ssml_text(self, text: str) -> str:
+        escaped = text.replace("&", "&amp;")
+        escaped = escaped.replace("<", "&lt;").replace(">", "&gt;")
+        escaped = escaped.replace('"', "&quot;").replace("'", "&apos;")
+        return escaped
+
+    def _speak_local_ai_async(self, text: str, dad_ai_level: int) -> None:
         worker = threading.Thread(
             target=self._speak_local_ai,
-            args=(text,),
+            args=(text, dad_ai_level),
             daemon=True,
         )
         worker.start()
 
-    def _speak_local_ai(self, text: str) -> None:
+    def _speak_local_ai(self, text: str, dad_ai_level: int) -> None:
         model_path = Path(self.local_ai_model_path) if self.local_ai_model_path else None
         if model_path is None or not model_path.exists():
             if self._is_windows:
@@ -152,13 +202,43 @@ class VoiceManager:
                     self._speak_windows(text, 5)
                 return
 
-        playback_path = self._maybe_apply_rvc(wav_path)
+        playback_path = wav_path
+        if dad_ai_level == 5:
+            playback_path = self._apply_barnabas_vocal_fx(playback_path)
 
-        if self._is_windows:
+        playback_path = self._maybe_apply_rvc(playback_path)
+
+        if self._is_windows and winsound is not None:
             try:
                 winsound.PlaySound(str(playback_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
             except RuntimeError:
                 self._speak_windows(text, 5)
+
+    def _apply_barnabas_vocal_fx(self, wav_path: Path) -> Path:
+        out_path = wav_path.with_name(f"{wav_path.stem}_barnabas.wav")
+        if out_path.exists():
+            return out_path
+
+        try:
+            with wave.open(str(wav_path), "rb") as src:
+                params = src.getparams()
+                frames = src.readframes(params.nframes)
+
+            if params.framerate <= 0:
+                return wav_path
+
+            # Keep Barnabas distinct while avoiding an overly demonic tone.
+            target_rate = max(8000, int(params.framerate * 0.93))
+
+            with wave.open(str(out_path), "wb") as dst:
+                dst.setnchannels(params.nchannels)
+                dst.setsampwidth(params.sampwidth)
+                dst.setframerate(target_rate)
+                dst.writeframes(frames)
+
+            return out_path
+        except (OSError, wave.Error):
+            return wav_path
 
     def _estimate_speech_seconds(self, text: str) -> float:
         words = max(1, len(text.split()))
@@ -227,7 +307,12 @@ class VoiceManager:
         so they remain clear and natural.
         """
         word_count = max(1, len(str(text).split()))
-        base_rate = -2 if dad_ai_level == 4 else -1
+        if dad_ai_level == 4:
+            base_rate = -2
+        elif dad_ai_level == 5:
+            base_rate = -1
+        else:
+            base_rate = -1
 
         if word_count <= 6:
             return min(2, base_rate + 1)
@@ -240,12 +325,40 @@ class VoiceManager:
     def _speak_windows(self, text: str, dad_ai_level: int) -> None:
         if dad_ai_level == 4:
             preferred_voices = ["Microsoft David Desktop", "Microsoft Guy"]
+            volume = 100
+        elif dad_ai_level == 5:
+            preferred_voices = ["Microsoft Zira Desktop", "Microsoft Mark", "Microsoft Guy"]
+            volume = 94
         else:
             preferred_voices = ["Microsoft Guy", "Microsoft David Desktop", "Microsoft Mark"]
+            volume = 100
         rate = self._dynamic_sapi_rate(text, dad_ai_level)
 
         escaped_text = text.replace("'", "''").replace("\r", " ").replace("\n", " ")
+        escaped_ssml_text = self._escape_ssml_text(text).replace("\r", " ").replace("\n", " ")
         voices_ps = ", ".join("'" + voice.replace("'", "''") + "'" for voice in preferred_voices)
+
+        if dad_ai_level == 5:
+            ssml = (
+                "<speak version=\"1.0\" xml:lang=\"en-US\">"
+                "<prosody rate=\"-8%\" pitch=\"-10%\" volume=\"-1dB\">"
+                f"{escaped_ssml_text}"
+                "</prosody>"
+                "</speak>"
+            )
+            ssml_ps = ssml.replace("'", "''")
+            speak_cmd = (
+                f"$text = '{escaped_text}';"
+                "$synth.Rate = 0;"
+                f"$ssml = '{ssml_ps}';"
+                "try { $synth.SpeakSsml($ssml) } catch { $synth.Speak($text) };"
+            )
+        else:
+            speak_cmd = (
+                f"$synth.Rate = {rate};"
+                f"$text = '{escaped_text}';"
+                "$synth.Speak($text);"
+            )
 
         script = (
             "Add-Type -AssemblyName System.Speech;"
@@ -256,17 +369,22 @@ class VoiceManager:
             "  try { $synth.SelectVoice($v); $selected = $true; break } catch {}"
             "};"
             "if (-not $selected) {"
-            "  $male = $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo } | "
-            "Where-Object { $_.Gender -eq [System.Speech.Synthesis.VoiceGender]::Male } | "
-            "Select-Object -First 1;"
-            "  if ($male) {"
-            "    try { $synth.SelectVoice($male.Name); $selected = $true } catch {}"
+            + (
+                "  $fallback = $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo } | "
+                "Where-Object { $_.Name -notmatch 'Guy|David' } | "
+                "Sort-Object @{Expression={ if ($_.Gender -eq [System.Speech.Synthesis.VoiceGender]::Female) {0} else {1} }}, Name | "
+                "Select-Object -First 1;"
+                if dad_ai_level == 5
+                else "  $fallback = $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo } | "
+                "Where-Object { $_.Gender -eq [System.Speech.Synthesis.VoiceGender]::Male } | "
+                "Select-Object -First 1;"
+            )
+            + "  if ($fallback) {"
+            "    try { $synth.SelectVoice($fallback.Name); $selected = $true } catch {}"
             "  }"
             "};"
-            f"$synth.Rate = {rate};"
-            "$synth.Volume = 100;"
-            f"$text = '{escaped_text}';"
-            "$synth.Speak($text);"
+            f"$synth.Volume = {volume};"
+            f"{speak_cmd}"
             "$synth.Dispose();"
         )
 
@@ -311,7 +429,8 @@ class VoiceManager:
             "voices": [],
             "recommended": {
                 "bert_level4": ["Microsoft David Desktop", "Microsoft Guy"],
-                "bert_plus_level5": ["Microsoft Guy", "Microsoft David Desktop", "Microsoft Mark"],
+                "old_house_level5": ["Microsoft Zira Desktop", "Microsoft Mark"],
+                "bert_plus_level6": ["Microsoft Guy", "Microsoft David Desktop", "Microsoft Mark"],
             },
             "notes": [],
         }

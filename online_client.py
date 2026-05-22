@@ -84,7 +84,8 @@ class OnlineClient:
         return str(raw) if raw else None
 
     def get_match(self, match_id: str) -> dict[str, Any]:
-        return self._request("GET", f"/matches/{match_id}")
+        self._require_login()
+        return self._request("GET", f"/matches/{match_id}?player_id={self.player_id}")
 
     def leaderboard(self, limit: int = 50) -> list[dict[str, Any]]:
         res = self._request("GET", f"/leaderboard?limit={limit}")
@@ -102,7 +103,11 @@ class OnlineClient:
         )
 
     def get_chat(self, match_id: str, limit: int = 100) -> list[dict[str, Any]]:
-        res = self._request("GET", f"/matches/{match_id}/chat?limit={limit}")
+        self._require_login()
+        res = self._request(
+            "GET",
+            f"/matches/{match_id}/chat?limit={limit}&player_id={self.player_id}",
+        )
         return list(res.get("messages", []))
 
     def request_rematch(self, match_id: str) -> dict[str, Any]:

@@ -1,5 +1,6 @@
-import random
+﻿import random
 import threading
+from shutil import copy2
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -68,6 +69,27 @@ PERCENTILE_EPSILON: float = 1e-9  # Epsilon for span normalization
 
 _BERT_AGENT: BertAgent | None = None
 _DEFAULT_BERT_MODEL = Path("bert_model.pkl")
+_BARNABUS_AGENT: BertAgent | None = None
+_DEFAULT_BARNABUS_MODEL = Path("barnabas_model.pkl")
+
+
+def _uses_adaptive_ai(dad_ai_level: int) -> bool:
+    return dad_ai_level in {4, 5, 6}
+
+
+def _agent_for_level(dad_ai_level: int) -> BertAgent:
+    if dad_ai_level == 5:
+        return get_barnabas_agent()
+    return get_bert_agent()
+
+
+def _bert_posture_for_level(dad_ai_level: int, state: GameState | None) -> str:
+    # Bert uses a stable balanced posture; Old House (level 5) uses Barnabas posture.
+    if dad_ai_level == 4:
+        return "balanced"
+    if dad_ai_level == 5:
+        return "cutthroat"
+    return _level5_posture_from_state(state)
 
 
 def _level5_posture_from_state(state: GameState | None) -> str:
@@ -106,6 +128,96 @@ def load_bert_agent(path: str | Path = _DEFAULT_BERT_MODEL) -> BertAgent:
 def save_bert_agent(path: str | Path = _DEFAULT_BERT_MODEL) -> None:
     agent = get_bert_agent()
     agent.save(path)
+
+
+def set_barnabas_agent(agent: BertAgent) -> None:
+    global _BARNABUS_AGENT
+    _BARNABUS_AGENT = agent
+
+
+def get_barnabas_agent() -> BertAgent:
+    global _BARNABUS_AGENT
+    if _BARNABUS_AGENT is None:
+        _BARNABUS_AGENT = BertAgent(
+            learning_rate=0.09,
+            discount=0.95,
+            epsilon=0.0,
+            epsilon_min=0.0,
+            epsilon_decay=0.9998,
+        )
+        try:
+            if _DEFAULT_BARNABUS_MODEL.exists():
+                _BARNABUS_AGENT.load(_DEFAULT_BARNABUS_MODEL)
+            elif _DEFAULT_BERT_MODEL.exists():
+                # Bootstrap Barnabas from Bert so Old House starts strong.
+                _BARNABUS_AGENT.load(_DEFAULT_BERT_MODEL)
+                _BARNABUS_AGENT.epsilon = 0.0
+                _BARNABUS_AGENT.epsilon_min = 0.0
+        except Exception:
+            pass
+    return _BARNABUS_AGENT
+
+
+def load_barnabas_agent(path: str | Path = _DEFAULT_BARNABUS_MODEL) -> BertAgent:
+    agent = BertAgent(
+        learning_rate=0.09,
+        discount=0.95,
+        epsilon=0.0,
+        epsilon_min=0.0,
+        epsilon_decay=0.9998,
+    )
+    agent.load(path)
+    set_barnabas_agent(agent)
+    return agent
+
+
+def save_barnabas_agent(path: str | Path = _DEFAULT_BARNABUS_MODEL) -> None:
+    agent = get_barnabas_agent()
+    agent.save(path)
+
+
+def bootstrap_barnabas_from_bert(
+    bert_path: str | Path = _DEFAULT_BERT_MODEL,
+    barnabas_path: str | Path = _DEFAULT_BARNABUS_MODEL,
+    overwrite: bool = False,
+) -> bool:
+    src = Path(bert_path)
+    dst = Path(barnabas_path)
+    if not src.exists():
+        return False
+    if dst.exists() and not overwrite:
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    copy2(src, dst)
+    return True
+
+
+def shape_end_of_hand_learning_reward(
+    dad_ai_level: int,
+    player_points: int,
+    ai_points: int,
+    crib_points: int,
+    dealer_index: int,
+    state: GameState | None = None,
+) -> float:
+    base = float(ai_points - player_points)
+    base += float(crib_points if dealer_index == 1 else -crib_points)
+    if dad_ai_level != 5:
+        return base
+
+    # Barnabas (Old House): pressure-heavy scoring profile with strict anti-crib leakage.
+    reward = base
+    reward += 0.35 * float(ai_points)
+    if dealer_index == 0 and crib_points > 0:
+        reward -= 0.55 * float(crib_points)
+    if state is not None:
+        player_score = int(state.scores[0]) if len(state.scores) > 0 else 0
+        ai_score = int(state.scores[1]) if len(state.scores) > 1 else 0
+        if ai_score >= 112 and ai_points > 0:
+            reward += 0.45 * float(ai_points)
+        if player_score >= 108 and player_points > 0:
+            reward -= 0.2 * float(player_points)
+    return reward
 
 
 def get_reward(
@@ -165,7 +277,7 @@ def _run_discard_with_timeout(
 
     Args:
         dad_labels: AI's 6 cards
-        dad_ai_level: Difficulty level 1-5
+        dad_ai_level: Difficulty level 1-6
         dealer_is_dad: Whether AI is dealer
         canonical_deck_labels: Full deck labels
         score_labels_hand: Scoring function
@@ -363,7 +475,7 @@ def choose_discard_indices(
         List of 2 card indices [i, j] to discard
     """
     # Apply timeout wrapper for expensive levels if requested
-    if timeout_seconds and dad_ai_level >= 3:
+    if timeout_seconds and dad_ai_level >= 3 and not _uses_adaptive_ai(dad_ai_level):
         return _run_discard_with_timeout(
             dad_labels=dad_labels,
             dad_ai_level=dad_ai_level,
@@ -399,10 +511,10 @@ def _choose_discard_indices_impl(
     if dad_ai_level == 1:
         return random.sample(range(6), 2)
 
-    if dad_ai_level == 5:
+    if _uses_adaptive_ai(dad_ai_level):
         state = game_state or GameState()
-        posture = _level5_posture_from_state(state)
-        agent = get_bert_agent()
+        posture = _bert_posture_for_level(dad_ai_level, state)
+        agent = _agent_for_level(dad_ai_level)
         agent.set_posture(posture)
         try:
             idx1, idx2 = agent.choose_discard(dad_labels, state, posture=posture)
@@ -448,7 +560,8 @@ def _choose_discard_indices_impl(
             score += LEVEL_3_INTRINSIC * _intrinsic_keep_score(kept)
             score += (LEVEL_3_DEALER_CRIB if dealer_is_dad else LEVEL_3_PONE_CRIB) * _discard_crib_score(discards)
         else:
-            # Brutal mode: deeper simulation with heavier intrinsic weighting.
+            # Legacy high-tier predefined simulation (e.g. Barnabas):
+            # deeper search with heavier intrinsic weighting.
             trials = LEVEL_4_TRIALS
             total = 0.0
             for _ in range(trials):
@@ -563,10 +676,10 @@ def choose_pegging_index(
     if dad_ai_level == 1:
         return random.choice(legal)
 
-    if dad_ai_level == 5:
+    if _uses_adaptive_ai(dad_ai_level):
         state = game_state or GameState()
-        posture = _level5_posture_from_state(state)
-        agent = get_bert_agent()
+        posture = _bert_posture_for_level(dad_ai_level, state)
+        agent = _agent_for_level(dad_ai_level)
         agent.set_posture(posture)
         try:
             return agent.choose_pegging(hand_labels, current_total, state, posture=posture)

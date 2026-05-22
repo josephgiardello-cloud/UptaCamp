@@ -20,7 +20,7 @@ pyinstaller --onefile --windowed \
   --add-data "assets:assets" \
   --add-data "uptacamp_settings.json:." \
   --name CribbageGame \
-  cribbage_pygame.py
+  main.py
 
 # Output: dist/CribbageGame.exe
 ```
@@ -33,7 +33,7 @@ pyinstaller --onedir --windowed \
   --add-data "assets:assets" \
   --add-data "uptacamp_settings.json:." \
   --name CribbageGame \
-  cribbage_pygame.py
+  main.py
 
 # Output: dist/CribbageGame.app
 ```
@@ -46,7 +46,7 @@ pyinstaller --onedir \
   --add-data "assets:assets" \
   --add-data "uptacamp_settings.json:." \
   --name CribbageGame \
-  cribbage_pygame.py
+  main.py
 
 # Output: dist/CribbageGame
 ```

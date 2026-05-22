@@ -54,7 +54,8 @@ def test_get_response_includes_cors_headers(tmp_path: Path):
     with _serve_backend(tmp_path / "api.db") as base_url:
         with _request("GET", f"{base_url}/health") as resp:
             assert resp.status == 200
-            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+            expected = OnlineApiHandler.CORS_ALLOWED_ORIGINS[0]
+            assert resp.headers.get("Access-Control-Allow-Origin") == expected
             assert "GET" in str(resp.headers.get("Access-Control-Allow-Methods"))
 
 
@@ -62,7 +63,8 @@ def test_options_preflight_returns_204_with_cors_headers(tmp_path: Path):
     with _serve_backend(tmp_path / "api.db") as base_url:
         with _request("OPTIONS", f"{base_url}/health") as resp:
             assert resp.status == 204
-            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+            expected = OnlineApiHandler.CORS_ALLOWED_ORIGINS[0]
+            assert resp.headers.get("Access-Control-Allow-Origin") == expected
             assert "POST" in str(resp.headers.get("Access-Control-Allow-Methods"))
 
 

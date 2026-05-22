@@ -1,16 +1,15 @@
-# Plan Alignment Status (May 20, 2026)
+# Plan Alignment Status (May 21, 2026)
 
 This file tracks alignment against the requested implementation plan.
 
 ## 1. Architecture & Code Organization
 
 - [x] 1.1 God Object split started (`src/renderer`, `src/input`, `src/controllers`, `src/utils` exist)
-- [~] 1.1 Main loop fully migrated to controller pipeline
-  - Current: legacy `cribbage_pygame.py` loop delegates core phase updates via `GameController`
-  - Current: event/action flow now routes through `EventHandler.get_actions()` + `GameController.process(actions)`
-  - Current: gameplay event loop uses normalized action pipeline instead of direct pygame event dispatch to phase handlers
-  - Current: intro/settings loop now consumes normalized `EventHandler` actions (with raw-event passthrough for compatibility handlers)
-  - Remaining: factor large intro/settings conditionals into dedicated input/controller components
+- [x] 1.1 Main runtime loop migration is complete for the primary entrypoint
+  - Current: `main.py` runs the state-driven runtime path as the default and supported launch path.
+  - Current: deprecated `--classic-client` flag has been removed from the CLI surface.
+  - Current: event/action flow routes through `EventHandler.get_actions()` + `GameController.process(actions)`.
+  - Current: legacy compatibility file retirement is complete (`cribbage_pygame.py` removed).
 - [x] 1.2 Mixed state management baseline (`CribbageEngine.state` is primary state model)
 - [x] 1.2 Debug validation method exists and now runs after key mutating engine methods
 - [x] 1.3 Global variables encapsulation (runtime-scoped)
@@ -42,9 +41,11 @@ This file tracks alignment against the requested implementation plan.
 
 ## 4. Performance & Resource Usage
 
-- [~] 4.1 Frame/animation efficiency work is partially present
+- [x] 4.1 Frame/animation migration baseline is complete
+  - Current: `src/renderer/animation_manager.py` is now a concrete manager with keyed animation lifecycle and compatibility delegation for card flights/popups/shake.
 - [~] 4.2 AI lag mitigation is partial (timeouts/fallbacks exist in strategy)
-- [~] 4.3 Asset preloading/caching is present; deeper memory optimization optional
+- [x] 4.3 Asset preloading/caching baseline is complete
+  - Current: `src/utils/asset_loader.py` now provides concrete image/font loading, caching, and preload helpers for cards/backgrounds.
 
 ## 5. Code Quality & Maintainability
 
@@ -75,11 +76,27 @@ This file tracks alignment against the requested implementation plan.
 
 ## Recent changes in this pass
 
+- Cut over `main.py` to the state-driven runtime as the only supported execution path.
+- Removed deprecated `--classic-client` from `main.py` CLI arguments.
+- Updated `tests/test_main_entrypoint.py` to validate state-runtime defaults after flag removal.
+- Updated `README.md` run instructions to state-driven defaults and removed obsolete `adapter.py` from project layout.
+
+- Replaced `src/utils/asset_loader.py` stub with a concrete `AssetManager` implementation (path resolution, image/font caching, background/card preload helpers).
+- Replaced `src/renderer/animation_manager.py` stub with a concrete `AnimationManager` (generic keyed animations plus legacy effect compatibility methods).
+- Removed `GameApplication` initialize/shutdown TODOs in `src/controllers/game_controller.py`; app lifecycle now wires assets, renderer, animation manager, and running state concretely.
+- Routed classic runtime effects usage through `src.renderer.AnimationManager` in `cribbage_pygame.py`.
+- Added migration coverage tests in `tests/test_asset_loader.py` and `tests/test_animation_manager.py`.
+- Re-ran full suite with latest migration changes (`.venv\\Scripts\\python.exe -m pytest -q .`) -> 180 passed.
+
 - Added debug-validation postcondition hook calls in `engine.py` mutating methods.
 - Added dependency injection support for AI discard strategy in `engine.py`.
 - Added tests covering injected strategy path and validation hook invocation in `tests/test_engine.py`.
 - Implemented normalized event action mapping in `src/input/event_handler.py` (keyboard/mouse/settings/quit).
 - Added `GameController.process(actions)` dispatch path in `src/controllers/game_controller.py`.
+- Replaced `GameController` legacy-module coupling with explicit runtime hooks API (`hooks=` callsites).
+- Removed remaining direct `cribbage_pygame` imports from `src/` and `tests/` by migrating affected tests to `engine.py` + `cards.py` surfaces.
+- Re-ran full test suite after hook and test migrations (`.venv\\Scripts\\python.exe -m pytest . --color=no`) -> 178 passed.
+- Retired legacy runtime file `cribbage_pygame.py` and removed its packaging/docs references.
 - Updated `GameApplication.handle_input()` to use `get_actions()` and `process(actions)` pipeline.
 - Added controller tests for phase-based mouse-action dispatch in `tests/test_game_controller.py`.
 - Removed accidental early bootstrap `main` block from `cribbage_pygame.py` to avoid pre-initialization execution.
@@ -90,7 +107,7 @@ This file tracks alignment against the requested implementation plan.
 - Routed `cribbage_pygame.main()` runtime control through `GameApplication` (`game_controller`, `event_handler`, `running`, and settings/name/style sync).
 - Added `GameApplication` lifecycle tests in `tests/test_game_controller.py`.
 - Validated migration-focused regressions with `.venv\\Scripts\\python.exe -m pytest tests/test_game_controller.py tests/test_main_entrypoint.py -q` (12 passed).
-- Added `src/compat.py` and updated `main.py` to import classic mode entrypoint from `src.compat` rather than directly from `cribbage_pygame`.
+- Removed the temporary `src/compat.py` boundary and completed `main.py` state-runtime-only cutover.
 - Updated `tests/test_main_entrypoint.py` to mock `run_classic_client` at the `main.py` boundary.
 - Re-ran focused entry/controller tests after compat boundary refactor (`.venv\\Scripts\\python.exe -m pytest tests/test_main_entrypoint.py tests/test_game_controller.py -q`, all passing).
 - Started 6.4.2 cleanup by removing dead legacy global `show_computer_hand` from `cribbage_pygame.py` (no callsites).
@@ -99,7 +116,8 @@ This file tracks alignment against the requested implementation plan.
 - Continued 6.4.2 cleanup by removing dead `winner_index` global and routing winner state solely through `_CLASSIC_SESSION.winner`.
 - Continued 6.4.2 cleanup by removing dead legacy alias `_rank_index` from `cribbage_pygame.py`.
 - Completed a full safe global sweep for 6.4.2; no additional removable globals were found without breaking legacy compatibility references.
-- Marked `cribbage_pygame.py` as deprecated at module header level and documented `main.py -> src.compat.run_classic_client()` as the supported runtime path.
+- Marked `cribbage_pygame.py` as deprecated and documented state-driven runtime as the supported startup path.
 - Cleared repo Ruff lint baseline (`.venv\\Scripts\\python.exe -m ruff check .` -> all checks passed).
 - Re-validated focused suites including voice manager tests (`.venv\\Scripts\\python.exe -m pytest tests/test_main_entrypoint.py tests/test_game_controller.py tests/test_game_logic.py tests/test_voice_manager.py -q` -> 31 passed).
-- Ran full test suite (`.venv\\Scripts\\python.exe -m pytest -q`) -> 139 passed.
+- Retired the legacy `adapter.py` bridge and removed adapter-specific test coupling.
+- Ran full test suite (`.venv\\Scripts\\python.exe -m pytest -q .`) -> 179 passed.

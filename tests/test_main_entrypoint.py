@@ -35,14 +35,7 @@ class _FakeScreen:
         return 800
 
 
-def test_main_defaults_to_classic_client(monkeypatch):
-    called = {"value": False}
-
-    def _classic_runner():
-        called["value"] = True
-        return 123
-
-    monkeypatch.setattr(main, "run_classic_client", _classic_runner)
+def test_main_defaults_to_state_client(monkeypatch):
     monkeypatch.setattr(
         main.argparse.ArgumentParser,
         "parse_known_args",
@@ -54,8 +47,6 @@ def test_main_defaults_to_classic_client(monkeypatch):
                 volume=0.6,
                 animations="on",
                 online_ai_level=2,
-                new_client=False,
-                classic_client=False,
             ),
             [],
         ),
@@ -65,44 +56,10 @@ def test_main_defaults_to_classic_client(monkeypatch):
 
     result = main.main()
 
-    assert result == 123
-    assert called["value"] is True
+    assert result == 999
 
 
-def test_main_uses_classic_path_when_opted_in(monkeypatch):
-    called = {"value": False}
-
-    def _classic_runner():
-        called["value"] = True
-        return 123
-
-    monkeypatch.setattr(main, "_run_state_client", lambda args: 999)
-    monkeypatch.setattr(main, "run_classic_client", _classic_runner)
-    monkeypatch.setattr(
-        main.argparse.ArgumentParser,
-        "parse_known_args",
-        lambda self: (
-            types.SimpleNamespace(
-                debug_play=False,
-                online_url="http://127.0.0.1:8787",
-                online_ws_url="ws://127.0.0.1:8790",
-                volume=0.6,
-                animations="on",
-                online_ai_level=2,
-                new_client=False,
-                classic_client=True,
-            ),
-            [],
-        ),
-    )
-
-    result = main.main()
-
-    assert called["value"] is True
-    assert result == 123
-
-
-def test_main_uses_new_client_path_when_flag_enabled(monkeypatch):
+def test_main_uses_state_client_path(monkeypatch):
     monkeypatch.setattr(
         main.argparse.ArgumentParser,
         "parse_known_args",
@@ -114,8 +71,6 @@ def test_main_uses_new_client_path_when_flag_enabled(monkeypatch):
                 volume=0.5,
                 animations="off",
                 online_ai_level=3,
-                new_client=True,
-                classic_client=False,
             ),
             [],
         ),
@@ -132,7 +87,6 @@ def test_main_uses_new_client_path_when_flag_enabled(monkeypatch):
     result = main.main()
 
     assert result == 777
-    assert seen["args"].new_client is True
     assert seen["args"].online_url == "http://example.local"
 
 

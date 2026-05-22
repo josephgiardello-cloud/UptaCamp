@@ -1,7 +1,7 @@
 """Game controller and application state management.
 
-This module contains extracted game-loop orchestration logic while still
-delegating to the legacy compatibility module during migration.
+This module contains extracted game-loop orchestration using explicit
+runtime hooks for event/phase operations.
 """
 
 from __future__ import annotations
@@ -10,53 +10,61 @@ from types import SimpleNamespace
 from typing import Any
 
 from src.input import EventHandler
+from src.renderer import AnimationManager
 from src.renderer import BoardRenderer, RenderingContext
+from src.utils.asset_loader import AssetManager
 
 
 class GameController:
     """Orchestrates game logic and updates."""
 
-    def __init__(self, engine: Any, legacy_module: Any | None = None):
+    def __init__(
+        self,
+        engine: Any,
+        hooks: Any | None = None,
+    ):
         """Initialize game controller.
 
         Args:
             engine: CribbageEngine instance
-            legacy_module: Optional cribbage_pygame-like module for migration
+            hooks: Runtime hooks object with phase/event handler callables
         """
         self.engine = engine
-        self._legacy = legacy_module
+        self._hooks = hooks
 
-    def _get_legacy_module(self) -> Any:
-        """Resolve and cache the legacy compatibility module."""
-        if self._legacy is None:
-            import cribbage_pygame as legacy_module
+    def _get_hooks(self) -> Any:
+        """Return configured runtime hooks.
 
-            self._legacy = legacy_module
-        return self._legacy
+        Migration paths must pass dependencies explicitly so controller logic
+        does not silently reach into monolithic runtime modules.
+        """
+        if self._hooks is None:
+            raise RuntimeError("GameController requires explicit runtime hooks")
+        return self._hooks
 
     def _current_phase(self) -> str:
-        """Get the current game phase from legacy state."""
-        legacy = self._get_legacy_module()
-        session = getattr(legacy, "_CLASSIC_SESSION", None)
+        """Get the current game phase from runtime hooks state."""
+        hooks = self._get_hooks()
+        session = getattr(hooks, "_CLASSIC_SESSION", None)
         if session is not None and hasattr(session, "phase"):
             return str(session.phase)
-        return str(getattr(legacy, "game_phase", "intro"))
+        return str(getattr(hooks, "game_phase", "intro"))
 
     def handle_discard(self, event: Any) -> None:
         """Run discard-phase handler for a single event."""
-        self._get_legacy_module().handle_discard(self._to_legacy_event(event))
+        self._get_hooks().handle_discard(self._to_runtime_event(event))
 
     def handle_pegging(self, event: Any | None = None, *, auto_player: bool = False) -> None:
         """Run pegging-phase handler for a single event or auto-tick."""
-        self._get_legacy_module().handle_pegging(
-            self._to_legacy_event(event), auto_player=auto_player
+        self._get_hooks().handle_pegging(
+            self._to_runtime_event(event), auto_player=auto_player
         )
 
-    def _to_legacy_event(self, payload: Any) -> Any:
+    def _to_runtime_event(self, payload: Any) -> Any:
         """Convert normalized action dicts into pygame-like event objects.
 
         Migration sends action dictionaries through controller.process(), while
-        legacy handlers still expect pygame event instances with .type/.pos.
+        runtime hooks still expect pygame event instances with .type/.pos.
         """
         if payload is None or not isinstance(payload, dict):
             return payload
@@ -65,8 +73,8 @@ class GameController:
         if raw is not None:
             return raw
 
-        legacy = self._get_legacy_module()
-        pg = getattr(legacy, "pygame", None)
+        hooks = self._get_hooks()
+        pg = getattr(hooks, "pygame", None)
         if pg is None:
             return payload
 
@@ -99,15 +107,15 @@ class GameController:
 
     def handle_counting(self) -> None:
         """Run counting-phase handler."""
-        self._get_legacy_module().handle_counting()
+        self._get_hooks().handle_counting()
 
     def transition_phase(self, target_phase: str, *, force: bool = False) -> None:
-        """Transition to a target phase using legacy transition logic."""
-        self._get_legacy_module()._transition_phase(target_phase, force=force)
+        """Transition to a target phase using runtime transition logic."""
+        self._get_hooks()._transition_phase(target_phase, force=force)
 
     def check_for_winner(self) -> int | None:
         """Evaluate and return winner index if any."""
-        return self._get_legacy_module()._check_for_winner()
+        return self._get_hooks()._check_for_winner()
 
     def update(self, *, auto_player: bool = False) -> None:
         """Update game state for current frame.
@@ -173,10 +181,10 @@ class GameController:
                 continue
 
             if action_type in {"keydown", "keyup", "ai_level_change", "settings_toggle", "reset_hand", "online_mode", "ai_level_select", "settings_input", "settings_backspace", "settings_submit", "settings_cancel"}:
-                legacy = self._get_legacy_module()
+                hooks = self._get_hooks()
                 key_value = action.get("key")
-                if hasattr(legacy, "handle_key_press") and key_value is not None:
-                    legacy.handle_key_press(key_value)
+                if hasattr(hooks, "handle_key_press") and key_value is not None:
+                    hooks.handle_key_press(key_value)
                 continue
 
 
@@ -199,6 +207,7 @@ class GameApplication:
         self.assets: Any = None
         self.rendering_context: RenderingContext | None = None
         self.renderer: BoardRenderer | None = None
+        self.animation_manager: AnimationManager | None = None
 
         # Controllers and handlers
         self.game_controller: GameController | None = None
@@ -217,7 +226,9 @@ class GameApplication:
             width: Display width (default 1920)
             height: Display height (default 1080)
         """
-        # TODO: Initialize pygame, load assets, create engine, etc.
+        if self.assets is None:
+            self.assets = AssetManager()
+
         if self.screen and self.assets:
             self.rendering_context = RenderingContext(
                 screen=self.screen,
@@ -225,8 +236,13 @@ class GameApplication:
                 ui_style=self.ui_style,
             )
             self.renderer = BoardRenderer(self.rendering_context)
+
+        if self.animation_manager is None:
+            self.animation_manager = AnimationManager()
+
         # Initialize event handler (doesn't need screen, just processes pygame events)
         self.event_handler = EventHandler()
+        self.running = True
 
     def handle_input(self) -> bool:
         """Process input events.
@@ -262,7 +278,9 @@ class GameApplication:
 
     def shutdown(self) -> None:
         """Clean up and shutdown application."""
-        # TODO: Save state, close resources
+        self.animation_manager = None
+        self.renderer = None
+        self.rendering_context = None
         self.running = False
 
     @property

@@ -7,11 +7,13 @@ from typing import Any
 
 import pygame
 
+from audio_manager import AudioManager
 from app_context import AppContext
 from asset_manager import AssetManager
 from cribbage_engine import CribbageEngine
-from src.compat import run_classic_client
+from settings_manager import load_settings
 from states.intro import IntroState
+from voice_manager import VoiceManager
 
 
 class RuntimeMode(str, Enum):
@@ -77,6 +79,31 @@ class RuntimeController:
                 self.logger.exception("state handle_event failed")
 
     def update(self, dt_ms: int) -> None:
+        settings = getattr(self.app, "settings", None)
+        audio = getattr(self.app, "audio", None)
+        if settings is not None and audio is not None:
+            try:
+                audio.set_volume(float(getattr(self.app, "volume", 0.6)))
+            except Exception:
+                pass
+
+        voice = getattr(self.app, "voice", None)
+        if settings is not None and voice is not None:
+            try:
+                voice.set_enabled(bool(settings.bert_voice_enabled))
+                voice.configure_backend(
+                    "sapi",
+                    "",
+                    "piper",
+                    False,
+                    "rvc_infer",
+                    "",
+                    "",
+                    0,
+                )
+            except Exception:
+                pass
+
         if self.mode in {RuntimeMode.PAUSED, RuntimeMode.GAME_OVER}:
             return
         try:
@@ -133,16 +160,31 @@ def _run_state_client(args: Any) -> int:
 
     assets = AssetManager()
     engine = CribbageEngine()
+    settings = load_settings()
     app = AppContext(
         server_url=args.online_url,
         ws_url=args.online_ws_url,
-        volume=args.volume,
-        animations_enabled=(args.animations != "off"),
-        preferred_online_ai_level=args.online_ai_level,
+        volume=float(settings.volume),
+        animations_enabled=bool(settings.animations_enabled),
+        preferred_online_ai_level=int(settings.online_ai_level),
         fps_cap=max(15, int(args.fps_cap)),
         online_poll_interval_s=max(0.5, float(args.online_poll_interval)),
         online_reconnect_delay_s=max(0.5, float(args.online_reconnect_delay)),
     )
+    app.settings = settings
+    app.audio = AudioManager(volume=app.volume)
+    app.voice = VoiceManager(
+        enabled=bool(settings.bert_voice_enabled),
+        backend="sapi",
+        local_ai_model_path="",
+        local_ai_exe_path="piper",
+        rvc_enabled=False,
+        rvc_exe_path="rvc_infer",
+        rvc_model_path="",
+        rvc_index_path="",
+        rvc_pitch_shift=0,
+    )
+    engine.voice = app.voice
 
     controller = RuntimeController(
         args=args,
@@ -167,14 +209,7 @@ def _run_state_client(args: Any) -> int:
 
 
 def _run_once(args: Any) -> int:
-    # Default to classic client to preserve welcome/style screens.
-    if bool(getattr(args, "classic_client", False)):
-        return int(run_classic_client() or 0)
-
-    if bool(getattr(args, "new_client", False)):
-        return int(_run_state_client(args) or 0)
-
-    return int(run_classic_client() or 0)
+    return int(_run_state_client(args) or 0)
 
 
 def main():
@@ -203,16 +238,6 @@ def main():
     parser.add_argument("--volume", type=float, default=0.6)
     parser.add_argument("--animations", choices=["on", "off"], default="on")
     parser.add_argument("--online-ai-level", type=int, default=2)
-    parser.add_argument(
-        "--new-client",
-        action="store_true",
-        help="Run the state-driven client path.",
-    )
-    parser.add_argument(
-        "--classic-client",
-        action="store_true",
-        help="Run the classic gameplay client (default).",
-    )
     parser.add_argument(
         "--auto-relaunch",
         action="store_true",

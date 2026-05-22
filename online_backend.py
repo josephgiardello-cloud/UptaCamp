@@ -468,6 +468,12 @@ class OnlineBackend:
             raise ValueError("Match does not exist")
         return cast(sqlite3.Row, row)
 
+    @staticmethod
+    def _require_match_membership(match_row: sqlite3.Row, player_id: str) -> None:
+        members = {str(match_row["player_one_id"]), str(match_row["player_two_id"])}
+        if player_id not in members:
+            raise PermissionError("Player is not in this match")
+
     def get_match(self, match_id: str) -> MatchSummary:
         with self._connection() as conn:
             row = self._get_match_row(conn, match_id)
@@ -483,9 +489,21 @@ class OnlineBackend:
                 turns_played=int(row["turn_count"]),
             )
 
-    def get_match_details(self, match_id: str) -> dict[str, Any]:
+    def get_match_details(
+        self,
+        match_id: str,
+        *,
+        requester_player_id: str | None = None,
+        session_token: str | None = None,
+    ) -> dict[str, Any]:
+        if requester_player_id and session_token and not self.verify_session_token(
+            requester_player_id, session_token
+        ):
+            raise PermissionError("Invalid session token")
         with self._connection() as conn:
             row = self._get_match_row(conn, match_id)
+            if requester_player_id:
+                self._require_match_membership(row, requester_player_id)
             state = json.loads(row["game_state_json"])
             return {
                 "summary": {
@@ -794,7 +812,13 @@ class OnlineBackend:
 
                 return turn_index
 
-    def finish_match(self, match_id: str, winner_player_id: str | None) -> None:
+    def finish_match(
+        self,
+        match_id: str,
+        winner_player_id: str | None,
+        *,
+        finisher_player_id: str | None = None,
+    ) -> None:
         with self._lock:
             with self._connection() as conn:
                 match = conn.execute(
@@ -802,6 +826,13 @@ class OnlineBackend:
                 ).fetchone()
                 if match is None:
                     raise ValueError("Match does not exist")
+
+                members = {str(match["player_one_id"]), str(match["player_two_id"])}
+                if finisher_player_id is not None and finisher_player_id not in members:
+                    raise PermissionError("Only match participants can finalize the match")
+                if winner_player_id is not None and winner_player_id not in members:
+                    raise ValueError("Winner must be a player in this match")
+
                 self._finish_match_locked(conn, match, winner_player_id)
                 self._drop_match_engine(match_id)
 
@@ -876,8 +907,24 @@ class OnlineBackend:
             "created_at": now,
         }
 
-    def list_chat_messages(self, match_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    def list_chat_messages(
+        self,
+        match_id: str,
+        limit: int = 100,
+        *,
+        requester_player_id: str | None = None,
+        session_token: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if requester_player_id and session_token and not self.verify_session_token(
+            requester_player_id, session_token
+        ):
+            raise PermissionError("Invalid session token")
         with self._connection() as conn:
+            if requester_player_id:
+                match = conn.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+                if match is None:
+                    raise ValueError("Match does not exist")
+                self._require_match_membership(cast(sqlite3.Row, match), requester_player_id)
             rows = conn.execute(
                 """
                 SELECT message_id, match_id, player_id, message, created_at

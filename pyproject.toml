@@ -68,7 +68,6 @@ py-modules = [
     "bert_persona",
     "cards",
     "cribbage_engine",
-    "cribbage_pygame",
     "engine",
     "game_state",
     "main",

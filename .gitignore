@@ -138,3 +138,15 @@ dmypy.json
 # Game-specific
 *.save
 game_state.json
+game_checkpoint.json
+player_stats.json
+online_state.db
+tmp_online.db
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*.wav
+*.pkl
+.bert_voice_cache/

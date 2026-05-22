@@ -14,6 +14,97 @@ class IntroControlsLayout(TypedDict):
     settings_btn_rect: pygame.Rect
 
 
+def _pick_font(candidates: Sequence[str], size: int, bold: bool = False, italic: bool = False) -> pygame.font.Font:
+    for name in candidates:
+        try:
+            matched = pygame.font.match_font(name, bold=bold, italic=italic)
+            if matched:
+                return pygame.font.SysFont(name, size, bold=bold, italic=italic)
+        except Exception:
+            continue
+    return pygame.font.SysFont(None, size, bold=bold, italic=italic)
+
+
+def _draw_lock_badge(
+    screen: pygame.Surface,
+    center: tuple[int, int],
+    scale: float,
+    body_color: tuple[int, int, int],
+    accent_color: tuple[int, int, int],
+) -> None:
+    cx, cy = center
+
+    # Warm glow so the lock pops against the blackout card.
+    glow_rect = pygame.Rect(cx - int(30 * scale), cy - int(18 * scale), int(60 * scale), int(60 * scale))
+    glow = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
+    pygame.draw.ellipse(glow, (255, 190, 70, 39), glow.get_rect())
+    screen.blit(glow, glow_rect.topleft)
+
+    # Cast shadow to make the lock stand out against the dark card.
+    shadow_rect = pygame.Rect(
+        cx - int(21 * scale),
+        cy - int(4 * scale),
+        int(42 * scale),
+        int(30 * scale),
+    )
+    shadow = pygame.Surface(shadow_rect.size, pygame.SRCALPHA)
+    pygame.draw.rect(shadow, (0, 0, 0, 110), shadow.get_rect(), border_radius=max(4, int(7 * scale)))
+    screen.blit(shadow, (shadow_rect.x + int(2 * scale), shadow_rect.y + int(3 * scale)))
+
+    # Body with a beveled, 3D treatment.
+    body_w = int(42 * scale)
+    body_h = int(30 * scale)
+    body_rect = pygame.Rect(cx - body_w // 2, cy - body_h // 2 + int(10 * scale), body_w, body_h)
+    pygame.draw.rect(screen, body_color, body_rect, border_radius=max(4, int(7 * scale)))
+    highlight = (min(255, body_color[0] + 70), min(255, body_color[1] + 70), min(255, body_color[2] + 70))
+    lowlight = (max(0, body_color[0] - 35), max(0, body_color[1] - 35), max(0, body_color[2] - 35))
+    pygame.draw.line(
+        screen,
+        highlight,
+        (body_rect.left + int(3 * scale), body_rect.top + int(5 * scale)),
+        (body_rect.right - int(4 * scale), body_rect.top + int(5 * scale)),
+        max(1, int(2 * scale)),
+    )
+    pygame.draw.line(
+        screen,
+        lowlight,
+        (body_rect.left + int(3 * scale), body_rect.bottom - int(4 * scale)),
+        (body_rect.right - int(4 * scale), body_rect.bottom - int(4 * scale)),
+        max(1, int(2 * scale)),
+    )
+    plate = pygame.Rect(body_rect.left + int(4 * scale), body_rect.top + int(8 * scale), body_rect.width - int(8 * scale), int(7 * scale))
+    plate_color = (min(255, body_color[0] + 35), min(255, body_color[1] + 28), min(255, body_color[2] + 18))
+    pygame.draw.rect(screen, plate_color, plate, border_radius=max(2, int(2 * scale)))
+    pygame.draw.rect(screen, accent_color, body_rect, width=max(1, int(2 * scale)), border_radius=max(4, int(7 * scale)))
+
+    # Thick shackle with metallic highlight.
+    shackle_rect = pygame.Rect(
+        cx - int(12 * scale),
+        cy - int(14 * scale),
+        int(24 * scale),
+        int(18 * scale),
+    )
+    stroke = max(1, int(3 * scale))
+    pygame.draw.arc(screen, accent_color, shackle_rect, math.pi, 2 * math.pi, stroke)
+    leg_y0 = shackle_rect.centery
+    leg_y1 = body_rect.top + int(2 * scale)
+    pygame.draw.line(screen, accent_color, (shackle_rect.left, leg_y0), (shackle_rect.left, leg_y1), stroke)
+    pygame.draw.line(screen, accent_color, (shackle_rect.right, leg_y0), (shackle_rect.right, leg_y1), stroke)
+    shackle_highlight = (min(255, accent_color[0] + 50), min(255, accent_color[1] + 50), min(255, accent_color[2] + 50))
+    pygame.draw.arc(screen, shackle_highlight, shackle_rect.inflate(-int(2 * scale), -int(2 * scale)), math.pi, 2 * math.pi, max(1, int(1 * scale)))
+
+    # Keyhole
+    pygame.draw.circle(screen, accent_color, (cx, cy + int(14 * scale)), max(2, int(2.5 * scale)))
+    pygame.draw.rect(
+        screen,
+        accent_color,
+        (cx - max(1, int(1.5 * scale)), cy + int(14 * scale), max(2, int(3 * scale)), max(5, int(6 * scale))),
+        border_radius=max(1, int(1 * scale)),
+    )
+    keyhole_glint = (min(255, accent_color[0] + 45), min(255, accent_color[1] + 45), min(255, accent_color[2] + 45))
+    pygame.draw.circle(screen, keyhole_glint, (cx - max(1, int(1 * scale)), cy + int(13 * scale)), max(1, int(1.2 * scale)))
+
+
 def draw_intro_controls(
     *,
     screen: pygame.Surface,
@@ -21,9 +112,12 @@ def draw_intro_controls(
     sh: int,
     mouse_pos: tuple[int, int],
     dad_ai_level: int,
+    difficulty_options: Sequence[tuple[int, str]],
     difficulty_descriptions: dict[int, str],
     maine_shape: Sequence[tuple[int, int]],
+    locked_levels: set[int] | None = None,
 ) -> IntroControlsLayout:
+    locked_level_set = locked_levels or set()
     panel_w = min(980, max(640, sw - 120))
     panel_h = min(430, max(330, sh - 250))
     panel_rect = pygame.Rect(sw // 2 - panel_w // 2, sh // 2 - panel_h // 2 + 54, panel_w, panel_h)
@@ -38,7 +132,6 @@ def draw_intro_controls(
     screen.blit(rim, panel_rect.topleft)
 
     panel_pad = 28
-    difficulty_options = [(1, "Easy"), (2, "Medium"), (3, "Hard"), (4, "Bert"), (5, "Bert+")]
     button_count = len(difficulty_options)
     available_w = panel_rect.width - panel_pad * 2
     button_spacing = 14
@@ -121,9 +214,26 @@ def draw_intro_controls(
         (speech_rect.centerx - yankee_line.get_width() // 2, speech_rect.centery - yankee_line.get_height() // 2),
     )
 
-    card_name_font = pygame.font.SysFont("segoe ui variable", 29, bold=True)
-    card_badge_font = pygame.font.SysFont("segoe ui variable", 11)
-    card_desc_font = pygame.font.SysFont("segoe ui variable", 13)
+    # Clean modern block stack (with robust fallbacks) for all level cards.
+    display_stack = [
+        "Bahnschrift",
+        "Segoe UI Variable Display",
+        "Franklin Gothic Demi",
+        "Franklin Gothic Heavy",
+        "Trebuchet MS",
+        "Verdana",
+    ]
+    supporting_stack = [
+        "Bahnschrift",
+        "Segoe UI",
+        "Franklin Gothic Medium",
+        "Trebuchet MS",
+        "Verdana",
+    ]
+
+    card_name_font = _pick_font(display_stack, 29, bold=True)
+    card_badge_font = _pick_font(supporting_stack, 11, bold=True)
+    card_desc_font = _pick_font(supporting_stack, 13, bold=False)
 
     def outlined(surf: pygame.Surface, font: pygame.font.Font, text: str, color: tuple[int, int, int], ox: int, oy: int, outline_width: int = 2) -> None:
         shadow = font.render(text, True, (0, 0, 0))
@@ -148,22 +258,51 @@ def draw_intro_controls(
         btn_x = start_x + i * (button_width + button_spacing)
         btn_rect = pygame.Rect(btn_x, button_y, button_width, button_height)
         difficulty_buttons[level] = btn_rect
-        hovered = btn_rect.collidepoint(mouse_pos)
+        is_locked = level in locked_level_set
+        hovered = btn_rect.collidepoint(mouse_pos) and not is_locked
         raise_px = 0
         if hovered:
             raise_px = 3
         if level == dad_ai_level:
             raise_px = max(raise_px, 5)
+        if is_locked:
+            raise_px = 0
         draw_rect = btn_rect.move(0, -raise_px)
 
-        is_bert_selected = level in (4, 5) and level == dad_ai_level
+        is_bert_selected = level == 4 and level == dad_ai_level
+        is_old_house = level == 5
         is_hunter_selected = level in (1, 2, 3) and level == dad_ai_level
 
-        if is_hunter_selected:
+        if is_locked:
+            btn_color = (16, 16, 18)
+            border_color = (68, 68, 72)
+            badge_color = (28, 28, 30)
+            badge_text_color = (162, 162, 168)
+        elif level == 1 and level == dad_ai_level:
+            btn_color = (118, 176, 112)
+            border_color = (184, 232, 174)
+            badge_color = (150, 202, 142)
+            badge_text_color = (26, 52, 22)
+        elif is_hunter_selected:
             btn_color = (207, 112, 26)
             border_color = (240, 152, 58)
             badge_color = (232, 132, 42)
             badge_text_color = (60, 28, 6)
+        elif is_old_house and level == dad_ai_level:
+            # Monochrome "black and white TV" gothic treatment.
+            btn_color = (38, 38, 40)
+            border_color = (186, 186, 190)
+            badge_color = (122, 122, 128)
+            badge_text_color = (18, 18, 20)
+        elif is_old_house:
+            btn_color = (28, 28, 30)
+            border_color = (126, 126, 132)
+            badge_color = (88, 88, 94)
+            badge_text_color = (222, 222, 226)
+            if hovered:
+                btn_color = (42, 42, 46)
+                border_color = (168, 168, 174)
+                badge_color = (112, 112, 118)
         elif is_bert_selected:
             btn_color = (56, 10, 12)
             border_color = (206, 64, 68)
@@ -208,6 +347,15 @@ def draw_intro_controls(
         screen.blit(shadow, (draw_rect.x - 4, draw_rect.y - 4))
         pygame.draw.polygon(screen, btn_color, maine_points)
 
+        if is_locked:
+            blackout = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
+            blackout.fill((0, 0, 0, 140))
+            local_points = [(x - draw_rect.x, y - draw_rect.y) for x, y in maine_points]
+            clip_surface = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
+            pygame.draw.polygon(clip_surface, (255, 255, 255, 255), local_points)
+            blackout.blit(clip_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            screen.blit(blackout, draw_rect.topleft)
+
         if is_bert_selected:
             plaid = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
             tile = 12
@@ -228,6 +376,31 @@ def draw_intro_controls(
             plaid.blit(clip_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             screen.blit(plaid, draw_rect.topleft)
 
+        if is_old_house:
+            gothic = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
+            # Film grain / static noise on a monochrome pass.
+            for py in range(0, draw_rect.height, 3):
+                for px in range(0, draw_rect.width, 3):
+                    grain = 62 + ((px * 17 + py * 31) % 58)
+                    pygame.draw.rect(gothic, (grain, grain, grain, 22), (px, py, 3, 3))
+
+            # Scanlines for the black-and-white TV look.
+            for py in range(0, draw_rect.height, 4):
+                pygame.draw.line(gothic, (8, 8, 8, 38), (0, py), (draw_rect.width, py), 1)
+
+            # Subtle gothic cross-hatch to avoid flat modern card look.
+            step = 14
+            for px in range(-draw_rect.height, draw_rect.width, step):
+                pygame.draw.line(gothic, (170, 170, 176, 22), (px, 0), (px + draw_rect.height, draw_rect.height), 1)
+            for px in range(0, draw_rect.width + draw_rect.height, step):
+                pygame.draw.line(gothic, (20, 20, 22, 22), (px, 0), (px - draw_rect.height, draw_rect.height), 1)
+
+            local_points = [(x - draw_rect.x, y - draw_rect.y) for x, y in maine_points]
+            clip_surface = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
+            pygame.draw.polygon(clip_surface, (255, 255, 255, 255), local_points)
+            gothic.blit(clip_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            screen.blit(gothic, draw_rect.topleft)
+
         glow = pygame.Surface((draw_rect.width + 20, draw_rect.height + 20), pygame.SRCALPHA)
         glow_points = [(x - draw_rect.x + 10, y - draw_rect.y + 10) for x, y in maine_points]
         pygame.draw.polygon(glow, (*border_color, 55), glow_points, width=7)
@@ -242,9 +415,12 @@ def draw_intro_controls(
             2: "From Away",
             3: "Native Mainer",
             4: "The Wharf",
-            5: "Learning",
+            5: "Camp Collinwood",
+            6: "Storm Cellar",
         }
-        badge_str = badge_labels[level]
+        if is_locked:
+            badge_labels[6] = "Locked"
+        badge_str = badge_labels.get(level, "Challenge")
         badge_w = tracked_width(card_badge_font, badge_str, 4)
         badge_h = card_badge_font.get_height()
         pill_w, pill_h = badge_w + 24, badge_h + 10
@@ -263,14 +439,50 @@ def draw_intro_controls(
             spacing=4,
         )
 
-        level_color = (255, 252, 235) if level == dad_ai_level else (255, 245, 215)
-        name_up = name.upper()
-        level_x = draw_rect.x + button_width // 2 - card_name_font.size(name_up)[0] // 2
-        level_y = draw_rect.y + 36
-        outlined(screen, card_name_font, name_up, level_color, level_x, level_y, outline_width=2)
+        text_plate = pygame.Surface((max(40, button_width - 24), 56), pygame.SRCALPHA)
+        if is_locked:
+            text_plate.fill((8, 10, 14, 148))
+        elif level == dad_ai_level:
+            text_plate.fill((18, 24, 30, 136))
+        else:
+            text_plate.fill((10, 16, 20, 118))
+        text_plate_rect = text_plate.get_rect(center=(draw_rect.centerx, draw_rect.y + 62))
+        screen.blit(text_plate, text_plate_rect)
+        pygame.draw.rect(screen, (230, 210, 160, 46), text_plate_rect, width=1, border_radius=6)
 
-        desc_color = (255, 245, 210) if level == dad_ai_level else (210, 238, 210)
-        desc_lines = difficulty_descriptions[level].split("\n")
+        level_color = (196, 198, 204) if is_locked else ((255, 252, 235) if level == dad_ai_level else (246, 239, 220))
+        if is_old_house:
+            level_color = (226, 226, 232) if level == dad_ai_level else (198, 198, 204)
+        name_up = "LOCKED" if is_locked else name.upper()
+        spacing_map = {
+            "EASY": 2,
+            "MEDIUM": 1,
+            "HARD": 2,
+            "BERT": 2,
+            "OLD HOUSE": 1,
+            "LOCKED": 2,
+            "BARNABUS": 1,
+        }
+        name_spacing = spacing_map.get(name_up, 1)
+        name_width = tracked_width(card_name_font, name_up, name_spacing)
+        level_x = draw_rect.x + button_width // 2 - name_width // 2
+        level_y = draw_rect.y + 36
+        tracked(screen, card_name_font, name_up, (0, 0, 0), draw_rect.centerx + 2, level_y + 2, spacing=name_spacing)
+        tracked(screen, card_name_font, name_up, level_color, draw_rect.centerx, level_y, spacing=name_spacing)
+
+        if is_locked:
+            _draw_lock_badge(
+                screen=screen,
+                center=(draw_rect.centerx, draw_rect.centery + 16),
+                scale=max(0.8, button_width / 130.0),
+                body_color=(186, 122, 34),
+                accent_color=(255, 226, 148),
+            )
+
+        desc_color = (246, 236, 206) if level == dad_ai_level else (216, 228, 214)
+        if is_old_house:
+            desc_color = (214, 214, 220) if level == dad_ai_level else (182, 182, 188)
+        desc_lines = [] if is_locked else difficulty_descriptions.get(level, "").split("\n")
         desc_y0 = level_y + card_name_font.get_height() + 5
         for j, line in enumerate(desc_lines):
             desc_x = draw_rect.centerx - card_desc_font.size(line)[0] // 2
