@@ -1,4 +1,4 @@
-﻿anyio==4.13.0
+anyio==4.13.0
 ast_serialize==0.5.0
 black==26.5.1
 cairocffi==1.7.1
@@ -52,7 +52,7 @@ PyYAML==6.0.3
 ruff==0.15.13
 sentry-sdk==2.60.0
 setuptools==82.0.1
-tinycss2==1.4.0
+tinycss2==1.5.1
 typing_extensions==4.15.0
 -e git+https://github.com/josephgiardello-cloud/UptaCamp.git@569bede5077de18c8b9aa11db73b055339419530#egg=uptacamp
 urllib3==2.7.0
