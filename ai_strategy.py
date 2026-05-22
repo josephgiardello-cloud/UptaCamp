@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
+from typing import Any
 
 from bert_agent import BertAgent
 from game_state import GameState
@@ -67,9 +68,9 @@ ANALYSIS_DEALER_CRIB: float = 0.45  # Dealer crib weight in analysis
 ANALYSIS_PONE_CRIB: float = -0.35  # Pone crib weight in analysis
 PERCENTILE_EPSILON: float = 1e-9  # Epsilon for span normalization
 
-_BERT_AGENT: BertAgent | None = None
+_bert_agent: BertAgent | None = None
 _DEFAULT_BERT_MODEL = Path("bert_model.pkl")
-_BARNABUS_AGENT: BertAgent | None = None
+_barnabas_agent: BertAgent | None = None
 _DEFAULT_BARNABUS_MODEL = Path("barnabas_model.pkl")
 
 
@@ -102,20 +103,20 @@ def _level5_posture_from_state(state: GameState | None) -> str:
 
 
 def set_bert_agent(agent: BertAgent) -> None:
-    global _BERT_AGENT
-    _BERT_AGENT = agent
+    global _bert_agent
+    _bert_agent = agent
 
 
 def get_bert_agent() -> BertAgent:
-    global _BERT_AGENT
-    if _BERT_AGENT is None:
-        _BERT_AGENT = BertAgent()
+    global _bert_agent
+    if _bert_agent is None:
+        _bert_agent = BertAgent()
         if _DEFAULT_BERT_MODEL.exists():
             try:
-                _BERT_AGENT.load(_DEFAULT_BERT_MODEL)
+                _bert_agent.load(_DEFAULT_BERT_MODEL)
             except Exception:
                 pass
-    return _BERT_AGENT
+    return _bert_agent
 
 
 def load_bert_agent(path: str | Path = _DEFAULT_BERT_MODEL) -> BertAgent:
@@ -131,14 +132,14 @@ def save_bert_agent(path: str | Path = _DEFAULT_BERT_MODEL) -> None:
 
 
 def set_barnabas_agent(agent: BertAgent) -> None:
-    global _BARNABUS_AGENT
-    _BARNABUS_AGENT = agent
+    global _barnabas_agent
+    _barnabas_agent = agent
 
 
 def get_barnabas_agent() -> BertAgent:
-    global _BARNABUS_AGENT
-    if _BARNABUS_AGENT is None:
-        _BARNABUS_AGENT = BertAgent(
+    global _barnabas_agent
+    if _barnabas_agent is None:
+        _barnabas_agent = BertAgent(
             learning_rate=0.09,
             discount=0.95,
             epsilon=0.0,
@@ -147,15 +148,15 @@ def get_barnabas_agent() -> BertAgent:
         )
         try:
             if _DEFAULT_BARNABUS_MODEL.exists():
-                _BARNABUS_AGENT.load(_DEFAULT_BARNABUS_MODEL)
+                _barnabas_agent.load(_DEFAULT_BARNABUS_MODEL)
             elif _DEFAULT_BERT_MODEL.exists():
                 # Bootstrap Barnabas from Bert so Old House starts strong.
-                _BARNABUS_AGENT.load(_DEFAULT_BERT_MODEL)
-                _BARNABUS_AGENT.epsilon = 0.0
-                _BARNABUS_AGENT.epsilon_min = 0.0
+                _barnabas_agent.load(_DEFAULT_BERT_MODEL)
+                _barnabas_agent.epsilon = 0.0
+                _barnabas_agent.epsilon_min = 0.0
         except Exception:
             pass
-    return _BARNABUS_AGENT
+    return _barnabas_agent
 
 
 def load_barnabas_agent(path: str | Path = _DEFAULT_BARNABUS_MODEL) -> BertAgent:
@@ -224,7 +225,7 @@ def get_reward(
     points: int,
     opponent_points_lost: int,
     action_type: str = "general",
-    game_context: dict | None = None,
+    game_context: dict[str, Any] | None = None,
 ) -> float:
     """Calculate shaped reward for learning agent.
 
@@ -656,10 +657,10 @@ def choose_pegging_index(
     dad_ai_level: int,
     value_for_15: Callable[[str], int],
     parse_label: Callable[[str], tuple[str, str]],
-    score_pegging_play: Callable[[Sequence], int],
+    score_pegging_play: Callable[[Sequence[object]], int],
     label_card_factory: Callable[[str], object],
     current_pegging_labels: Sequence[str],
-    estimate_opponent_reply_risk: Callable[[Sequence], float] | None = None,
+    estimate_opponent_reply_risk: Callable[[Sequence[object]], float] | None = None,
     own_score: int | None = None,
     opp_score: int | None = None,
     own_cards_remaining: int | None = None,

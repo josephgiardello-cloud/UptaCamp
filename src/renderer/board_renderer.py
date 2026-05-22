@@ -4,7 +4,7 @@ This module contains migrated board drawing behavior owned by src/renderer.
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import bert_persona
 from cards import parse_card_label
@@ -269,7 +269,8 @@ class BoardRenderer:
             game_state: Current GameState object
         """
         if isinstance(game_state, dict):
-            message = str(game_state.get("message", ""))
+            state_map = cast(dict[str, Any], game_state)
+            message = str(state_map.get("message", ""))
         else:
             message = str(getattr(game_state, "message", ""))
         self.draw_header(message)
@@ -690,7 +691,7 @@ class BoardRenderer:
             words = text.split()
             if not words:
                 return []
-            lines = []
+            lines: list[str] = []
             current = words[0]
             for word in words[1:]:
                 trial = f"{current} {word}"
@@ -850,10 +851,11 @@ class BoardRenderer:
             return
 
         if isinstance(game_state, dict):
-            dealer = int(game_state.get("dealer", 0))
-            scores = list(game_state.get("scores", [0, 0]))
-            dad_ai_level = int(game_state.get("dad_ai_level", 2))
-            player_name = str(game_state.get("player_name", "Player"))
+            state_map = cast(dict[str, Any], game_state)
+            dealer = int(state_map.get("dealer", 0))
+            scores = list(cast(list[int], state_map.get("scores", [0, 0])))
+            dad_ai_level = int(state_map.get("dad_ai_level", 2))
+            player_name = str(state_map.get("player_name", "Player"))
         else:
             dealer = int(getattr(game_state, "dealer", 0))
             scores = list(getattr(game_state, "scores", [0, 0]))
@@ -1010,11 +1012,12 @@ class BoardRenderer:
             return
 
         if isinstance(game_state, dict):
-            crib_count = int(game_state.get("crib_count", 0))
-            starter_card = game_state.get("starter_card")
-            card_images = dict(game_state.get("card_images", {}))
-            dealer = int(game_state.get("dealer", 0))
-            phase = str(game_state.get("phase", "intro"))
+            state_map = cast(dict[str, Any], game_state)
+            crib_count = int(state_map.get("crib_count", 0))
+            starter_card = state_map.get("starter_card")
+            card_images = dict(cast(dict[str, Any], state_map.get("card_images", {})))
+            dealer = int(state_map.get("dealer", 0))
+            phase = str(state_map.get("phase", "intro"))
         else:
             crib = list(getattr(game_state, "crib", []))
             crib_count = len(crib)
@@ -1028,7 +1031,6 @@ class BoardRenderer:
         small_font = pygame.font.SysFont("segoe ui", 15)
         crib_surface = pygame.Surface((sw, sh), pygame.SRCALPHA)
 
-        playfield = self._playfield_rect(self.context.screen)
         crib_panel = self._crib_panel_rect(sw, sh)
         if self.context.ui_style == "competitive_minimal":
             self._draw_shadowed_panel(crib_surface, crib_panel, (18, 24, 34), (104, 120, 150), radius=20)
@@ -1088,7 +1090,7 @@ class BoardRenderer:
             align_left=False,
         )
         if starter_card is not None:
-            starter_image = card_images.get(starter_card)
+            starter_image: Any = card_images.get(str(starter_card))
             if starter_image is None:
                 rank_raw, suit_raw = parse_card_label(str(starter_card))
                 rank_map = {"a": "ace", "j": "jack", "q": "queen", "k": "king"}

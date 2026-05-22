@@ -27,6 +27,14 @@ class EventHandler:
         """
         import pygame
 
+        def _touch_pos(evt: Any) -> tuple[int, int]:
+            surface = pygame.display.get_surface()
+            width = surface.get_width() if surface is not None else 0
+            height = surface.get_height() if surface is not None else 0
+            x = int(float(getattr(evt, "x", 0.0)) * max(0, width))
+            y = int(float(getattr(evt, "y", 0.0)) * max(0, height))
+            return (x, y)
+
         actions: list[dict[str, Any]] = []
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -84,6 +92,40 @@ class EventHandler:
                         "pos": event.pos,
                         "rel": event.rel,
                         "buttons": event.buttons,
+                        "raw_event": event,
+                    }
+                )
+            elif event.type == pygame.FINGERDOWN:
+                pos = _touch_pos(event)
+                actions.append(
+                    {
+                        "type": "MOUSEBUTTONDOWN",
+                        "pos": pos,
+                        "button": 1,
+                        "touch": True,
+                        "raw_event": event,
+                    }
+                )
+            elif event.type == pygame.FINGERUP:
+                pos = _touch_pos(event)
+                actions.append(
+                    {
+                        "type": "MOUSEBUTTONUP",
+                        "pos": pos,
+                        "button": 1,
+                        "touch": True,
+                        "raw_event": event,
+                    }
+                )
+            elif event.type == pygame.FINGERMOTION:
+                pos = _touch_pos(event)
+                actions.append(
+                    {
+                        "type": "MOUSEMOTION",
+                        "pos": pos,
+                        "rel": (0, 0),
+                        "buttons": (1, 0, 0),
+                        "touch": True,
                         "raw_event": event,
                     }
                 )
