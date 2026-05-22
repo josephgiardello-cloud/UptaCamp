@@ -28,7 +28,11 @@ class CribbageEngine:
         return [self._label(c) for c in cards]
 
     def _dealer_name(self) -> str:
-        return "Bert" if self.state.dad_ai_level in (4, 5) else "AI"
+        if self.state.dad_ai_level == 4:
+            return "Bert"
+        if self.state.dad_ai_level in (5, 6):
+            return "Barnabas"
+        return "AI"
 
     def set_phase(self, phase: str) -> None:
         self.state.phase = str(phase)

@@ -12,6 +12,7 @@ class AssetManager:
 
     def _load_all_assets(self):
         self._load_card_images()
+        self._load_card_back()
         self._load_backgrounds()
 
     def _load_card_images(self):
@@ -28,6 +29,17 @@ class AssetManager:
             except pygame.error:
                 continue
 
+    def _load_card_back(self):
+        path = self.assets_dir / "mainecard.jpg"
+        if not path.exists():
+            return
+        try:
+            img = pygame.image.load(str(path)).convert()
+            self.card_back = img
+            self.card_images["back"] = img
+        except pygame.error:
+            pass
+
     def _load_backgrounds(self):
         for bg_name in [
             "table.jpg",
@@ -35,6 +47,11 @@ class AssetManager:
             "board.jpg",
             "welcome_bg.png",
             "Tony.jpg",
+            "The_wharf_bg.jpg",
+            "OOS_Camper_bg.jpg",
+            "Tree_path_bg.jpg",
+            "old_house_bg.jpg",
+            "old_house_bg.png",
             "name_entry_bg.jpg",
         ]:
             path = self.assets_dir / bg_name

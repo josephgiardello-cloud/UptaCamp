@@ -364,12 +364,24 @@ class IntroState(GameStateBase):
         self.online_button_rect = layout["online_btn_rect"]
         self.settings_button_rect = layout["settings_btn_rect"]
 
-        self.p2p_button_rect = pygame.Rect(
-            self.online_button_rect.left,
-            self.online_button_rect.bottom + 12,
-            self.online_button_rect.width,
-            self.online_button_rect.height,
-        )
+        button_gap = 12
+        # Prefer side-by-side action buttons to preserve vertical room for helper text.
+        p2p_x = self.online_button_rect.left - self.online_button_rect.width - button_gap
+        if p2p_x >= 24:
+            self.p2p_button_rect = pygame.Rect(
+                p2p_x,
+                self.online_button_rect.y,
+                self.online_button_rect.width,
+                self.online_button_rect.height,
+            )
+        else:
+            # Fallback for narrow windows: stack below online button.
+            self.p2p_button_rect = pygame.Rect(
+                self.online_button_rect.left,
+                self.online_button_rect.bottom + button_gap,
+                self.online_button_rect.width,
+                self.online_button_rect.height,
+            )
         p2p_hover = self.p2p_button_rect.collidepoint(mouse_pos)
         p2p_draw = self.p2p_button_rect.move(0, -2 if p2p_hover else 0)
         pygame.draw.rect(screen, (0, 0, 0, 80), p2p_draw.move(0, 5), border_radius=10)
@@ -401,5 +413,12 @@ class IntroState(GameStateBase):
             True,
             (244, 236, 214),
         )
-        hint_rect = hint.get_rect(center=(sw // 2, min(sh - 24, self.p2p_button_rect.bottom + 42)))
+        action_row_bottom = max(self.online_button_rect.bottom, self.p2p_button_rect.bottom)
+        preferred_hint_y = action_row_bottom + 14
+        hint_y = preferred_hint_y
+        max_hint_y = sh - hint.get_height() - 8
+        if hint_y > max_hint_y:
+            # If space below actions is tight, place hint in the gap below the start button.
+            hint_y = min(max_hint_y, self.start_button_rect.bottom + 8)
+        hint_rect = hint.get_rect(topleft=(sw // 2 - hint.get_width() // 2, max(8, hint_y)))
         screen.blit(hint, hint_rect)

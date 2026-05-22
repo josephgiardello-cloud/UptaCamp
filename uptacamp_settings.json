@@ -1,8 +1,8 @@
 {
-  "volume": 0.14523809523809525,
+  "volume": 0.37142857142857144,
   "animations_enabled": true,
   "online_ai_level": 1,
-  "ui_style": "premium_tabletop",
+  "ui_style": "classic",
   "background_theme": "wharf",
   "dark_shadows_unlocked": false,
   "bert_voice_enabled": true,

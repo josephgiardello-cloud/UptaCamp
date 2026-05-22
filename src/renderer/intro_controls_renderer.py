@@ -421,9 +421,11 @@ def draw_intro_controls(
         if is_locked:
             badge_labels[6] = "Locked"
         badge_str = badge_labels.get(level, "Challenge")
-        badge_w = tracked_width(card_badge_font, badge_str, 4)
+        badge_spacing = 1 if len(badge_str) >= 14 else 2
+        badge_w = tracked_width(card_badge_font, badge_str, badge_spacing)
         badge_h = card_badge_font.get_height()
-        pill_w, pill_h = badge_w + 24, badge_h + 10
+        max_pill_w = max(56, button_width - 10)
+        pill_w, pill_h = min(max_pill_w, badge_w + 18), badge_h + 10
         pill = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
         pygame.draw.rect(pill, (*badge_color, 255), pill.get_rect(), border_radius=10)
         label_cx = draw_rect.centerx
@@ -436,7 +438,7 @@ def draw_intro_controls(
             badge_text_color,
             label_cx,
             label_y + (pill_h - badge_h) // 2,
-            spacing=4,
+            spacing=badge_spacing,
         )
 
         text_plate = pygame.Surface((max(40, button_width - 24), 56), pygame.SRCALPHA)

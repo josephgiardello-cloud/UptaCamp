@@ -238,10 +238,19 @@ def main():
     parser.add_argument("--volume", type=float, default=0.6)
     parser.add_argument("--animations", choices=["on", "off"], default="on")
     parser.add_argument("--online-ai-level", type=int, default=2)
-    parser.add_argument(
+    relaunch_group = parser.add_mutually_exclusive_group()
+    relaunch_group.add_argument(
         "--auto-relaunch",
+        dest="auto_relaunch",
         action="store_true",
+        default=True,
         help="Relaunch automatically after the game window closes.",
+    )
+    relaunch_group.add_argument(
+        "--no-auto-relaunch",
+        dest="auto_relaunch",
+        action="store_false",
+        help="Disable automatic relaunch after the game window closes.",
     )
     parser.add_argument(
         "--relaunch-delay",

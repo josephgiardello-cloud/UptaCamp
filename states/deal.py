@@ -365,6 +365,14 @@ class DealState(GameStateBase):
         settings = getattr(app, "settings", None)
         ui_style = str(getattr(settings, "ui_style", "classic"))
         background_theme = str(getattr(settings, "background_theme", "auto"))
+        if self.dad_ai_level == 1:
+            background_theme = "oos_camper"
+        if self.dad_ai_level in (2, 3):
+            background_theme = "tree_path_bg"
+        if self.dad_ai_level == 4:
+            background_theme = "wharf"
+        if self.dad_ai_level == 5:
+            background_theme = "old_house"
         player_name = str(getattr(settings, "player_name", "Player"))
 
         renderer = BoardRenderer(
@@ -386,7 +394,7 @@ class DealState(GameStateBase):
                 "player_name": player_name,
                 "crib_count": len(list(getattr(engine.state, "crib", []))),
                 "starter_card": getattr(engine.state, "starter_card", None),
-                "card_images": {},
+                "card_images": dict(getattr(assets, "card_images", {})),
                 "phase": self.phase,
             }
         )
@@ -394,19 +402,29 @@ class DealState(GameStateBase):
         shake_x, shake_y = self.effects.shake_offset()
         sw, sh = screen.get_width(), screen.get_height()
         card_w, card_h = 120, 180
-        top_y = 158
-        bot_y = max(492, sh - card_h - 72)
+        playfield = BoardRenderer._playfield_rect(screen)
+        top_y = playfield.top + 48
+        bot_y = playfield.bottom - card_h - 10
         player_hand = list(getattr(engine.state, "player_hand", []))
         ai_hand = list(getattr(engine.state, "ai_hand", []))
 
-        spacing = min((sw - 160 - card_w) // max(1, len(player_hand) - 1), card_w + 18)
-        start_x = max(80, (sw - (card_w + spacing * max(0, len(player_hand) - 1))) // 2)
+        left_margin = playfield.left + 8
+        right_reserve = 330
+        usable_width = max(card_w, playfield.width - 16 - right_reserve)
+        spacing = min((usable_width - card_w) // max(1, len(player_hand) - 1), card_w + 12)
+        start_x = left_margin
 
-        label_font = pygame.font.SysFont("segoe ui", 20, bold=True)
-        opp_label = label_font.render("Opponent Hand", True, (218, 206, 174))
-        player_label = label_font.render(f"{player_name} Hand", True, (218, 206, 174))
-        screen.blit(opp_label, (start_x, top_y - 34))
-        screen.blit(player_label, (start_x, bot_y - 34))
+        label_font = pygame.font.SysFont("segoe ui", 24, bold=True)
+        label_color = (244, 236, 210)
+        shadow_color = (16, 12, 8)
+        opp_label = label_font.render("Opponent Hand", True, label_color)
+        player_label = label_font.render(f"{player_name} Hand", True, label_color)
+        opp_label_pos = (start_x, top_y + card_h + 2)
+        player_label_pos = (start_x, bot_y - 34)
+        screen.blit(label_font.render("Opponent Hand", True, shadow_color), (opp_label_pos[0] + 2, opp_label_pos[1] + 2))
+        screen.blit(opp_label, opp_label_pos)
+        screen.blit(label_font.render(f"{player_name} Hand", True, shadow_color), (player_label_pos[0] + 2, player_label_pos[1] + 2))
+        screen.blit(player_label, player_label_pos)
 
         back_img = assets.get_card_image("back") or getattr(assets, "card_back", None)
         self.ai_card_rects = []

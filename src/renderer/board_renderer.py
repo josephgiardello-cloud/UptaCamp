@@ -18,6 +18,14 @@ AI_LEVELS: dict[int, str] = {
     5: "Adaptive Bert",
 }
 
+
+def _opponent_name_for_level(dad_ai_level: int) -> str:
+    if dad_ai_level == 4:
+        return "Bert"
+    if dad_ai_level in (5, 6):
+        return "Barnabas"
+    return "AI"
+
 THEME_OUTER_BG = (36, 22, 14)
 PLAYFIELD_ALPHA = 64
 CARD_WIDTH = 120
@@ -73,12 +81,12 @@ class BoardRenderer:
 
     @staticmethod
     def _fixed_hand_positions(player: int, n: int, screen_width: int, screen_height: int) -> list[tuple[int, int]]:
-        margin = 60
-        available_width = screen_width - 2 * margin
-        spacing = min((available_width - CARD_WIDTH) // (n - 1), CARD_WIDTH + 20) if n > 1 else 0
+        margin = 8
+        right_reserve = 330
+        available_width = screen_width - margin - right_reserve
+        spacing = min((available_width - CARD_WIDTH) // (n - 1), CARD_WIDTH + 12) if n > 1 else 0
         y = max(500, screen_height - CARD_HEIGHT - 84) if player == 1 else 160
-        row_w = CARD_WIDTH if n <= 1 else CARD_WIDTH + spacing * (n - 1)
-        start_x = max(margin, (screen_width - row_w) // 2)
+        start_x = margin
         return [(start_x + i * spacing, y) for i in range(n)]
 
     @staticmethod
@@ -87,12 +95,12 @@ class BoardRenderer:
         screen_width: int,
         y: int,
         card_width: int,
-        margin: int = 60,
+        margin: int = 8,
+        right_reserve: int = 0,
     ) -> list[tuple[int, int]]:
-        available_width = screen_width - 2 * margin
-        spacing = min((available_width - card_width) // (n - 1), card_width + 18) if n > 1 else 0
-        row_w = card_width if n <= 1 else card_width + spacing * (n - 1)
-        start_x = max(margin, (screen_width - row_w) // 2)
+        available_width = screen_width - margin - right_reserve
+        spacing = min((available_width - card_width) // (n - 1), card_width + 12) if n > 1 else 0
+        start_x = margin
         return [(start_x + i * spacing, y) for i in range(n)]
 
     @staticmethod
@@ -169,25 +177,14 @@ class BoardRenderer:
     def _crib_panel_rect(sw: int, sh: int) -> Any:
         import pygame
 
-        ai_row_bottom = 170 + 159
-        player_row_top = max(510, sh - CARD_HEIGHT - 70)
-        gap_top = ai_row_bottom + 22
-        gap_bottom = player_row_top - 22
-        crib_h = 136
-        crib_y = max(gap_top, min((gap_top + gap_bottom - crib_h) // 2, gap_bottom - crib_h))
-
         board_rect = pygame.Rect(24, 24, sw - 48, sh - 48)
         inner_rect = board_rect.inflate(-26, -26)
         playfield = inner_rect.inflate(-28, -28)
-        reserve_right = 296
-        usable_left = playfield.left + 18
-        usable_right = playfield.right - reserve_right
-        if usable_right - usable_left < 420:
-            usable_right = playfield.right - 18
-
-        usable_width = max(320, usable_right - usable_left)
-        crib_w = min(620, usable_width)
-        crib_x = usable_left + max(0, (usable_width - crib_w) // 2)
+        right_margin = 8
+        crib_w = 224
+        crib_h = 174
+        crib_x = playfield.right - crib_w - right_margin
+        crib_y = playfield.top + 38
         return pygame.Rect(crib_x, crib_y, crib_w, crib_h)
 
     @staticmethod
@@ -271,7 +268,10 @@ class BoardRenderer:
         Args:
             game_state: Current GameState object
         """
-        message = str(getattr(game_state, "message", ""))
+        if isinstance(game_state, dict):
+            message = str(game_state.get("message", ""))
+        else:
+            message = str(getattr(game_state, "message", ""))
         self.draw_header(message)
         self.draw_scores(game_state)
         self.draw_crib(game_state)
@@ -323,11 +323,32 @@ class BoardRenderer:
         sw = self.context.screen.get_width()
         sh = self.context.screen.get_height()
 
-        if self.context.ui_style != "classic":
+        is_old_house = str(getattr(self.context, "background_theme", "auto")) == "old_house"
+        is_oos_camper = str(getattr(self.context, "background_theme", "auto")) == "oos_camper"
+
+        if self.context.ui_style != "classic" and not (is_old_house or is_oos_camper):
             self._draw_board_frame(self.context.screen)
             return
 
         if gameplay_background is None:
+            if is_old_house:
+                self.context.screen.fill((10, 10, 12))
+                warn_font = pygame.font.SysFont("segoe ui", 22, bold=True)
+                warn_text = warn_font.render("Missing assets/old_house_bg.jpg (or .png)", True, (232, 206, 164))
+                self.context.screen.blit(
+                    warn_text,
+                    (sw // 2 - warn_text.get_width() // 2, sh // 2 - warn_text.get_height() // 2),
+                )
+                return
+            if is_oos_camper:
+                self.context.screen.fill((14, 18, 14))
+                warn_font = pygame.font.SysFont("segoe ui", 22, bold=True)
+                warn_text = warn_font.render("Missing assets/OOS_Camper_bg.jpg", True, (216, 204, 166))
+                self.context.screen.blit(
+                    warn_text,
+                    (sw // 2 - warn_text.get_width() // 2, sh // 2 - warn_text.get_height() // 2),
+                )
+                return
             self._draw_board_frame(self.context.screen)
             return
 
@@ -335,7 +356,16 @@ class BoardRenderer:
         self.context.screen.blit(bg, (0, 0))
 
         atmosphere = pygame.Surface((sw, sh), pygame.SRCALPHA)
-        atmosphere.fill((10, 22, 18, 44))
+        if is_old_house:
+            # Keep level 5 visibly lighter so the custom background reads through.
+            atmosphere.fill((10, 22, 18, 16))
+            edge_alpha = 22
+        elif is_oos_camper:
+            atmosphere.fill((16, 18, 14, 24))
+            edge_alpha = 38
+        else:
+            atmosphere.fill((10, 22, 18, 44))
+            edge_alpha = 52
         pygame.draw.ellipse(
             atmosphere,
             (220, 188, 118, 16),
@@ -343,7 +373,7 @@ class BoardRenderer:
         )
         pygame.draw.ellipse(
             atmosphere,
-            (0, 0, 0, 52),
+            (0, 0, 0, edge_alpha),
             pygame.Rect(14, 14, sw - 28, sh - 28),
             width=34,
         )
@@ -405,13 +435,14 @@ class BoardRenderer:
             return
 
         p2_size = (106, 159)
-        p2_pos = self._row_positions(len(session.ai_hand), sw, 170, p2_size[0], margin=60)
+        p2_pos = self._row_positions(len(session.ai_hand), sw, 170, p2_size[0], margin=40, right_reserve=380)
         if session.ai_hand:
-            opp_font = pygame.font.SysFont("segoe ui", 18, bold=True)
-            opp_label = opp_font.render("Opponent Hand", True, (218, 206, 174))
-            row_center_x = p2_pos[0][0] + ((p2_pos[-1][0] + p2_size[0]) - p2_pos[0][0]) // 2
-            label_y = max(124, p2_pos[0][1] - 34)
-            self.context.screen.blit(opp_label, opp_label.get_rect(center=(row_center_x, label_y)))
+            opp_font = pygame.font.SysFont("segoe ui", 22, bold=True)
+            opp_label = opp_font.render("Opponent Hand", True, (244, 236, 210))
+            label_x = p2_pos[0][0]
+            label_y = p2_pos[0][1] + p2_size[1] + 2
+            self.context.screen.blit(opp_font.render("Opponent Hand", True, (16, 12, 8)), (label_x + 2, label_y + 2))
+            self.context.screen.blit(opp_label, (label_x, label_y))
         for i, card in enumerate(session.ai_hand):
             card.rect = pygame.Rect(p2_pos[i][0], p2_pos[i][1], p2_size[0], p2_size[1])
             shadow = pygame.Rect(
@@ -521,7 +552,7 @@ class BoardRenderer:
         p2_pts, p2_breakdown = round_breakdown["ai"]
         crib_pts, crib_breakdown = round_breakdown["crib"]
 
-        dealer_name = "Bert" if int(getattr(session, "dad_ai_level", 2)) in (4, 5) else "AI"
+        dealer_name = _opponent_name_for_level(int(getattr(session, "dad_ai_level", 2)))
         self._draw_scoring_breakdown(0, p1_breakdown, p1_pts, player_name, dealer_name)
         self._draw_scoring_breakdown(1, p2_breakdown, p2_pts, player_name, dealer_name)
 
@@ -770,7 +801,19 @@ class BoardRenderer:
         assets = getattr(self.context, "assets", None)
         if assets is not None:
             if theme_key == "wharf":
-                gameplay_background = assets.get_background("Tony.jpg")
+                gameplay_background = (
+                    assets.get_background("The_wharf_bg.jpg")
+                    or assets.get_background("Tony.jpg")
+                )
+            elif theme_key == "oos_camper":
+                gameplay_background = assets.get_background("OOS_Camper_bg.jpg")
+            elif theme_key == "old_house":
+                gameplay_background = (
+                    assets.get_background("old_house_bg.jpg")
+                    or assets.get_background("old_house_bg.png")
+                )
+            elif theme_key == "tree_path_bg":
+                gameplay_background = assets.get_background("Tree_path_bg.jpg")
             elif theme_key == "dark_shadows":
                 gameplay_background = assets.get_background("board.jpg")
             else:
@@ -779,17 +822,20 @@ class BoardRenderer:
                     or assets.get_background("table.png")
                 )
 
-            if gameplay_background is None:
+            if gameplay_background is None and theme_key not in {"old_house", "oos_camper", "tree_path_bg"}:
                 gameplay_background = (
                     assets.get_background("table.jpg")
                     or assets.get_background("table.png")
                     or assets.get_background("board.jpg")
+                    or assets.get_background("The_wharf_bg.jpg")
                     or assets.get_background("Tony.jpg")
                 )
 
+        # Custom level backgrounds should reveal more of their art.
+        playfield_alpha = int(255 * 0.20) if theme_key == "old_house" else PLAYFIELD_ALPHA
         self.draw_gameplay_backdrop(
             gameplay_background=gameplay_background,
-            playfield_alpha=PLAYFIELD_ALPHA,
+            playfield_alpha=playfield_alpha,
         )
 
     def draw_scores(self, game_state: Any) -> None:
@@ -814,36 +860,35 @@ class BoardRenderer:
             dad_ai_level = int(getattr(game_state, "dad_ai_level", 2))
             player_name = str(getattr(game_state, "player_name", "Player"))
 
-        dealer_name = "Bert" if dad_ai_level in (4, 5) else "AI"
+        dealer_name = _opponent_name_for_level(dad_ai_level)
         playfield = self._playfield_rect(self.context.screen)
-        panel_w, panel_h = 252, 194
-        panel_margin = 20
-        dealer_row_bottom = 170 + 159
+        panel_w, panel_h = 224, 194
+        panel_margin = 8
         panel_x = playfield.right - panel_w - panel_margin
-        panel_y = max(playfield.top + panel_margin, dealer_row_bottom + 16)
-        panel_y = min(panel_y, playfield.bottom - panel_h - panel_margin)
+        panel_y = playfield.bottom - panel_h - panel_margin
         panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+        score_surface = pygame.Surface(self.context.screen.get_size(), pygame.SRCALPHA)
         if self.context.ui_style == "competitive_minimal":
-            self._draw_shadowed_panel(self.context.screen, panel_rect, (18, 22, 30), (104, 120, 150), radius=20)
+            self._draw_shadowed_panel(score_surface, panel_rect, (18, 22, 30), (104, 120, 150), radius=20)
         elif self.context.ui_style == "broadcast_table":
-            self._draw_shadowed_panel(self.context.screen, panel_rect, (14, 33, 25), (189, 167, 112), radius=22)
+            self._draw_shadowed_panel(score_surface, panel_rect, (14, 33, 25), (189, 167, 112), radius=22)
         elif self.context.ui_style == "premium_tabletop":
-            self._draw_shadowed_panel(self.context.screen, panel_rect, (24, 54, 40), (230, 200, 144), radius=24)
+            self._draw_shadowed_panel(score_surface, panel_rect, (24, 54, 40), (230, 200, 144), radius=24)
         else:
-            self._draw_shadowed_panel(self.context.screen, panel_rect, (26, 38, 31), (201, 174, 108), radius=26)
+            self._draw_shadowed_panel(score_surface, panel_rect, (26, 38, 31), (201, 174, 108), radius=26)
 
         title_font = pygame.font.SysFont("cambria", 24, bold=True)
         body_font = pygame.font.SysFont("segoe ui", 16, bold=True)
         small_font = pygame.font.SysFont("segoe ui", 13)
         self._draw_label(
-            self.context.screen,
+            score_surface,
             "Cribbage",
             (panel_rect.x + 18, panel_rect.y + 12),
             title_font,
             (220, 230, 250) if self.context.ui_style == "competitive_minimal" else (240, 227, 188),
         )
         self._draw_label(
-            self.context.screen,
+            score_surface,
             f"Dealer: {'You' if dealer == 0 else dealer_name}",
             (panel_rect.x + 18, panel_rect.y + 46),
             body_font,
@@ -853,26 +898,26 @@ class BoardRenderer:
         player_chip = pygame.Rect(panel_rect.x + 14, panel_rect.y + 74, panel_rect.width - 28, 32)
         dad_chip = pygame.Rect(panel_rect.x + 14, panel_rect.y + 112, panel_rect.width - 28, 32)
         if self.context.ui_style == "competitive_minimal":
-            pygame.draw.rect(self.context.screen, (26, 38, 56), player_chip, border_radius=16)
-            pygame.draw.rect(self.context.screen, (45, 32, 44), dad_chip, border_radius=16)
-            pygame.draw.rect(self.context.screen, (120, 150, 196), player_chip, width=1, border_radius=16)
-            pygame.draw.rect(self.context.screen, (176, 130, 168), dad_chip, width=1, border_radius=16)
+            pygame.draw.rect(score_surface, (26, 38, 56), player_chip, border_radius=16)
+            pygame.draw.rect(score_surface, (45, 32, 44), dad_chip, border_radius=16)
+            pygame.draw.rect(score_surface, (120, 150, 196), player_chip, width=1, border_radius=16)
+            pygame.draw.rect(score_surface, (176, 130, 168), dad_chip, width=1, border_radius=16)
         else:
-            pygame.draw.rect(self.context.screen, (20, 53, 76), player_chip, border_radius=16)
-            pygame.draw.rect(self.context.screen, (37, 22, 20), dad_chip, border_radius=16)
-            pygame.draw.rect(self.context.screen, (153, 205, 255), player_chip, width=1, border_radius=16)
-            pygame.draw.rect(self.context.screen, (255, 159, 141), dad_chip, width=1, border_radius=16)
+            pygame.draw.rect(score_surface, (20, 53, 76), player_chip, border_radius=16)
+            pygame.draw.rect(score_surface, (37, 22, 20), dad_chip, border_radius=16)
+            pygame.draw.rect(score_surface, (153, 205, 255), player_chip, width=1, border_radius=16)
+            pygame.draw.rect(score_surface, (255, 159, 141), dad_chip, width=1, border_radius=16)
 
         player_surf = body_font.render(f"{player_name}: {scores[0]}", True, (185, 222, 255))
         dad_surf = body_font.render(f"{dealer_name} Score: {scores[1]}", True, (255, 176, 160))
-        self.context.screen.blit(
+        score_surface.blit(
             player_surf,
             (
                 player_chip.centerx - player_surf.get_width() // 2,
                 player_chip.centery - player_surf.get_height() // 2,
             ),
         )
-        self.context.screen.blit(
+        score_surface.blit(
             dad_surf,
             (
                 dad_chip.centerx - dad_surf.get_width() // 2,
@@ -880,7 +925,7 @@ class BoardRenderer:
             ),
         )
         self._draw_label(
-            self.context.screen,
+            score_surface,
             f"AI Difficulty: {AI_LEVELS[dad_ai_level]}",
             (panel_rect.x + 18, panel_rect.y + 150),
             small_font,
@@ -895,7 +940,7 @@ class BoardRenderer:
             except Exception:
                 posture = "balanced"
             self._draw_label(
-                self.context.screen,
+                score_surface,
                 f"Bert Posture: {posture.title()}",
                 (panel_rect.x + 18, panel_rect.y + 168),
                 small_font,
@@ -904,10 +949,14 @@ class BoardRenderer:
                 else (196, 215, 174),
             )
 
+        score_surface.set_alpha(int(255 * 0.75))
+        self.context.screen.blit(score_surface, (0, 0))
+
     def draw_header(self, message: str) -> None:
         """Draw game header with message.
 
         Args:
+                is_tree_path_bg = str(getattr(self.context, "background_theme", "auto")) == "tree_path_bg"
             message: Message to display in header
         """
         import pygame
@@ -977,58 +1026,66 @@ class BoardRenderer:
         sw, sh = self.context.screen.get_width(), self.context.screen.get_height()
         label_font = pygame.font.SysFont("segoe ui", 18, bold=True)
         small_font = pygame.font.SysFont("segoe ui", 15)
+        crib_surface = pygame.Surface((sw, sh), pygame.SRCALPHA)
 
+        playfield = self._playfield_rect(self.context.screen)
         crib_panel = self._crib_panel_rect(sw, sh)
         if self.context.ui_style == "competitive_minimal":
-            self._draw_shadowed_panel(self.context.screen, crib_panel, (18, 24, 34), (104, 120, 150), radius=20)
+            self._draw_shadowed_panel(crib_surface, crib_panel, (18, 24, 34), (104, 120, 150), radius=20)
         elif self.context.ui_style == "broadcast_table":
-            self._draw_shadowed_panel(self.context.screen, crib_panel, (14, 54, 38), (194, 171, 113), radius=22)
+            self._draw_shadowed_panel(crib_surface, crib_panel, (14, 54, 38), (194, 171, 113), radius=22)
         elif self.context.ui_style == "premium_tabletop":
-            self._draw_shadowed_panel(self.context.screen, crib_panel, (21, 74, 49), (232, 202, 147), radius=24)
+            self._draw_shadowed_panel(crib_surface, crib_panel, (21, 74, 49), (232, 202, 147), radius=24)
         else:
-            self._draw_shadowed_panel(self.context.screen, crib_panel, (20, 66, 45), (206, 176, 108), radius=24)
+            self._draw_shadowed_panel(crib_surface, crib_panel, (20, 66, 45), (206, 176, 108), radius=24)
         crib_owner_label = "Your Crib" if dealer == 0 else "Opponent's Crib"
         self._draw_label(
-            self.context.screen,
+            crib_surface,
             crib_owner_label,
-            (crib_panel.x + 22, crib_panel.y + 14),
+            (crib_panel.x + 18, crib_panel.y + 12),
             label_font,
             (208, 222, 248) if self.context.ui_style == "competitive_minimal" else (240, 227, 188),
         )
         if phase == "discard" and crib_count < 4:
             self._draw_label(
-                self.context.screen,
+                crib_surface,
                 "Drop 2 cards here",
-                (crib_panel.x + 22, crib_panel.y + 38),
+                (crib_panel.x + 18, crib_panel.y + 38),
                 small_font,
                 (164, 177, 208) if self.context.ui_style == "competitive_minimal" else (221, 192, 129),
             )
 
-        card_w, card_h = 66, 98
-        card_group_left = crib_panel.centerx - 90
+        card_w, card_h = 60, 88
+        card_gap = 12
+        card_group_left = crib_panel.x + 18
         for i in range(2):
-            card_rect = pygame.Rect(card_group_left + i * 84, crib_panel.y + 20, card_w, card_h)
+            card_rect = pygame.Rect(card_group_left + i * (card_w + card_gap), crib_panel.y + 70, card_w, card_h)
             if i < crib_count:
-                self._draw_card_back(self.context.screen, card_rect)
+                self._draw_card_back(crib_surface, card_rect)
             else:
-                pygame.draw.rect(self.context.screen, (250, 241, 221, 38), card_rect, width=2, border_radius=12)
+                pygame.draw.rect(crib_surface, (250, 241, 221, 38), card_rect, width=2, border_radius=12)
                 pygame.draw.rect(
-                    self.context.screen,
+                    crib_surface,
                     (166, 144, 98, 46),
                     card_rect.inflate(-8, -8),
                     width=1,
                     border_radius=9,
                 )
 
-        starter_box = pygame.Rect(crib_panel.right - 118, crib_panel.y + 17, 100, 106)
-        pygame.draw.rect(self.context.screen, (31, 43, 35), starter_box, border_radius=18)
-        pygame.draw.rect(self.context.screen, (214, 184, 114), starter_box, width=2, border_radius=18)
+        crib_surface.set_alpha(int(255 * 0.75))
+        self.context.screen.blit(crib_surface, (0, 0))
+
+        starter_box = pygame.Rect(crib_panel.centerx - 54, crib_panel.bottom + 12, 108, 136)
+        starter_surface = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        pygame.draw.rect(starter_surface, (31, 43, 35), starter_box, border_radius=18)
+        pygame.draw.rect(starter_surface, (214, 184, 114), starter_box, width=2, border_radius=18)
         self._draw_label(
-            self.context.screen,
+            starter_surface,
             "Starter",
-            (starter_box.x + 21, starter_box.y + 8),
+            (starter_box.centerx, starter_box.y + 8),
             small_font,
             (238, 223, 186),
+            align_left=False,
         )
         if starter_card is not None:
             starter_image = card_images.get(starter_card)
@@ -1041,8 +1098,11 @@ class BoardRenderer:
                 if starter_image is None and self.context.assets is not None and hasattr(self.context.assets, "get_card_image"):
                     starter_image = self.context.assets.get_card_image(starter_key)
             if starter_image is not None:
-                starter_surf = pygame.transform.smoothscale(starter_image, (62, 88))
-                self.context.screen.blit(starter_surf, (starter_box.x + 19, starter_box.y + 16))
+                starter_surf = pygame.transform.smoothscale(starter_image, (64, 90))
+                starter_surface.blit(starter_surf, (starter_box.x + 22, starter_box.y + 24))
+
+        starter_surface.set_alpha(int(255 * 0.75))
+        self.context.screen.blit(starter_surface, (0, 0))
 
     def finalize_frame(self) -> None:
         """Update display after rendering all elements."""
