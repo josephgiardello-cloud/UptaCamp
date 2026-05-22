@@ -4,12 +4,26 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 from collections import defaultdict
 from typing import Any
 
+from dotenv import load_dotenv
 from online_backend import OnlineBackend
 
+try:
+    import sentry_sdk
+except Exception:  # pragma: no cover - optional dependency at runtime
+    sentry_sdk = None
+
 LOGGER = logging.getLogger(__name__)
+
+
+def _init_sentry() -> None:
+    dsn = os.getenv("SENTRY_DSN", "").strip()
+    if not dsn or sentry_sdk is None:
+        return
+    sentry_sdk.init(dsn=dsn, traces_sample_rate=0.05)
 
 
 class OnlineWsServer:
@@ -101,13 +115,15 @@ async def _run(host: str, port: int, db_path: str) -> None:
 
 
 def main() -> None:
+    load_dotenv()
+    _init_sentry()
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s"
     )
     parser = argparse.ArgumentParser(description="Run UptaCamp websocket match server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8790)
-    parser.add_argument("--db", default="online_state.db")
+    parser.add_argument("--db", default=os.getenv("UPTACAMP_DB_PATH", "data/online_state.db"))
     args = parser.parse_args()
     asyncio.run(_run(args.host, args.port, args.db))
 

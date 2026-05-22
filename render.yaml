@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: uptacamp-api
+    env: python
+    buildCommand: pip install -e .
+    startCommand: python online_api_server.py --host 0.0.0.0 --port $PORT --db /var/data/online_state.db
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: UPTACAMP_ALLOWED_ORIGINS
+        value: https://uptacamp-api.onrender.com
+      - key: UPTACAMP_DB_PATH
+        value: /var/data/online_state.db
+      - key: SENTRY_DSN
+        sync: false
+    disk:
+      name: uptacamp-api-disk
+      mountPath: /var/data
+      sizeGB: 1
+
+  - type: web
+    name: uptacamp-ws
+    env: python
+    buildCommand: pip install -e .
+    startCommand: python online_ws_server.py --host 0.0.0.0 --port $PORT --db /var/data/online_state.db
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: UPTACAMP_DB_PATH
+        value: /var/data/online_state.db
+      - key: SENTRY_DSN
+        sync: false
+    disk:
+      name: uptacamp-ws-disk
+      mountPath: /var/data
+      sizeGB: 1

@@ -1,0 +1,33 @@
+name: Headless Runtime Smoke
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main, develop]
+
+jobs:
+  smoke:
+    name: Headless game boot smoke
+    runs-on: ubuntu-latest
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      PYGAME_HIDE_SUPPORT_PROMPT: 1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Run short headless smoke
+        run: |
+          python -c "import subprocess,sys; subprocess.run([sys.executable, 'main.py', '--no-auto-relaunch', '--max-runtime-seconds', '5'], check=True, timeout=30)"

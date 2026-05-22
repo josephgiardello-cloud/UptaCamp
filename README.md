@@ -2,6 +2,8 @@
 
 UptaCamp is a Python + Pygame cribbage game with a state-driven local client and an online backend/websocket stack.
 
+[![Play Online](https://img.shields.io/badge/Play%20Online-UptaCamp-success?style=for-the-badge)](https://uptacamp-api.onrender.com/health)
+
 ## Highlights
 
 - Full cribbage flow: deal, discard, pegging, counting, round reset, game over.
@@ -75,6 +77,12 @@ python online_ws_server.py --host 127.0.0.1 --port 8790 --db online_state.db
 
 ```bash
 python main.py --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
+```
+
+For production endpoints configured in `.env`, launch with:
+
+```bash
+python main.py --online-url %UPTACAMP_ONLINE_URL_PROD% --online-ws-url %UPTACAMP_ONLINE_WS_URL_PROD%
 ```
 
 3. In-game flow:
@@ -165,14 +173,32 @@ The test suite includes dedicated files for:
 ### Start API server
 
 ```bash
-python online_api_server.py --host 127.0.0.1 --port 8787 --db online_state.db
+python online_api_server.py --host 127.0.0.1 --port 8787 --db data/online_state.db
 ```
 
 ### Start websocket server
 
 ```bash
-python online_ws_server.py --host 127.0.0.1 --port 8790 --db online_state.db
+python online_ws_server.py --host 127.0.0.1 --port 8790 --db data/online_state.db
 ```
+
+## Deploy Online Services (Free Tier)
+
+Use Render free web services for both API and WebSocket processes.
+
+1. Connect the repo in Render.
+2. Use `render.yaml` in this repo to provision services.
+3. Set environment variables from `.env.example`.
+4. Keep `UPTACAMP_DB_PATH` on a persistent disk mount path.
+
+See `docs/DEPLOY_ONLINE.md` for full deployment steps.
+
+## Error Tracking
+
+Sentry is supported for both API and WebSocket services.
+
+- Set `SENTRY_DSN` in the deployment environment.
+- Errors and unhandled exceptions are captured automatically.
 
 ### Key endpoints
 
