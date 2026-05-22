@@ -1,4 +1,4 @@
-﻿anyio==4.13.0
+anyio==4.13.0
 ast_serialize==0.5.0
 black==26.5.1
 cairocffi==1.7.1
@@ -39,7 +39,7 @@ pycparser==2.22
 pygame==2.6.1
 pygame-menu==4.5.2
 Pygments==2.20.0
-pyperclip==1.9.0
+pyperclip==1.11.0
 pypiwin32==223
 pytest==9.0.3
 pytest-cov==7.1.0
