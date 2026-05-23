@@ -9,6 +9,7 @@
   "bert_voice_style": "downeast",
   "bert_voice_backend": "local_ai",
   "bert_local_model_path": "bert_voice_models/en_US-joe-medium.onnx",
+  "barnabas_local_model_path": "",
   "bert_local_exe_path": ".venv/Scripts/piper.exe",
   "bert_rvc_enabled": true,
   "bert_rvc_exe_path": "rvc_infer",

@@ -92,14 +92,15 @@ class RuntimeController:
             try:
                 voice.set_enabled(bool(settings.bert_voice_enabled))
                 voice.configure_backend(
-                    "sapi",
-                    "",
-                    "piper",
-                    False,
-                    "rvc_infer",
-                    "",
-                    "",
-                    0,
+                    str(settings.bert_voice_backend),
+                    str(settings.bert_local_model_path),
+                    str(settings.barnabas_local_model_path),
+                    str(settings.bert_local_exe_path),
+                    bool(settings.bert_rvc_enabled),
+                    str(settings.bert_rvc_exe_path),
+                    str(settings.bert_rvc_model_path),
+                    str(settings.bert_rvc_index_path),
+                    int(settings.bert_rvc_pitch_shift),
                 )
             except Exception:
                 pass
@@ -175,14 +176,15 @@ def _run_state_client(args: Any) -> int:
     app.audio = AudioManager(volume=app.volume)
     app.voice = VoiceManager(
         enabled=bool(settings.bert_voice_enabled),
-        backend="sapi",
-        local_ai_model_path="",
-        local_ai_exe_path="piper",
-        rvc_enabled=False,
-        rvc_exe_path="rvc_infer",
-        rvc_model_path="",
-        rvc_index_path="",
-        rvc_pitch_shift=0,
+        backend=str(settings.bert_voice_backend),
+        local_ai_model_path=str(settings.bert_local_model_path),
+        barnabas_local_model_path=str(settings.barnabas_local_model_path),
+        local_ai_exe_path=str(settings.bert_local_exe_path),
+        rvc_enabled=bool(settings.bert_rvc_enabled),
+        rvc_exe_path=str(settings.bert_rvc_exe_path),
+        rvc_model_path=str(settings.bert_rvc_model_path),
+        rvc_index_path=str(settings.bert_rvc_index_path),
+        rvc_pitch_shift=int(settings.bert_rvc_pitch_shift),
     )
     engine.voice = app.voice
 

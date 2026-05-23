@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from stats_manager import (
     get_bert_stats_comment,
+    get_player_records_list,
     get_player_profile,
     record_game_result,
     record_hand_stats,
@@ -120,3 +121,69 @@ def test_get_bert_stats_comment_bands() -> None:
     assert "holdin" in get_bert_stats_comment({"win_pct": 52.0}).lower()
     assert "scrapin" in get_bert_stats_comment({"win_pct": 40.0}).lower()
     assert "rough water" in get_bert_stats_comment({"win_pct": 20.0}).lower()
+
+
+def test_get_player_records_list_returns_wins_losses_best_hand_sorted(tmp_path):
+    # Create two profiles with different outcomes.
+    for _ in range(3):
+        record_game_result(
+            player_name="Alice",
+            won=True,
+            skunk_for=False,
+            skunk_against=False,
+            final_score=121,
+            opponent_score=95,
+            mode="single_player",
+            path=tmp_path / "Alice.json",
+        )
+    record_hand_stats(
+        player_name="Alice",
+        hand_points=14,
+        pegging_points=2,
+        as_dealer=True,
+        mode="single_player",
+        path=tmp_path / "Alice.json",
+    )
+
+    for _ in range(2):
+        record_game_result(
+            player_name="Bob",
+            won=True,
+            skunk_for=False,
+            skunk_against=False,
+            final_score=121,
+            opponent_score=110,
+            mode="single_player",
+            path=tmp_path / "Bob.json",
+        )
+    for _ in range(3):
+        record_game_result(
+            player_name="Bob",
+            won=False,
+            skunk_for=False,
+            skunk_against=False,
+            final_score=98,
+            opponent_score=121,
+            mode="single_player",
+            path=tmp_path / "Bob.json",
+        )
+    record_hand_stats(
+        player_name="Bob",
+        hand_points=9,
+        pegging_points=1,
+        as_dealer=False,
+        mode="single_player",
+        path=tmp_path / "Bob.json",
+    )
+
+    rows = get_player_records_list(mode="single_player", stats_dir=tmp_path)
+
+    assert len(rows) == 2
+    assert rows[0]["player_name"] == "Alice"
+    assert rows[0]["wins"] == 3
+    assert rows[0]["losses"] == 0
+    assert rows[0]["high_hand"] == 14
+    assert rows[1]["player_name"] == "Bob"
+    assert rows[1]["wins"] == 2
+    assert rows[1]["losses"] == 3
+    assert rows[1]["high_hand"] == 9

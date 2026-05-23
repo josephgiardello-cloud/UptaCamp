@@ -345,3 +345,92 @@ def get_difficulty_wins(
 
     key = str(difficulty_key).strip().lower()
     return max(0, int(player_bucket.get(key, 0)))
+
+
+def get_player_records_list(
+    *,
+    mode: str = "single_player",
+    limit: int = 8,
+    stats_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Return a sorted list of player records for leaderboard-style UI.
+
+    Each entry contains: player_name, wins, losses, high_hand, best_game_score, games_played.
+    """
+    records: list[dict[str, Any]] = []
+    search_dir = stats_dir or _PLAYER_STATS_DIR
+    mode_key = str(mode).strip() or "single_player"
+
+    profile_paths: list[Path] = []
+    if search_dir.exists() and search_dir.is_dir():
+        try:
+            profile_paths = sorted(search_dir.glob("*.json"))
+        except OSError:
+            profile_paths = []
+
+    # Fallback to legacy monolithic store when no profile files are present.
+    if not profile_paths and _LEGACY_STATS_PATH.exists():
+        profile_paths = [_LEGACY_STATS_PATH]
+
+    for path in profile_paths:
+        store = _load_store_from(path)
+        mode_bucket = store.get(mode_key, {})
+        if not isinstance(mode_bucket, dict):
+            continue
+
+        for player_name, bucket in mode_bucket.items():
+            if not isinstance(bucket, dict):
+                continue
+            wins = max(0, int(bucket.get("wins", 0)))
+            losses = max(0, int(bucket.get("losses", 0)))
+            high_hand = max(0, int(bucket.get("high_hand", 0)))
+            best_game_score = max(0, int(bucket.get("best_game_score", 0)))
+            games_played = max(0, int(bucket.get("games_played", wins + losses)))
+            records.append(
+                {
+                    "player_name": str(player_name),
+                    "wins": wins,
+                    "losses": losses,
+                    "high_hand": high_hand,
+                    "best_game_score": best_game_score,
+                    "games_played": games_played,
+                }
+            )
+
+    # De-duplicate by player name, keeping best aggregate row encountered.
+    dedup: dict[str, dict[str, Any]] = {}
+    for row in records:
+        name = str(row.get("player_name", "")).strip() or "Player"
+        existing = dedup.get(name)
+        if existing is None:
+            dedup[name] = row
+            continue
+
+        current_key = (
+            int(row.get("wins", 0)),
+            int(row.get("high_hand", 0)),
+            int(row.get("best_game_score", 0)),
+            -int(row.get("losses", 0)),
+            int(row.get("games_played", 0)),
+        )
+        existing_key = (
+            int(existing.get("wins", 0)),
+            int(existing.get("high_hand", 0)),
+            int(existing.get("best_game_score", 0)),
+            -int(existing.get("losses", 0)),
+            int(existing.get("games_played", 0)),
+        )
+        if current_key > existing_key:
+            dedup[name] = row
+
+    ordered = sorted(
+        dedup.values(),
+        key=lambda row: (
+            -int(row.get("wins", 0)),
+            int(row.get("losses", 0)),
+            -int(row.get("high_hand", 0)),
+            -int(row.get("best_game_score", 0)),
+            str(row.get("player_name", "")).lower(),
+        ),
+    )
+    return ordered[: max(0, int(limit))]

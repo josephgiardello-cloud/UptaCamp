@@ -15,7 +15,8 @@ AI_LEVELS: dict[int, str] = {
     2: "Standard",
     3: "Hard",
     4: "Gumption",
-    5: "Adaptive Bert",
+    5: "Old House",
+    6: "Barnabas",
 }
 
 
@@ -943,7 +944,7 @@ class BoardRenderer:
                 posture = "balanced"
             self._draw_label(
                 score_surface,
-                f"Bert Posture: {posture.title()}",
+                f"Barnabas Posture: {posture.title()}",
                 (panel_rect.x + 18, panel_rect.y + 168),
                 small_font,
                 (154, 173, 209)
@@ -1081,14 +1082,6 @@ class BoardRenderer:
         starter_surface = pygame.Surface((sw, sh), pygame.SRCALPHA)
         pygame.draw.rect(starter_surface, (31, 43, 35), starter_box, border_radius=18)
         pygame.draw.rect(starter_surface, (214, 184, 114), starter_box, width=2, border_radius=18)
-        self._draw_label(
-            starter_surface,
-            "Starter",
-            (starter_box.centerx, starter_box.y + 8),
-            small_font,
-            (238, 223, 186),
-            align_left=False,
-        )
         if starter_card is not None:
             starter_image: Any = card_images.get(str(starter_card))
             if starter_image is None:

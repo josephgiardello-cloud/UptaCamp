@@ -13,14 +13,14 @@ def test_shape_for_voice_style_keeps_robot_text_unchanged():
     assert vm._shape_for_voice_style(text, "robot") == text
 
 
-def test_shape_for_voice_style_applies_downeast_pronunciation():
+def test_shape_for_voice_style_preserves_words_for_natural_tts():
     vm = VoiceManager(enabled=False)
 
     text = "Cards are going to your crib for points."
     shaped = vm._shape_for_voice_style(text, "downeast")
 
     assert "cards" in shaped.lower()
-    assert "goin'" in shaped.lower()
+    assert "going" in shaped.lower()
     assert "your" in shaped.lower()
     assert "for" in shaped.lower()
 
@@ -31,6 +31,7 @@ def test_configure_backend_updates_runtime_selection():
     vm.configure_backend(
         "local_ai",
         "models/bert.onnx",
+        "models/barnabas.onnx",
         "piper",
         True,
         "rvc_infer",
@@ -41,6 +42,7 @@ def test_configure_backend_updates_runtime_selection():
 
     assert vm.backend == "local_ai"
     assert vm.local_ai_model_path == "models/bert.onnx"
+    assert vm.barnabas_local_model_path == "models/barnabas.onnx"
     assert vm.local_ai_exe_path == "piper"
     assert vm.rvc_enabled is True
 
@@ -132,6 +134,52 @@ def test_speak_bert_allows_level6(monkeypatch):
     assert calls[0][1] == 6
 
 
+def test_speak_bert_levels_1_to_3_force_sapi_even_when_local_ai_enabled(monkeypatch):
+    vm = VoiceManager(enabled=True, backend="local_ai")
+
+    sapi_calls = []
+    local_calls = []
+
+    def _fake_speak_windows(text, dad_ai_level):
+        sapi_calls.append((text, dad_ai_level))
+
+    def _fake_speak_local_ai_async(text, dad_ai_level):
+        local_calls.append((text, dad_ai_level))
+
+    monkeypatch.setattr(vm, "_is_windows", True)
+    monkeypatch.setattr(vm, "_speak_windows", _fake_speak_windows)
+    monkeypatch.setattr(vm, "_speak_local_ai_async", _fake_speak_local_ai_async)
+    monkeypatch.setattr(vm, "_is_speaking", lambda now=None: False)
+
+    vm.speak_bert("Easy mode line", dad_ai_level=2, bypass_cooldown=True, voice_style="downeast")
+
+    assert len(sapi_calls) == 1
+    assert sapi_calls[0][1] == 2
+    assert local_calls == []
+
+
+def test_resolve_local_ai_model_path_prefers_barnabas_for_levels_5_and_6(tmp_path):
+    base_model = tmp_path / "joe.onnx"
+    barnabas_model = tmp_path / "barnabas.onnx"
+    base_model.write_text("base", encoding="utf-8")
+    barnabas_model.write_text("barnabas", encoding="utf-8")
+
+    vm = VoiceManager(
+        enabled=True,
+        backend="local_ai",
+        local_ai_model_path=str(base_model),
+        barnabas_local_model_path=str(barnabas_model),
+    )
+
+    level4_path = vm._resolve_local_ai_model_path(4)
+    level5_path = vm._resolve_local_ai_model_path(5)
+    level6_path = vm._resolve_local_ai_model_path(6)
+
+    assert level4_path == base_model
+    assert level5_path == barnabas_model
+    assert level6_path == barnabas_model
+
+
 def test_is_speaking_true_when_sapi_process_running(monkeypatch):
     vm = VoiceManager(enabled=True)
 
@@ -169,12 +217,13 @@ def test_dynamic_sapi_rate_barnabas_is_slower_than_level6_for_same_line():
     assert barnabas_rate <= level6_rate
 
 
-def test_shape_for_ai_level_voice_barnabas_adds_deliberate_cadence():
+def test_shape_for_ai_level_voice_barnabas_keeps_sentence_timing_natural():
     vm = VoiceManager(enabled=True)
 
     shaped = vm._shape_for_ai_level_voice("One line. Another line.", dad_ai_level=5)
 
-    assert "..." in shaped
+    assert "..." not in shaped
+    assert shaped.endswith(".")
 
 
 def test_shape_for_ai_level_voice_other_levels_unchanged():
@@ -183,6 +232,14 @@ def test_shape_for_ai_level_voice_other_levels_unchanged():
     text = "One line. Another line."
     assert vm._shape_for_ai_level_voice(text, dad_ai_level=4) == text
     assert vm._shape_for_ai_level_voice(text, dad_ai_level=6) == text
+
+
+def test_pronunciation_hint_rewrites_barnabas_name():
+    vm = VoiceManager(enabled=True)
+
+    shaped = vm._apply_pronunciation_hints("Barnabas counts the hand.")
+
+    assert "Barnahbus" in shaped
 
 
 def test_speak_windows_uses_ssml_for_barnabas(monkeypatch):
@@ -200,12 +257,15 @@ def test_speak_windows_uses_ssml_for_barnabas(monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", _fake_popen)
     monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0, raising=False)
 
-    vm._speak_windows("Night falls", dad_ai_level=5)
+    vm._speak_windows("Barnabas speaks low, cards stay quiet.", dad_ai_level=5)
 
     script = " ".join(captured.get("cmd", []))
     assert "SpeakSsml" in script
-    assert "pitch=\"-10%\"" in script
-    assert "Name -notmatch 'Guy|David'" in script
+    assert "pitch=\"-7%\"" in script
+    assert "rate=\"-10%\"" in script
+    assert "break time=" in script and "170ms" in script
+    assert "<sub alias=\"Barnahbus\">Barnabas</sub>" in script
+    assert "Gender -eq [System.Speech.Synthesis.VoiceGender]::Male" in script
     assert "catch { $synth.Speak($text) }" in script
 
 
@@ -229,6 +289,31 @@ def test_speak_windows_uses_plain_speak_for_non_barnabas(monkeypatch):
     script = " ".join(captured.get("cmd", []))
     assert "SpeakSsml" not in script
     assert "Speak($text)" in script
+
+
+def test_speak_windows_uses_human_ssml_for_levels_1_to_3(monkeypatch):
+    vm = VoiceManager(enabled=True)
+    captured: dict[str, list[str]] = {}
+
+    class _FakeProc:
+        def poll(self):
+            return None
+
+    def _fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+
+    vm._speak_windows("Cards on the table, choose two.", dad_ai_level=2)
+
+    script = " ".join(captured.get("cmd", []))
+    assert "SpeakSsml" in script
+    assert "pitch=\"+4%\"" in script
+    assert "rate=\"-2%\"" in script
+    assert "break time=" in script and "110ms" in script
+    assert "Gender -eq [System.Speech.Synthesis.VoiceGender]::Female" in script
 
 
 def test_apply_barnabas_vocal_fx_lowers_sample_rate(tmp_path):

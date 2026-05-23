@@ -24,6 +24,7 @@ class VoiceManager:
         min_interval_s: float = 1.1,
         backend: str = "sapi",
         local_ai_model_path: str = "",
+        barnabas_local_model_path: str = "",
         local_ai_exe_path: str = "piper",
         rvc_enabled: bool = False,
         rvc_exe_path: str = "rvc_infer",
@@ -38,6 +39,7 @@ class VoiceManager:
         self._is_windows = os.name == "nt"
         self.backend = backend if backend in ("sapi", "local_ai") else "sapi"
         self.local_ai_model_path = str(local_ai_model_path or "")
+        self.barnabas_local_model_path = str(barnabas_local_model_path or "")
         self.local_ai_exe_path = str(local_ai_exe_path or "piper")
         self.rvc_enabled = bool(rvc_enabled)
         self.rvc_exe_path = str(rvc_exe_path or "rvc_infer")
@@ -77,6 +79,7 @@ class VoiceManager:
         self,
         backend: str,
         local_ai_model_path: str,
+        barnabas_local_model_path: str,
         local_ai_exe_path: str,
         rvc_enabled: bool,
         rvc_exe_path: str,
@@ -86,6 +89,7 @@ class VoiceManager:
     ) -> None:
         self.backend = backend if backend in ("sapi", "local_ai") else "sapi"
         self.local_ai_model_path = str(local_ai_model_path or "")
+        self.barnabas_local_model_path = str(barnabas_local_model_path or "")
         self.local_ai_exe_path = str(local_ai_exe_path or "piper")
         self.rvc_enabled = bool(rvc_enabled)
         self.rvc_exe_path = str(rvc_exe_path or "rvc_infer")
@@ -100,7 +104,7 @@ class VoiceManager:
         bypass_cooldown: bool = False,
         voice_style: str = "downeast",
     ) -> None:
-        if not self.enabled or dad_ai_level not in (4, 5, 6):
+        if not self.enabled or dad_ai_level not in (1, 2, 3, 4, 5, 6):
             return
 
         normalized = str(text).strip()
@@ -109,6 +113,7 @@ class VoiceManager:
 
         spoken_text = self._shape_for_voice_style(normalized, voice_style)
         spoken_text = self._shape_for_ai_level_voice(spoken_text, dad_ai_level)
+        spoken_text = self._apply_pronunciation_hints(spoken_text)
 
         now = time.monotonic()
         if self._is_speaking(now):
@@ -128,7 +133,9 @@ class VoiceManager:
         self._last_text = normalized
         self._set_speaking_window(spoken_text)
 
-        if self.backend == "local_ai":
+        force_sapi_lane = dad_ai_level in (1, 2, 3)
+
+        if self.backend == "local_ai" and not force_sapi_lane:
             self._speak_local_ai_async(spoken_text, dad_ai_level)
             return
 
@@ -136,32 +143,78 @@ class VoiceManager:
             self._speak_windows(spoken_text, dad_ai_level)
 
     def _shape_for_voice_style(self, text: str, voice_style: str) -> str:
-        if voice_style != "downeast":
-            return text
-
-        # Keep lexical content intact for clearer TTS pronunciation.
-        # Persona authenticity should come from Bert's generated lines,
-        # not phonetic respelling that speech engines can garble.
-        shaped = re.sub(r"\s+", " ", text).strip()
-        shaped = re.sub(r"\bgoing\b", "goin'", shaped, flags=re.IGNORECASE)
-        return shaped
+        # Preserve vocabulary and only normalize spacing. Phonetic rewrites can
+        # cause awkward pronunciations in SAPI/Piper voices.
+        _ = voice_style
+        return re.sub(r"\s+", " ", text).strip()
 
     def _shape_for_ai_level_voice(self, text: str, dad_ai_level: int) -> str:
         if dad_ai_level != 5:
             return text
 
-        # Barnabas cadence: more deliberate and grave.
+        # Barnabas cadence: keep phrasing intact and avoid synthetic ellipsis.
         shaped = re.sub(r"\s+", " ", text).strip()
-        shaped = shaped.replace(". ", "... ")
-        if not shaped.endswith((".", "!", "?", "...")):
+        if not shaped.endswith((".", "!", "?")):
             shaped += "."
         return shaped
+
+    def _apply_pronunciation_hints(self, text: str) -> str:
+        # Stabilize name pronunciation across TTS engines.
+        return re.sub(r"\bBarnabas\b", "Barnahbus", text, flags=re.IGNORECASE)
+
+    def _apply_ssml_pronunciation_hints(self, escaped_text: str) -> str:
+        # SSML alias keeps displayed text while guiding spoken pronunciation.
+        return re.sub(
+            r"\b(?:Barnabas|Barnahbus)\b",
+            "<sub alias=\"Barnahbus\">Barnabas</sub>",
+            escaped_text,
+            flags=re.IGNORECASE,
+        )
 
     def _escape_ssml_text(self, text: str) -> str:
         escaped = text.replace("&", "&amp;")
         escaped = escaped.replace("<", "&lt;").replace(">", "&gt;")
         escaped = escaped.replace('"', "&quot;").replace("'", "&apos;")
         return escaped
+
+    def _inject_expressive_ssml_pauses(self, escaped_text: str) -> str:
+        # Add subtle phrase and sentence breaks for expressive pacing.
+        with_phrase_breaks = re.sub(
+            r"([,;:])\s+",
+            r"\1 <break time=\"120ms\"/> ",
+            escaped_text,
+        )
+        return re.sub(
+            r"([.!?])\s+",
+            r"\1 <break time=\"230ms\"/> ",
+            with_phrase_breaks,
+        )
+
+    def _inject_barnabas_ssml_cadence(self, escaped_text: str) -> str:
+        # Barnabas should sound deliberate and aristocratic without over-graveling.
+        with_phrase_breaks = re.sub(
+            r"([,;:])\s+",
+            r"\1 <break time=\"170ms\"/> ",
+            escaped_text,
+        )
+        return re.sub(
+            r"([.!?])\s+",
+            r"\1 <break time=\"320ms\"/> ",
+            with_phrase_breaks,
+        )
+
+    def _inject_human_ssml_cadence(self, escaped_text: str) -> str:
+        # Smooth conversational pacing for levels 1-3.
+        with_phrase_breaks = re.sub(
+            r"([,;:])\s+",
+            r"\1 <break time=\"110ms\"/> ",
+            escaped_text,
+        )
+        return re.sub(
+            r"([.!?])\s+",
+            r"\1 <break time=\"210ms\"/> ",
+            with_phrase_breaks,
+        )
 
     def _speak_local_ai_async(self, text: str, dad_ai_level: int) -> None:
         worker = threading.Thread(
@@ -172,7 +225,7 @@ class VoiceManager:
         worker.start()
 
     def _speak_local_ai(self, text: str, dad_ai_level: int) -> None:
-        model_path = Path(self.local_ai_model_path) if self.local_ai_model_path else None
+        model_path = self._resolve_local_ai_model_path(dad_ai_level)
         if model_path is None or not model_path.exists():
             if self._is_windows:
                 self._speak_windows(text, 5)
@@ -184,7 +237,7 @@ class VoiceManager:
                 self._speak_windows(text, 5)
             return
 
-        cache_key = self._build_cache_key(text)
+        cache_key = self._build_cache_key(text, dad_ai_level=dad_ai_level, model_path=str(model_path))
         wav_path = self._cache_dir / f"{cache_key}.wav"
         if not wav_path.exists():
             cmd = [exe, "--model", str(model_path), "--output_file", str(wav_path)]
@@ -294,11 +347,19 @@ class VoiceManager:
     def _build_cache_key(
         self, text: str, dad_ai_level: int | None = None, model_path: str | None = None
     ) -> str:
-        # Keep backward-compatible parameters for existing tests/callers.
         _ = dad_ai_level
-        _ = model_path
-        raw = f"{text}|{self.backend}|{self.local_ai_model_path}|{self.rvc_pitch_shift}"
+        effective_model_path = str(model_path or self.local_ai_model_path)
+        raw = f"{text}|{self.backend}|{effective_model_path}|{self.rvc_pitch_shift}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+    def _resolve_local_ai_model_path(self, dad_ai_level: int) -> Path | None:
+        if dad_ai_level in (5, 6) and self.barnabas_local_model_path:
+            barnabas_path = Path(self.barnabas_local_model_path)
+            if barnabas_path.exists():
+                return barnabas_path
+        if self.local_ai_model_path:
+            return Path(self.local_ai_model_path)
+        return None
 
     def _dynamic_sapi_rate(self, text: str, dad_ai_level: int) -> int:
         """Choose a speech rate tuned for line length.
@@ -308,27 +369,30 @@ class VoiceManager:
         """
         word_count = max(1, len(str(text).split()))
         if dad_ai_level == 4:
-            base_rate = -2
+            base_rate = -1
         elif dad_ai_level == 5:
             base_rate = -1
         else:
-            base_rate = -1
+            base_rate = 0
 
         if word_count <= 6:
-            return min(2, base_rate + 1)
+            return min(1, base_rate + 1)
         if word_count <= 12:
             return base_rate
         if word_count <= 18:
-            return max(-6, base_rate - 1)
-        return max(-6, base_rate - 2)
+            return max(-3, base_rate - 1)
+        return max(-4, base_rate - 2)
 
     def _speak_windows(self, text: str, dad_ai_level: int) -> None:
-        if dad_ai_level == 4:
+        if dad_ai_level in (1, 2, 3):
+            preferred_voices = ["Microsoft Zira Desktop", "Microsoft Hazel Desktop", "Microsoft Aria"]
+            volume = 100
+        elif dad_ai_level == 4:
             preferred_voices = ["Microsoft David Desktop", "Microsoft Guy"]
             volume = 100
         elif dad_ai_level == 5:
-            preferred_voices = ["Microsoft Zira Desktop", "Microsoft Mark", "Microsoft Guy"]
-            volume = 94
+            preferred_voices = ["Microsoft Mark", "Microsoft David Desktop", "Microsoft Guy"]
+            volume = 92
         else:
             preferred_voices = ["Microsoft Guy", "Microsoft David Desktop", "Microsoft Mark"]
             volume = 100
@@ -336,13 +400,31 @@ class VoiceManager:
 
         escaped_text = text.replace("'", "''").replace("\r", " ").replace("\n", " ")
         escaped_ssml_text = self._escape_ssml_text(text).replace("\r", " ").replace("\n", " ")
+        escaped_ssml_text = self._apply_ssml_pronunciation_hints(escaped_ssml_text)
         voices_ps = ", ".join("'" + voice.replace("'", "''") + "'" for voice in preferred_voices)
 
         if dad_ai_level == 5:
+            paused_ssml_text = self._inject_barnabas_ssml_cadence(escaped_ssml_text)
             ssml = (
                 "<speak version=\"1.0\" xml:lang=\"en-US\">"
-                "<prosody rate=\"-8%\" pitch=\"-10%\" volume=\"-1dB\">"
-                f"{escaped_ssml_text}"
+                "<prosody rate=\"-10%\" pitch=\"-7%\" volume=\"-2dB\">"
+                f"{paused_ssml_text}"
+                "</prosody>"
+                "</speak>"
+            )
+            ssml_ps = ssml.replace("'", "''")
+            speak_cmd = (
+                f"$text = '{escaped_text}';"
+                "$synth.Rate = 0;"
+                f"$ssml = '{ssml_ps}';"
+                "try { $synth.SpeakSsml($ssml) } catch { $synth.Speak($text) };"
+            )
+        elif dad_ai_level in (1, 2, 3):
+            paused_ssml_text = self._inject_human_ssml_cadence(escaped_ssml_text)
+            ssml = (
+                "<speak version=\"1.0\" xml:lang=\"en-US\">"
+                "<prosody rate=\"-2%\" pitch=\"+4%\" volume=\"+0dB\">"
+                f"{paused_ssml_text}"
                 "</prosody>"
                 "</speak>"
             )
@@ -360,6 +442,27 @@ class VoiceManager:
                 "$synth.Speak($text);"
             )
 
+        if dad_ai_level in (1, 2, 3):
+            fallback_clause = (
+                "  $fallback = $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo } | "
+                "Where-Object { $_.Gender -eq [System.Speech.Synthesis.VoiceGender]::Female } | "
+                "Sort-Object Name | "
+                "Select-Object -First 1;"
+            )
+        elif dad_ai_level == 5:
+            fallback_clause = (
+                "  $fallback = $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo } | "
+                "Where-Object { $_.Gender -eq [System.Speech.Synthesis.VoiceGender]::Male } | "
+                "Sort-Object Name | "
+                "Select-Object -First 1;"
+            )
+        else:
+            fallback_clause = (
+                "  $fallback = $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo } | "
+                "Where-Object { $_.Gender -eq [System.Speech.Synthesis.VoiceGender]::Male } | "
+                "Select-Object -First 1;"
+            )
+
         script = (
             "Add-Type -AssemblyName System.Speech;"
             "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
@@ -369,16 +472,7 @@ class VoiceManager:
             "  try { $synth.SelectVoice($v); $selected = $true; break } catch {}"
             "};"
             "if (-not $selected) {"
-            + (
-                "  $fallback = $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo } | "
-                "Where-Object { $_.Name -notmatch 'Guy|David' } | "
-                "Sort-Object @{Expression={ if ($_.Gender -eq [System.Speech.Synthesis.VoiceGender]::Female) {0} else {1} }}, Name | "
-                "Select-Object -First 1;"
-                if dad_ai_level == 5
-                else "  $fallback = $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo } | "
-                "Where-Object { $_.Gender -eq [System.Speech.Synthesis.VoiceGender]::Male } | "
-                "Select-Object -First 1;"
-            )
+            + fallback_clause
             + "  if ($fallback) {"
             "    try { $synth.SelectVoice($fallback.Name); $selected = $true } catch {}"
             "  }"

@@ -30,6 +30,7 @@ class GameState:
     ai_level: int = 1
     player_name: str = ""
     ai_name: str = "Dealer"
+    ai_last_decision_reason: str = ""
     history: list[object] = field(default_factory=list)
     current_phase: object | None = None
     phase_name: str = "intro"
@@ -91,6 +92,7 @@ class GameState:
             "ai_level": self.ai_level,
             "player_name": self.player_name,
             "ai_name": self.ai_name,
+            "ai_last_decision_reason": self.ai_last_decision_reason,
             "phase_name": self.phase_name,
             "winner": self.winner,
             "last_counting_result": dict(self.last_counting_result),

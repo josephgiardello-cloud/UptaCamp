@@ -20,7 +20,7 @@ def draw_settings_modal(
     overlay.fill((0, 0, 0, 150))
     screen.blit(overlay, (0, 0))
 
-    modal = pygame.Rect(sw // 2 - 280, max(5, sh // 2 - 445), 560, 890)
+    modal = pygame.Rect(sw // 2 - 280, max(20, sh // 2 - 235), 560, 470)
     shadow = modal.move(0, 10)
     pygame.draw.rect(screen, (0, 0, 0, 120), shadow, border_radius=28)
     pygame.draw.rect(screen, (24, 20, 18), modal, border_radius=28)
@@ -38,8 +38,8 @@ def draw_settings_modal(
     screen.blit(strap, (modal.centerx - strap.get_width() // 2, modal.y + 56))
 
     vol_label = body_font.render(f"Volume: {int(settings.volume * 100)}%", True, (245, 236, 218))
-    screen.blit(vol_label, (modal.x + 28, modal.y + 122))
-    settings_volume_rect = pygame.Rect(modal.x + 28, modal.y + 154, 420, 18)
+    screen.blit(vol_label, (modal.x + 28, modal.y + 98))
+    settings_volume_rect = pygame.Rect(modal.x + 28, modal.y + 130, 420, 18)
     pygame.draw.rect(screen, (69, 56, 43), settings_volume_rect, border_radius=9)
     fill = settings_volume_rect.copy()
     fill.width = max(8, int(settings_volume_rect.width * settings.volume))
@@ -50,9 +50,9 @@ def draw_settings_modal(
     pygame.draw.circle(screen, (139, 96, 48), (knob_x, settings_volume_rect.centery), 11, 2)
 
     anim_text = "On" if settings.animations_enabled else "Off"
-    settings_anim_rect = pygame.Rect(modal.x + 28, modal.y + 216, 174, 44)
+    settings_anim_rect = pygame.Rect(modal.x + 28, modal.y + 192, 174, 44)
     anim_label = body_font.render(f"Animations: {anim_text}", True, (245, 236, 218))
-    screen.blit(anim_label, (modal.x + 28, modal.y + 188))
+    screen.blit(anim_label, (modal.x + 28, modal.y + 164))
     pygame.draw.rect(
         screen,
         (62, 101, 74) if settings.animations_enabled else (121, 72, 66),
@@ -74,10 +74,10 @@ def draw_settings_modal(
         True,
         (245, 236, 218),
     )
-    screen.blit(ai_label, (modal.x + 244, modal.y + 188))
-    settings_ai_left_rect = pygame.Rect(modal.x + 244, modal.y + 216, 46, 44)
-    settings_ai_right_rect = pygame.Rect(modal.x + 366, modal.y + 216, 46, 44)
-    mid_rect = pygame.Rect(modal.x + 300, modal.y + 216, 56, 44)
+    screen.blit(ai_label, (modal.x + 244, modal.y + 164))
+    settings_ai_left_rect = pygame.Rect(modal.x + 244, modal.y + 192, 46, 44)
+    settings_ai_right_rect = pygame.Rect(modal.x + 366, modal.y + 192, 46, 44)
+    mid_rect = pygame.Rect(modal.x + 300, modal.y + 192, 56, 44)
     for rect, label in ((settings_ai_left_rect, "<"), (settings_ai_right_rect, ">")):
         pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
         pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
@@ -92,10 +92,10 @@ def draw_settings_modal(
     )
 
     style_label = body_font.render("Playfield Style:", True, (245, 236, 218))
-    screen.blit(style_label, (modal.x + 28, modal.y + 270))
-    settings_style_left_rect = pygame.Rect(modal.x + 28, modal.y + 298, 46, 44)
-    settings_style_right_rect = pygame.Rect(modal.x + 402, modal.y + 298, 46, 44)
-    style_mid_rect = pygame.Rect(modal.x + 84, modal.y + 298, 312, 44)
+    screen.blit(style_label, (modal.x + 28, modal.y + 246))
+    settings_style_left_rect = pygame.Rect(modal.x + 28, modal.y + 274, 46, 44)
+    settings_style_right_rect = pygame.Rect(modal.x + 402, modal.y + 274, 46, 44)
+    style_mid_rect = pygame.Rect(modal.x + 84, modal.y + 274, 312, 44)
     for rect, label in ((settings_style_left_rect, "<"), (settings_style_right_rect, ">")):
         pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
         pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
@@ -112,37 +112,8 @@ def draw_settings_modal(
         ),
     )
 
-    theme_label = body_font.render("Table Background:", True, (245, 236, 218))
-    screen.blit(theme_label, (modal.x + 28, modal.y + 350))
-    settings_theme_left_rect = pygame.Rect(modal.x + 28, modal.y + 378, 46, 44)
-    settings_theme_right_rect = pygame.Rect(modal.x + 402, modal.y + 378, 46, 44)
-    theme_mid_rect = pygame.Rect(modal.x + 84, modal.y + 378, 312, 44)
-    for rect, label in ((settings_theme_left_rect, "<"), (settings_theme_right_rect, ">")):
-        pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
-        pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
-        txt = body_font.render(label, True, (255, 255, 255))
-        screen.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
-    pygame.draw.rect(screen, (55, 48, 42), theme_mid_rect, border_radius=18)
-    pygame.draw.rect(screen, (233, 205, 153), theme_mid_rect, width=2, border_radius=18)
-    theme_text = small_font.render(
-        background_theme_labels.get(settings.background_theme, "Auto"),
-        True,
-        (255, 255, 255),
-    )
-    screen.blit(
-        theme_text,
-        (
-            theme_mid_rect.centerx - theme_text.get_width() // 2,
-            theme_mid_rect.centery - theme_text.get_height() // 2,
-        ),
-    )
-
-    voice_note = small_font.render(
-        "Voice settings are now managed automatically for game balance.",
-        True,
-        (210, 198, 176),
-    )
-    screen.blit(voice_note, (modal.centerx - voice_note.get_width() // 2, modal.y + 438))
+    footer = small_font.render("Esc closes settings", True, (210, 198, 176))
+    screen.blit(footer, (modal.centerx - footer.get_width() // 2, modal.bottom - 36))
 
     return {
         "settings_volume_rect": settings_volume_rect,
@@ -151,6 +122,4 @@ def draw_settings_modal(
         "settings_ai_right_rect": settings_ai_right_rect,
         "settings_style_left_rect": settings_style_left_rect,
         "settings_style_right_rect": settings_style_right_rect,
-        "settings_theme_left_rect": settings_theme_left_rect,
-        "settings_theme_right_rect": settings_theme_right_rect,
     }

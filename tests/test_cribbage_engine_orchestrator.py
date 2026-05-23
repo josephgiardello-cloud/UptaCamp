@@ -127,3 +127,77 @@ def test_start_new_game_seed_is_deterministic():
 
     assert [str(c) for c in state_a.player_hand] == [str(c) for c in state_b.player_hand]
     assert [str(c) for c in state_a.ai_hand] == [str(c) for c in state_b.ai_hand]
+
+
+def test_process_discard_awards_heels_for_starter_jack():
+    engine = CribbageEngine(seed=123)
+    engine.start_new_game()
+    engine.state.dealer = 1
+    engine.state.scores = [0, 0]
+    engine.state.stock_labels = ["jack_of_spades", "ace_of_spades"]
+
+    ok = engine.process_discard([0, 1])
+
+    assert ok is True
+    assert engine.state.starter_card == "jack_of_spades"
+    assert engine.state.scores[1] == 2
+    assert engine.state.phase == "pegging"
+
+
+def test_local_ai_discard_uses_ai_strategy(monkeypatch):
+    engine = CribbageEngine(seed=77)
+    engine.start_new_game()
+    engine.state.dad_ai_level = 4
+
+    def _fake_choose_discard_indices(**kwargs):
+        assert kwargs["dad_ai_level"] == 4
+        assert len(kwargs["dad_labels"]) == 6
+        return [4, 5]
+
+    monkeypatch.setattr("cribbage_engine.ai_strategy.choose_discard_indices", _fake_choose_discard_indices)
+
+    picked = engine._ai_discard_indices()
+
+    assert picked == [5, 4]
+
+
+def test_local_ai_pegging_uses_ai_strategy(monkeypatch):
+    engine = CribbageEngine(seed=88)
+    engine.start_new_game()
+    engine.state.phase = "pegging"
+    engine.current_phase = "pegging"
+    engine.state.player_turn = 1
+    engine.state.ai_hand = [Card("5", "Hearts"), Card("K", "Clubs")]
+    engine.state.pegging_pile = [Card("10", "Diamonds")]
+    engine.state.dad_ai_level = 4
+
+    def _fake_choose_pegging_index(**kwargs):
+        assert kwargs["dad_ai_level"] == 4
+        return 0
+
+    monkeypatch.setattr("cribbage_engine.ai_strategy.choose_pegging_index", _fake_choose_pegging_index)
+
+    picked = engine.ai_pegging_move()
+
+    assert picked == 0
+
+
+def test_local_ai_pegging_invalid_strategy_pick_falls_back_to_legal_move(monkeypatch):
+    engine = CribbageEngine(seed=99)
+    engine.start_new_game()
+    engine.state.phase = "pegging"
+    engine.current_phase = "pegging"
+    engine.state.player_turn = 1
+    engine.state.ai_hand = [Card("5", "Hearts"), Card("K", "Clubs")]
+    engine.state.pegging_pile = [Card("10", "Diamonds")]
+    engine.state.dad_ai_level = 5
+
+    def _fake_choose_pegging_index(**kwargs):
+        return 99
+
+    monkeypatch.setattr("cribbage_engine.ai_strategy.choose_pegging_index", _fake_choose_pegging_index)
+
+    picked = engine.ai_pegging_move()
+
+    assert picked in engine.get_valid_moves()
+    assert picked is not None

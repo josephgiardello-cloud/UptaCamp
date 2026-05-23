@@ -19,6 +19,7 @@ class GameSettings:
     bert_voice_style: str = "downeast"
     bert_voice_backend: str = "local_ai"
     bert_local_model_path: str = "bert_voice_models/en_US-joe-medium.onnx"
+    barnabas_local_model_path: str = ""
     bert_local_exe_path: str = ".venv/Scripts/piper.exe"
     bert_rvc_enabled: bool = False
     bert_rvc_exe_path: str = "rvc_infer"
@@ -50,6 +51,7 @@ class GameSettings:
         if self.bert_voice_backend not in ("sapi", "local_ai"):
             self.bert_voice_backend = "sapi"
         self.bert_local_model_path = str(self.bert_local_model_path or "").strip()
+        self.barnabas_local_model_path = str(self.barnabas_local_model_path or "").strip()
         self.bert_local_exe_path = str(self.bert_local_exe_path or "piper").strip() or "piper"
         self.bert_rvc_enabled = bool(self.bert_rvc_enabled)
         self.bert_rvc_exe_path = str(self.bert_rvc_exe_path or "rvc_infer").strip() or "rvc_infer"
@@ -80,6 +82,7 @@ def load_settings(path: Path | None = None) -> GameSettings:
         bert_voice_style=raw.get("bert_voice_style", "downeast"),
         bert_voice_backend=raw.get("bert_voice_backend", "local_ai"),
         bert_local_model_path=raw.get("bert_local_model_path", "bert_voice_models/en_US-joe-medium.onnx"),
+        barnabas_local_model_path=raw.get("barnabas_local_model_path", ""),
         bert_local_exe_path=raw.get("bert_local_exe_path", ".venv/Scripts/piper.exe"),
         bert_rvc_enabled=raw.get("bert_rvc_enabled", False),
         bert_rvc_exe_path=raw.get("bert_rvc_exe_path", "rvc_infer"),

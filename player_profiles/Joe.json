@@ -1,6 +1,8 @@
 {
   "difficulty_wins": {
-    "Joe": {}
+    "Joe": {
+      "old_house": 3
+    }
   },
   "online": {
     "Joe": {

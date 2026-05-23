@@ -16,6 +16,7 @@ def test_settings_round_trip_includes_bert_voice_flag(tmp_path):
         bert_voice_style="robot",
         bert_voice_backend="local_ai",
         bert_local_model_path="models/bert.onnx",
+        barnabas_local_model_path="models/barnabas.onnx",
         bert_local_exe_path="piper",
         bert_rvc_enabled=True,
         bert_rvc_exe_path="rvc_infer",
@@ -33,6 +34,7 @@ def test_settings_round_trip_includes_bert_voice_flag(tmp_path):
     assert loaded.bert_voice_style == "robot"
     assert loaded.bert_voice_backend == "local_ai"
     assert loaded.bert_local_model_path == "models/bert.onnx"
+    assert loaded.barnabas_local_model_path == "models/barnabas.onnx"
     assert loaded.bert_local_exe_path == "piper"
     assert loaded.bert_rvc_enabled is True
     assert loaded.bert_rvc_exe_path == "rvc_infer"
@@ -63,6 +65,14 @@ def test_settings_clamp_normalizes_bert_voice_backend():
     clamped = settings.clamp()
 
     assert clamped.bert_voice_backend == "sapi"
+
+
+def test_settings_clamp_normalizes_barnabas_model_path():
+    settings = GameSettings(barnabas_local_model_path="  models/barnabas.onnx  ")
+
+    clamped = settings.clamp()
+
+    assert clamped.barnabas_local_model_path == "models/barnabas.onnx"
 
 
 def test_settings_clamp_clips_rvc_pitch_shift():

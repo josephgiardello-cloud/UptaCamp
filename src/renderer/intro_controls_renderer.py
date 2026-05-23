@@ -12,6 +12,7 @@ class IntroControlsLayout(TypedDict):
     start_btn_rect: pygame.Rect
     online_btn_rect: pygame.Rect
     settings_btn_rect: pygame.Rect
+    high_scores_btn_rect: pygame.Rect
 
 
 def _pick_font(candidates: Sequence[str], size: int, bold: bool = False, italic: bool = False) -> pygame.font.Font:
@@ -271,6 +272,8 @@ def draw_intro_controls(
 
         is_bert_selected = level == 4 and level == dad_ai_level
         is_old_house = level == 5
+        is_old_house_selected = is_old_house and level == dad_ai_level
+        is_hard_selected = level == 3 and level == dad_ai_level
         is_hunter_selected = level in (1, 2, 3) and level == dad_ai_level
 
         if is_locked:
@@ -283,26 +286,22 @@ def draw_intro_controls(
             border_color = (184, 232, 174)
             badge_color = (150, 202, 142)
             badge_text_color = (26, 52, 22)
+        elif is_hard_selected:
+            btn_color = (56, 10, 12)
+            border_color = (206, 64, 68)
+            badge_color = (172, 38, 42)
+            badge_text_color = (245, 226, 220)
         elif is_hunter_selected:
             btn_color = (207, 112, 26)
             border_color = (240, 152, 58)
             badge_color = (232, 132, 42)
             badge_text_color = (60, 28, 6)
-        elif is_old_house and level == dad_ai_level:
+        elif is_old_house_selected:
             # Monochrome "black and white TV" gothic treatment.
             btn_color = (38, 38, 40)
             border_color = (186, 186, 190)
             badge_color = (122, 122, 128)
             badge_text_color = (18, 18, 20)
-        elif is_old_house:
-            btn_color = (28, 28, 30)
-            border_color = (126, 126, 132)
-            badge_color = (88, 88, 94)
-            badge_text_color = (222, 222, 226)
-            if hovered:
-                btn_color = (42, 42, 46)
-                border_color = (168, 168, 174)
-                badge_color = (112, 112, 118)
         elif is_bert_selected:
             btn_color = (56, 10, 12)
             border_color = (206, 64, 68)
@@ -362,13 +361,19 @@ def draw_intro_controls(
             for py in range(0, draw_rect.height, tile):
                 for px in range(0, draw_rect.width, tile):
                     is_dark_cell = ((px // tile) + (py // tile)) % 2 == 0
-                    cell_color = (18, 16, 16, 165) if is_dark_cell else (142, 22, 28, 165)
+                    cell_color = (8, 6, 6, 224) if is_dark_cell else (186, 30, 38, 216)
                     pygame.draw.rect(plaid, cell_color, (px, py, tile, tile))
 
+            # Add subtle per-tile edging to make the checkerboard read clearer.
+            for py in range(0, draw_rect.height, tile):
+                pygame.draw.line(plaid, (0, 0, 0, 34), (0, py), (draw_rect.width, py), 1)
+            for px in range(0, draw_rect.width, tile):
+                pygame.draw.line(plaid, (0, 0, 0, 34), (px, 0), (px, draw_rect.height), 1)
+
             for px in range(0, draw_rect.width, tile * 2):
-                pygame.draw.rect(plaid, (0, 0, 0, 42), (px, 0, 3, draw_rect.height))
+                pygame.draw.rect(plaid, (0, 0, 0, 68), (px, 0, 3, draw_rect.height))
             for py in range(0, draw_rect.height, tile * 2):
-                pygame.draw.rect(plaid, (120, 22, 24, 42), (0, py, draw_rect.width, 3))
+                pygame.draw.rect(plaid, (148, 26, 30, 52), (0, py, draw_rect.width, 3))
 
             local_points = [(x - draw_rect.x, y - draw_rect.y) for x, y in maine_points]
             clip_surface = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
@@ -376,7 +381,7 @@ def draw_intro_controls(
             plaid.blit(clip_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             screen.blit(plaid, draw_rect.topleft)
 
-        if is_old_house:
+        if is_old_house_selected:
             gothic = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
             # Film grain / static noise on a monochrome pass.
             for py in range(0, draw_rect.height, 3):
@@ -453,7 +458,7 @@ def draw_intro_controls(
         pygame.draw.rect(screen, (230, 210, 160, 46), text_plate_rect, width=1, border_radius=6)
 
         level_color = (196, 198, 204) if is_locked else ((255, 252, 235) if level == dad_ai_level else (246, 239, 220))
-        if is_old_house:
+        if is_old_house_selected:
             level_color = (226, 226, 232) if level == dad_ai_level else (198, 198, 204)
         name_up = "LOCKED" if is_locked else name.upper()
         spacing_map = {
@@ -482,7 +487,7 @@ def draw_intro_controls(
             )
 
         desc_color = (246, 236, 206) if level == dad_ai_level else (216, 228, 214)
-        if is_old_house:
+        if is_old_house_selected:
             desc_color = (214, 214, 220) if level == dad_ai_level else (182, 182, 188)
         desc_lines = [] if is_locked else difficulty_descriptions.get(level, "").split("\n")
         desc_y0 = level_y + card_name_font.get_height() + 5
@@ -589,9 +594,35 @@ def draw_intro_controls(
         ),
     )
 
+    high_scores_btn_rect = pygame.Rect(panel_rect.right - 164, panel_rect.y + 53, 144, 32)
+    scores_hover = high_scores_btn_rect.collidepoint(mouse_pos)
+    scores_fill = (42, 58, 18) if not scores_hover else (58, 78, 24)
+    pygame.draw.rect(screen, scores_fill, high_scores_btn_rect, border_radius=8)
+    pygame.draw.rect(screen, (134, 154, 74), high_scores_btn_rect, width=1, border_radius=8)
+    trophy = glyph_font.render("\u2605", True, (230, 212, 142))
+    scores_text = subtitle_small_font.render("HIGH SCORES", True, (245, 245, 236))
+    screen.blit(
+        scores_text,
+        (
+            high_scores_btn_rect.centerx
+            - (scores_text.get_width() + 8 + trophy.get_width()) // 2
+            + trophy.get_width()
+            + 8,
+            high_scores_btn_rect.centery - scores_text.get_height() // 2,
+        ),
+    )
+    screen.blit(
+        trophy,
+        (
+            high_scores_btn_rect.centerx - (scores_text.get_width() + 8 + trophy.get_width()) // 2,
+            high_scores_btn_rect.centery - trophy.get_height() // 2 - 1,
+        ),
+    )
+
     return {
         "difficulty_buttons": difficulty_buttons,
         "start_btn_rect": start_btn_rect,
         "online_btn_rect": online_btn_rect,
         "settings_btn_rect": settings_btn_rect,
+        "high_scores_btn_rect": high_scores_btn_rect,
     }

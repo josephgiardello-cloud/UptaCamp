@@ -4,6 +4,7 @@ from animations import EffectsManager
 from bert_persona import choose_line
 from cards import Card
 from cards import parse_card_label
+from cards import value_for_fifteen
 from stats_manager import record_difficulty_win
 from src.renderer import BoardRenderer, RenderingContext
 from states.intro import IntroState
@@ -241,6 +242,35 @@ class DealState(GameStateBase):
         target = (from_rect.centerx, max(220, from_rect.centery - 180))
         self.effects.add_card_flight(img, from_rect.center, target, duration_ms=260)
 
+    def _fallback_ai_pegging_index(self, engine, valid: list[int]) -> int:
+        total = int(getattr(engine, "_current_pegging_total", lambda: 0)())
+        hand = list(getattr(engine.state, "ai_hand", []))
+        best_idx = int(valid[0])
+        best_score = float("-inf")
+
+        for idx in valid:
+            if idx < 0 or idx >= len(hand):
+                continue
+            label = self._asset_key_for_card(hand[idx])
+            rank = label.split("_of_", 1)[0]
+            value = int(value_for_fifteen(rank))
+            total_after = total + value
+
+            score = 0.0
+            if total_after in {15, 31}:
+                score += 3.0
+            if total_after in {11, 16, 21, 24}:
+                score += 0.8
+            if total_after in {5, 10, 20, 26}:
+                score -= 0.8
+            score -= abs(15 - total_after) * 0.03
+
+            if score > best_score or (score == best_score and int(idx) < best_idx):
+                best_score = score
+                best_idx = int(idx)
+
+        return best_idx
+
     def update(self, engine, dt, app):
         self.effects.update(max(0, int(dt)))
 
@@ -261,12 +291,15 @@ class DealState(GameStateBase):
             settings = getattr(app, "settings", None)
             if voice is not None and settings is not None:
                 style = str(getattr(settings, "bert_voice_style", "downeast"))
-                line = choose_line("cards_dealt", style=style, dad_ai_level=5, context=None)
+                if self.dad_ai_level in (1, 2, 3):
+                    line = "Cards dealt. Choose two cards for the crib."
+                else:
+                    line = choose_line("cards_dealt", style=style, dad_ai_level=self.dad_ai_level, context=None)
                 if line:
                     try:
                         voice.speak_bert(
                             line,
-                            dad_ai_level=5,
+                            dad_ai_level=self.dad_ai_level,
                             bypass_cooldown=True,
                             voice_style=style,
                         )
@@ -285,7 +318,13 @@ class DealState(GameStateBase):
                     valid = []
 
                 if valid:
-                    ai_idx = int(valid[0])
+                    ai_idx = None
+                    try:
+                        ai_idx = engine.ai_pegging_move()
+                    except Exception:
+                        ai_idx = None
+                    if ai_idx is None:
+                        ai_idx = self._fallback_ai_pegging_index(engine, valid)
                     ai_cards = list(getattr(engine.state, "ai_hand", []))
                     key = None
                     if 0 <= ai_idx < len(ai_cards):
@@ -399,6 +438,15 @@ class DealState(GameStateBase):
             }
         )
 
+        ai_reason = str(getattr(engine.state, "ai_last_decision_reason", "")).strip()
+        if ai_reason:
+            reason_font = pygame.font.SysFont("segoe ui", 16)
+            reason_box = pygame.Rect(18, 108, min(760, sw - 36), 28)
+            pygame.draw.rect(screen, (0, 0, 0, 110), reason_box, border_radius=8)
+            pygame.draw.rect(screen, (180, 162, 120), reason_box, width=1, border_radius=8)
+            reason_text = reason_font.render(ai_reason, True, (235, 226, 202))
+            screen.blit(reason_text, (reason_box.x + 10, reason_box.y + 5))
+
         shake_x, shake_y = self.effects.shake_offset()
         sw, sh = screen.get_width(), screen.get_height()
         card_w, card_h = 120, 180
@@ -411,7 +459,7 @@ class DealState(GameStateBase):
         left_margin = playfield.left + 8
         right_reserve = 330
         usable_width = max(card_w, playfield.width - 16 - right_reserve)
-        spacing = min((usable_width - card_w) // max(1, len(player_hand) - 1), card_w + 12)
+        spacing = min((usable_width - card_w) // max(1, len(player_hand) - 1), card_w + 28)
         start_x = left_margin
 
         label_font = pygame.font.SysFont("segoe ui", 24, bold=True)

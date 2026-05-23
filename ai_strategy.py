@@ -38,9 +38,11 @@ PEGGING_EARLY_TEN_PENALTY: float = 0.35  # Preserving 10+ cards early
 
 # Discard level weighting (difficulty-dependent strategy)
 # Level 2: lighter simulation, intrinsic/crib weight
-LEVEL_2_INTRINSIC: float = 0.35
-LEVEL_2_DEALER_CRIB: float = 0.22
-LEVEL_2_PONE_CRIB: float = -0.18
+LEVEL_2_INTRINSIC: float = 0.18
+LEVEL_2_DEALER_CRIB: float = 0.08
+LEVEL_2_PONE_CRIB: float = -0.06
+LEVEL_2_TOP_DISCARD_PLAY_PROB: float = 0.58
+LEVEL_2_TOP_PEGGING_PLAY_PROB: float = 0.55
 
 # Level 3: medium simulation, heavier weights
 LEVEL_3_INTRINSIC: float = 0.55
@@ -72,6 +74,59 @@ _bert_agent: BertAgent | None = None
 _DEFAULT_BERT_MODEL = Path("bert_model.pkl")
 _barnabas_agent: BertAgent | None = None
 _DEFAULT_BARNABUS_MODEL = Path("barnabas_model.pkl")
+
+
+def _level4_bridge_progress(agent: BertAgent) -> float:
+    games = max(0, int(getattr(agent, "games_played", 0)))
+    steps = max(0, int(getattr(agent, "update_steps", 0)))
+    return max(0.0, min(1.0, (games / 600.0) + (steps / 24000.0)))
+
+
+def _choose_level4_bridge_action(
+    *,
+    agent: BertAgent,
+    hard_action: Any | None,
+    bert_action: Any | None,
+    barnabas_action: Any | None,
+) -> Any | None:
+    if bert_action is None:
+        return hard_action if hard_action is not None else barnabas_action
+
+    progress = _level4_bridge_progress(agent)
+    barnabas_weight = 0.10 + (0.12 * progress)  # Keep level 4 above hard but below Barnabas.
+    hard_weight = 0.60 - (0.08 * progress)
+    bert_bonus = 0.30 + (0.10 * progress)
+
+    scores: dict[Any, float] = {}
+
+    def _add(action: Any | None, weight: float) -> None:
+        if action is None:
+            return
+        scores[action] = scores.get(action, 0.0) + float(weight)
+
+    _add(hard_action, hard_weight)
+    _add(barnabas_action, barnabas_weight)
+    _add(bert_action, bert_bonus)
+
+    # Keep level 4 above pure-hard drift when level 5 disagrees and Bert is still converging.
+    if (
+        progress >= 0.10
+        and hard_action is not None
+        and barnabas_action is not None
+        and hard_action != barnabas_action
+        and bert_action == hard_action
+    ):
+        _add(barnabas_action, 0.06 + (0.08 * progress))
+
+    if not scores:
+        return bert_action
+
+    preference = {
+        bert_action: 3,
+        barnabas_action: 2,
+        hard_action: 1,
+    }
+    return max(scores, key=lambda action: (scores[action], preference.get(action, 0)))
 
 
 def _uses_adaptive_ai(dad_ai_level: int) -> bool:
@@ -522,6 +577,66 @@ def _choose_discard_indices_impl(
         except TypeError:
             # Backward compatibility for older BertAgent signatures.
             idx1, idx2 = agent.choose_discard(dad_labels, state)
+        if dad_ai_level == 4:
+            # For Bert level 4, clamp decision pressure between hard baseline and Barnabas signal.
+            unseen_pool = list(set(canonical_deck_labels) - set(dad_labels))
+            if unseen_pool:
+                hard_pick = _choose_discard_indices_impl(
+                    dad_labels=dad_labels,
+                    dad_ai_level=3,
+                    dealer_is_dad=dealer_is_dad,
+                    canonical_deck_labels=canonical_deck_labels,
+                    score_labels_hand=score_labels_hand,
+                    game_state=game_state,
+                )
+                barnabas_pick: tuple[int, int] | None = None
+                barnabas = get_barnabas_agent()
+                barnabas.set_posture("cutthroat")
+                try:
+                    b1, b2 = barnabas.choose_discard(dad_labels, state, posture="cutthroat")
+                except TypeError:
+                    b1, b2 = barnabas.choose_discard(dad_labels, state)
+                barnabas_pick = (int(b1), int(b2))
+                resolved = _choose_level4_bridge_action(
+                    agent=agent,
+                    hard_action=tuple(hard_pick),
+                    bert_action=(int(idx1), int(idx2)),
+                    barnabas_action=barnabas_pick,
+                )
+                if isinstance(resolved, tuple) and len(resolved) == 2:
+                    return [int(resolved[0]), int(resolved[1])]
+        if dad_ai_level == 5:
+            hard_pick = _choose_discard_indices_impl(
+                dad_labels=dad_labels,
+                dad_ai_level=3,
+                dealer_is_dad=dealer_is_dad,
+                canonical_deck_labels=canonical_deck_labels,
+                score_labels_hand=score_labels_hand,
+                game_state=game_state,
+            )
+
+            unseen_pool = list(set(canonical_deck_labels) - set(dad_labels))
+
+            def _score_pair(pair: tuple[int, int]) -> float:
+                i1, i2 = int(pair[0]), int(pair[1])
+                if i1 == i2 or i1 < 0 or i2 < 0 or i1 >= len(dad_labels) or i2 >= len(dad_labels):
+                    return float("-inf")
+                discard_set = {i1, i2}
+                kept = [dad_labels[i] for i in range(6) if i not in discard_set]
+                discards = [dad_labels[i1], dad_labels[i2]]
+                if not unseen_pool:
+                    return float("-inf")
+                own_total = 0.0
+                for starter in unseen_pool:
+                    own_total += float(score_labels_hand(kept, starter, False))
+                own_ev = own_total / float(len(unseen_pool))
+                crib_bias = LEVEL_4_DEALER_CRIB if dealer_is_dad else LEVEL_4_PONE_CRIB
+                return own_ev + (LEVEL_4_INTRINSIC * _intrinsic_keep_score(kept)) + (crib_bias * _discard_crib_score(discards))
+
+            barnabas_pair = (int(idx1), int(idx2))
+            hard_pair = (int(hard_pick[0]), int(hard_pick[1]))
+            if _score_pair(hard_pair) > _score_pair(barnabas_pair):
+                return [hard_pair[0], hard_pair[1]]
         return [idx1, idx2]
 
     unseen_pool = list(set(canonical_deck_labels) - set(dad_labels))
@@ -530,6 +645,7 @@ def _choose_discard_indices_impl(
 
     best_idxs = [0, 1]
     best_score = float("-inf")
+    level2_scored: list[tuple[float, tuple[int, int]]] = []
 
     for discard_idxs in combinations(range(6), 2):
         discard_set = set(discard_idxs)
@@ -543,6 +659,7 @@ def _choose_discard_indices_impl(
             score = total / len(unseen_pool)
             score += LEVEL_2_INTRINSIC * _intrinsic_keep_score(kept)
             score += (LEVEL_2_DEALER_CRIB if dealer_is_dad else LEVEL_2_PONE_CRIB) * _discard_crib_score(discards)
+            level2_scored.append((float(score), (int(discard_idxs[0]), int(discard_idxs[1]))))
         elif dad_ai_level == 3:
             trials = LEVEL_3_TRIALS
             total = 0.0
@@ -583,6 +700,28 @@ def _choose_discard_indices_impl(
         if score > best_score:
             best_score = score
             best_idxs = list(discard_idxs)
+
+    if dad_ai_level == 2 and level2_scored and game_state is not None:
+        level2_scored.sort(key=lambda row: (row[0], -row[1][0], -row[1][1]), reverse=True)
+        top = level2_scored[0][1]
+        if len(level2_scored) >= 3:
+            second = level2_scored[1][1]
+            third = level2_scored[2][1]
+            choice = random.choices(
+                [top, second, third],
+                weights=[LEVEL_2_TOP_DISCARD_PLAY_PROB, 0.28, 0.14],
+                k=1,
+            )[0]
+            return [int(choice[0]), int(choice[1])]
+        if len(level2_scored) >= 2:
+            second = level2_scored[1][1]
+            choice = random.choices(
+                [top, second],
+                weights=[LEVEL_2_TOP_DISCARD_PLAY_PROB, 1.0 - LEVEL_2_TOP_DISCARD_PLAY_PROB],
+                k=1,
+            )[0]
+            return [int(choice[0]), int(choice[1])]
+        return [int(top[0]), int(top[1])]
 
     return best_idxs
 
@@ -674,25 +813,19 @@ def choose_pegging_index(
     if not legal:
         return None
 
-    if dad_ai_level == 1:
-        return random.choice(legal)
+    if game_state is not None:
+        if own_score is None and len(getattr(game_state, "scores", [])) > 1:
+            own_score = int(game_state.scores[1])
+        if opp_score is None and len(getattr(game_state, "scores", [])) > 0:
+            opp_score = int(game_state.scores[0])
+        if own_cards_remaining is None:
+            own_cards_remaining = len(hand_labels)
 
-    if _uses_adaptive_ai(dad_ai_level):
-        state = game_state or GameState()
-        posture = _bert_posture_for_level(dad_ai_level, state)
-        agent = _agent_for_level(dad_ai_level)
-        agent.set_posture(posture)
-        try:
-            return agent.choose_pegging(hand_labels, current_total, state, posture=posture)
-        except TypeError:
-            # Backward compatibility for older BertAgent signatures.
-            return agent.choose_pegging(hand_labels, current_total, state)
-
-    best_idx = legal[0]
-    best_score = float("-inf")
     posture = _level5_posture_from_state(game_state) if game_state else "balanced"
+    if dad_ai_level == 5:
+        posture = "cutthroat"
 
-    for idx in legal:
+    def _score_legal_choice(idx: int, fallback_posture: str) -> float:
         label = hand_labels[idx]
         trial_pile = [label_card_factory(lbl) for lbl in current_pegging_labels] + [
             label_card_factory(label)
@@ -705,31 +838,141 @@ def choose_pegging_index(
         shape_bonus = _pegging_shape_adjustment(trial_total, immediate, hand_labels, label)
 
         score = immediate + shape_bonus
-        if posture == "cutthroat":
+        if fallback_posture == "cutthroat":
             score += immediate * 1.35
-        elif posture == "aggressive":
+        elif fallback_posture == "aggressive":
             score += immediate * 1.15
-        elif posture == "deliberate":
+        elif fallback_posture == "deliberate":
             score = immediate * 0.9 + shape_bonus * 1.4
 
         if dad_ai_level >= 3 and estimate_opponent_reply_risk is not None:
             score -= OPPONENT_REPLY_RISK_DISCOUNT * estimate_opponent_reply_risk(trial_pile)
 
         if dad_ai_level >= 4:
-            # Endgame awareness: when close to 121, prioritize immediate points.
             if own_score is not None and own_score >= ENDGAME_THRESHOLD:
                 score += ENDGAME_IMMEDIATE_BONUS * immediate
             if opp_score is not None and opp_score >= ENDGAME_THRESHOLD and immediate == 0:
                 score -= ENDGAME_PREVENTION_PENALTY
 
-            # Early-round discipline in brutal mode.
             if own_cards_remaining is not None and own_cards_remaining >= 3 and immediate == 0:
                 val = value_for_15(parse_label(label)[0])
                 if val >= 10:
                     score -= EARLY_DISCIPLINE_PENALTY
 
-        if score > best_score:
-            best_score = score
-            best_idx = idx
+        return float(score)
 
-    return best_idx
+    def _fallback_legal_pick(fallback_posture: str) -> int:
+        best_idx = int(legal[0])
+        best_score = float("-inf")
+        scored_moves: list[tuple[float, int]] = []
+
+        for idx in legal:
+            score = _score_legal_choice(idx, fallback_posture)
+            scored_moves.append((float(score), int(idx)))
+
+            if score > best_score:
+                best_score = score
+                best_idx = idx
+
+        if dad_ai_level == 2 and len(scored_moves) >= 2:
+            scored_moves.sort(key=lambda row: (row[0], -row[1]), reverse=True)
+            top = scored_moves[0][1]
+            second = scored_moves[1][1]
+            if len(scored_moves) >= 3:
+                third = scored_moves[2][1]
+                pick_pool = [top, second, third]
+                pick_weights = [LEVEL_2_TOP_PEGGING_PLAY_PROB, 0.22, 0.10]
+            else:
+                pick_pool = [top, second]
+                pick_weights = [LEVEL_2_TOP_PEGGING_PLAY_PROB, 1.0 - LEVEL_2_TOP_PEGGING_PLAY_PROB]
+            return int(random.choices(pick_pool, weights=pick_weights, k=1)[0])
+
+        return int(best_idx)
+
+    if dad_ai_level == 1:
+        return random.choice(legal)
+
+    if _uses_adaptive_ai(dad_ai_level):
+        state = game_state or GameState()
+        posture = _bert_posture_for_level(dad_ai_level, state)
+        agent = _agent_for_level(dad_ai_level)
+        agent.set_posture(posture)
+        try:
+            bert_pick = agent.choose_pegging(hand_labels, current_total, state, posture=posture)
+        except TypeError:
+            # Backward compatibility for older BertAgent signatures.
+            bert_pick = agent.choose_pegging(hand_labels, current_total, state)
+
+        if dad_ai_level == 4 and len(legal) >= 3:
+            hard_pick = choose_pegging_index(
+                hand_labels=hand_labels,
+                current_total=current_total,
+                dad_ai_level=3,
+                value_for_15=value_for_15,
+                parse_label=parse_label,
+                score_pegging_play=score_pegging_play,
+                label_card_factory=label_card_factory,
+                current_pegging_labels=current_pegging_labels,
+                estimate_opponent_reply_risk=estimate_opponent_reply_risk,
+                own_score=own_score,
+                opp_score=opp_score,
+                own_cards_remaining=own_cards_remaining,
+                game_state=game_state,
+            )
+            barnabas = get_barnabas_agent()
+            barnabas.set_posture("cutthroat")
+            try:
+                barnabas_pick = barnabas.choose_pegging(
+                    hand_labels,
+                    current_total,
+                    state,
+                    posture="cutthroat",
+                )
+            except TypeError:
+                barnabas_pick = barnabas.choose_pegging(hand_labels, current_total, state)
+
+            resolved = _choose_level4_bridge_action(
+                agent=agent,
+                hard_action=hard_pick,
+                bert_action=bert_pick,
+                barnabas_action=barnabas_pick,
+            )
+            if resolved is not None:
+                resolved_idx = int(resolved)
+                # Pegging-only lift: if bridge resolves to hard but Barnabas has a
+                # clearly stronger immediate scoring play, allow that upgrade.
+                if (
+                    hard_pick is not None
+                    and resolved_idx == int(hard_pick)
+                    and barnabas_pick is not None
+                    and int(barnabas_pick) in legal
+                    and int(barnabas_pick) != resolved_idx
+                ):
+                    trial_hard = [label_card_factory(lbl) for lbl in current_pegging_labels] + [
+                        label_card_factory(hand_labels[resolved_idx])
+                    ]
+                    trial_barnabas = [label_card_factory(lbl) for lbl in current_pegging_labels] + [
+                        label_card_factory(hand_labels[int(barnabas_pick)])
+                    ]
+                    hard_now = int(score_pegging_play(trial_hard))
+                    barnabas_now = int(score_pegging_play(trial_barnabas))
+                    if barnabas_now >= hard_now + 1:
+                        return int(barnabas_pick)
+                if resolved_idx in legal:
+                    return resolved_idx
+
+        if bert_pick is not None:
+            try:
+                bert_idx = int(bert_pick)
+                if bert_idx in legal:
+                    if dad_ai_level == 5:
+                        baseline_idx = _fallback_legal_pick("cutthroat")
+                        if _score_legal_choice(baseline_idx, "cutthroat") > _score_legal_choice(bert_idx, "cutthroat"):
+                            return baseline_idx
+                    return bert_idx
+            except (TypeError, ValueError):
+                pass
+
+        return _fallback_legal_pick(posture)
+
+    return _fallback_legal_pick(posture)

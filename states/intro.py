@@ -16,8 +16,9 @@ class IntroState(GameStateBase):
         self.online_button_rect: pygame.Rect | None = None
         self.p2p_button_rect: pygame.Rect | None = None
         self.settings_button_rect: pygame.Rect | None = None
+        self.high_scores_button_rect: pygame.Rect | None = None
         self.difficulty_buttons: dict[int, pygame.Rect] = {}
-        self.dad_ai_level = 5
+        self.dad_ai_level = 4
         self.settings_open = False
         self.settings_rects: dict[str, pygame.Rect] = {}
         self.player_name_rect: pygame.Rect | None = None
@@ -26,6 +27,8 @@ class IntroState(GameStateBase):
         self._barnabas_unlock_wins = 10
         self._barnabas_unlocked = False
         self._show_barnabas_dev_preview = True
+        self._barnabas_wins = 0
+        self._barnabas_remaining_wins = self._barnabas_unlock_wins
 
         # Keep labels local to avoid coupling intro state to old monolith globals.
         self.difficulty_descriptions = {
@@ -54,7 +57,9 @@ class IntroState(GameStateBase):
         player_name = str(getattr(self.settings, "player_name", "Player")).strip() or "Player"
         old_house_wins = get_difficulty_wins(player_name, "old_house")
         legacy_bert_plus_wins = get_difficulty_wins(player_name, "bert_plus")
-        self._barnabas_unlocked = max(old_house_wins, legacy_bert_plus_wins) >= self._barnabas_unlock_wins
+        self._barnabas_wins = max(old_house_wins, legacy_bert_plus_wins)
+        self._barnabas_remaining_wins = max(0, self._barnabas_unlock_wins - self._barnabas_wins)
+        self._barnabas_unlocked = self._barnabas_wins >= self._barnabas_unlock_wins
 
         levels: list[tuple[int, str]] = [
             (1, "Easy"),
@@ -72,6 +77,14 @@ class IntroState(GameStateBase):
         if self.dad_ai_level not in {lvl for lvl, _ in levels}:
             self.dad_ai_level = 5
         return levels
+
+    def _barnabas_unlock_message(self) -> str:
+        if self._barnabas_unlocked:
+            return "Barnabas unlocked."
+        return (
+            f"Barnabas locked: {self._barnabas_wins}/{self._barnabas_unlock_wins} "
+            f"Old House wins ({self._barnabas_remaining_wins} to go)."
+        )
 
     def handle_event(self, event, engine, assets, app):
         if event.type == pygame.KEYDOWN and self.player_name_editing and not self.settings_open:
@@ -112,6 +125,11 @@ class IntroState(GameStateBase):
             from .deal import DealState
 
             return DealState(dad_ai_level=self.dad_ai_level)
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_h:
+            self._play_audio(app, "card")
+            from .high_scores import HighScoresState
+
+            return HighScoresState()
         if event.type == pygame.KEYDOWN and event.key == pygame.K_o:
             self._play_audio(app, "card")
             from .online_login import OnlineLoginState
@@ -166,6 +184,11 @@ class IntroState(GameStateBase):
             if self.settings_button_rect is not None and self.settings_button_rect.collidepoint(event.pos):
                 self.settings_open = True
                 self._play_audio(app, "card")
+            if self.high_scores_button_rect is not None and self.high_scores_button_rect.collidepoint(event.pos):
+                self._play_audio(app, "card")
+                from .high_scores import HighScoresState
+
+                return HighScoresState()
         return self
 
     def update(self, engine, dt, app):
@@ -190,24 +213,27 @@ class IntroState(GameStateBase):
         if voice is None:
             return
 
-        # Easy/Medium/Hard are algorithmic opponents without persona voice banks.
-        # For menu feedback, route selection callouts through Bert's announcer lane.
-        effective_level = self.dad_ai_level
-        if event == "level_selected" and effective_level not in (4, 5, 6):
-            effective_level = 4
-
-        line = choose_line(
-            event,
-            style=self.settings.bert_voice_style,
-            dad_ai_level=effective_level,
-            context=None,
-        )
+        if self.dad_ai_level in (1, 2, 3):
+            if event == "level_selected":
+                level_name = self.ai_level_labels.get(self.dad_ai_level, f"Level {self.dad_ai_level}")
+                line = f"{level_name} difficulty selected."
+            elif event == "game_start":
+                line = "Cards are on the table. Good luck."
+            else:
+                line = ""
+        else:
+            line = choose_line(
+                event,
+                style=self.settings.bert_voice_style,
+                dad_ai_level=self.dad_ai_level,
+                context=None,
+            )
         if not line:
             return
         try:
             voice.speak_bert(
                 line,
-                dad_ai_level=effective_level,
+                dad_ai_level=self.dad_ai_level,
                 bypass_cooldown=True,
                 voice_style=self.settings.bert_voice_style,
             )
@@ -257,18 +283,6 @@ class IntroState(GameStateBase):
             return
         if style_right is not None and style_right.collidepoint(pos):
             self.settings.ui_style = self._cycle_value(style_values, self.settings.ui_style, 1)
-            save_settings(self.settings)
-            return
-
-        theme_left = rects.get("settings_theme_left_rect")
-        theme_right = rects.get("settings_theme_right_rect")
-        theme_values = list(self.background_theme_labels.keys())
-        if theme_left is not None and theme_left.collidepoint(pos):
-            self.settings.background_theme = self._cycle_value(theme_values, self.settings.background_theme, -1)
-            save_settings(self.settings)
-            return
-        if theme_right is not None and theme_right.collidepoint(pos):
-            self.settings.background_theme = self._cycle_value(theme_values, self.settings.background_theme, 1)
             save_settings(self.settings)
             return
 
@@ -363,6 +377,7 @@ class IntroState(GameStateBase):
         self.start_button_rect = layout["start_btn_rect"]
         self.online_button_rect = layout["online_btn_rect"]
         self.settings_button_rect = layout["settings_btn_rect"]
+        self.high_scores_button_rect = layout["high_scores_btn_rect"]
 
         button_gap = 12
         # Prefer side-by-side action buttons to preserve vertical room for helper text.
@@ -409,7 +424,7 @@ class IntroState(GameStateBase):
 
         help_font = pygame.font.SysFont("segoe ui", 24)
         hint = help_font.render(
-            "Enter/Space = local  |  O = online  |  P = direct P2P  |  Esc = close settings",
+            "Enter/Space = local  |  H = high scores  |  O = online  |  P = direct P2P  |  Esc = close settings",
             True,
             (244, 236, 214),
         )
@@ -422,3 +437,13 @@ class IntroState(GameStateBase):
             hint_y = min(max_hint_y, self.start_button_rect.bottom + 8)
         hint_rect = hint.get_rect(topleft=(sw // 2 - hint.get_width() // 2, max(8, hint_y)))
         screen.blit(hint, hint_rect)
+
+        if not self._barnabas_unlocked:
+            unlock_font = pygame.font.SysFont("segoe ui", 18, bold=True)
+            unlock_text = unlock_font.render(self._barnabas_unlock_message(), True, (250, 220, 154))
+            unlock_shadow = unlock_font.render(self._barnabas_unlock_message(), True, (0, 0, 0))
+            unlock_y = min(sh - unlock_text.get_height() - 8, hint_rect.bottom + 8)
+            unlock_x = sw // 2 - unlock_text.get_width() // 2
+            screen.blit(unlock_shadow, (unlock_x + 1, unlock_y + 1))
+            screen.blit(unlock_text, (unlock_x, unlock_y))
+
