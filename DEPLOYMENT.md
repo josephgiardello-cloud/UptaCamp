@@ -10,6 +10,33 @@ This document describes how to build standalone executables for Cribbage Game us
 pip install pyinstaller
 ```
 
+## One-Command Windows Build (Recommended)
+
+From repo root, run:
+
+```powershell
+.\build_windows.ps1
+```
+
+This script will:
+
+- install/upgrade pip dependencies for building
+- run PyInstaller with bundled game assets
+- create `CribbageGame-Windows-Test.zip` in the repo root
+
+Useful options:
+
+```powershell
+# Build one-file executable instead of one-directory bundle
+.\build_windows.ps1 -OneFile
+
+# Skip pip install steps (faster if environment is already prepared)
+.\build_windows.ps1 -SkipPip
+
+# Remove prior build/dist/spec/zip artifacts before building
+.\build_windows.ps1 -Clean
+```
+
 ## Building Standalone Executable
 
 ### Windows

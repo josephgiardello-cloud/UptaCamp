@@ -52,32 +52,14 @@ def test_level_selection_speaks_for_easy_level(monkeypatch):
     assert app.voice.calls[0]["dad_ai_level"] == 1
 
 
-def test_barnabas_unlock_progress_message_when_locked(monkeypatch):
+def test_barnabas_is_visible_without_unlock_progress(monkeypatch):
     state = IntroState()
     app = _AppStub()
-
-    monkeypatch.setattr("states.intro.get_difficulty_wins", lambda *_args, **_kwargs: 4)
-
-    state._visible_difficulty_levels(app)
-
-    assert state._barnabas_unlocked is False
-    assert state._barnabas_wins == 4
-    assert state._barnabas_remaining_wins == 6
-    assert "4/10" in state._barnabas_unlock_message()
-    assert "6 to go" in state._barnabas_unlock_message()
-
-
-def test_barnabas_unlocks_at_threshold(monkeypatch):
-    state = IntroState()
-    app = _AppStub()
-
-    monkeypatch.setattr("states.intro.get_difficulty_wins", lambda *_args, **_kwargs: 10)
 
     levels = state._visible_difficulty_levels(app)
 
-    assert state._barnabas_unlocked is True
-    assert state._barnabas_remaining_wins == 0
-    assert (6, "Barnabas") in levels
+    assert (5, "Barnabas") in levels
+    assert not any(level == 6 for level, _ in levels)
 
 
 def test_high_scores_key_opens_high_scores_state():

@@ -116,7 +116,7 @@ def test_speak_bert_interrupts_when_already_speaking_with_bypass(monkeypatch):
     assert len(calls) == 1
 
 
-def test_speak_bert_allows_level6(monkeypatch):
+def test_speak_bert_normalizes_legacy_level6_to_level5(monkeypatch):
     vm = VoiceManager(enabled=True)
 
     calls = []
@@ -131,7 +131,7 @@ def test_speak_bert_allows_level6(monkeypatch):
     vm.speak_bert("Barnabas line", dad_ai_level=6, bypass_cooldown=True, voice_style="downeast")
 
     assert len(calls) == 1
-    assert calls[0][1] == 6
+    assert calls[0][1] == 5
 
 
 def test_speak_bert_levels_1_to_3_force_sapi_even_when_local_ai_enabled(monkeypatch):
@@ -158,7 +158,7 @@ def test_speak_bert_levels_1_to_3_force_sapi_even_when_local_ai_enabled(monkeypa
     assert local_calls == []
 
 
-def test_resolve_local_ai_model_path_prefers_barnabas_for_levels_5_and_6(tmp_path):
+def test_resolve_local_ai_model_path_prefers_barnabas_for_level5_and_legacy_level6(tmp_path):
     base_model = tmp_path / "joe.onnx"
     barnabas_model = tmp_path / "barnabas.onnx"
     base_model.write_text("base", encoding="utf-8")
@@ -212,9 +212,9 @@ def test_dynamic_sapi_rate_barnabas_is_slower_than_level6_for_same_line():
 
     line = "Cards on the wood and count every inch."
     barnabas_rate = vm._dynamic_sapi_rate(line, dad_ai_level=5)
-    level6_rate = vm._dynamic_sapi_rate(line, dad_ai_level=6)
+    level4_rate = vm._dynamic_sapi_rate(line, dad_ai_level=4)
 
-    assert barnabas_rate <= level6_rate
+    assert barnabas_rate <= level4_rate
 
 
 def test_shape_for_ai_level_voice_barnabas_keeps_sentence_timing_natural():
@@ -231,7 +231,7 @@ def test_shape_for_ai_level_voice_other_levels_unchanged():
 
     text = "One line. Another line."
     assert vm._shape_for_ai_level_voice(text, dad_ai_level=4) == text
-    assert vm._shape_for_ai_level_voice(text, dad_ai_level=6) == text
+    assert vm._shape_for_ai_level_voice(text, dad_ai_level=6).endswith(".")
 
 
 def test_pronunciation_hint_rewrites_barnabas_name():

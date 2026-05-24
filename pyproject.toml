@@ -131,6 +131,9 @@ ignore = [
     "E203",  # whitespace before ':'
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tools/*.py" = ["E402", "C416"]
+
 [tool.mypy]
 python_version = "3.10"
 warn_return_any = true
@@ -139,6 +142,8 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = false
 ignore_missing_imports = true
+exclude = "(^|/)tools/train_bert\\.py$"
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"

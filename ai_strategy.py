@@ -1,12 +1,12 @@
 ﻿import random
 import threading
-from shutil import copy2
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
-from typing import Any
+from shutil import copy2
+from typing import Any, cast
 
 from bert_agent import BertAgent
 from game_state import GameState
@@ -76,6 +76,15 @@ _barnabas_agent: BertAgent | None = None
 _DEFAULT_BARNABUS_MODEL = Path("barnabas_model.pkl")
 
 
+def _normalized_ai_level(dad_ai_level: int) -> int:
+    level = int(dad_ai_level)
+    if level < 1:
+        return 1
+    if level >= 5:
+        return 5
+    return level
+
+
 def _level4_bridge_progress(agent: BertAgent) -> float:
     games = max(0, int(getattr(agent, "games_played", 0)))
     steps = max(0, int(getattr(agent, "update_steps", 0)))
@@ -121,7 +130,7 @@ def _choose_level4_bridge_action(
     if not scores:
         return bert_action
 
-    preference = {
+    preference: dict[Any, int] = {
         bert_action: 3,
         barnabas_action: 2,
         hard_action: 1,
@@ -130,20 +139,22 @@ def _choose_level4_bridge_action(
 
 
 def _uses_adaptive_ai(dad_ai_level: int) -> bool:
-    return dad_ai_level in {4, 5, 6}
+    level = _normalized_ai_level(dad_ai_level)
+    return level in {4, 5}
 
 
 def _agent_for_level(dad_ai_level: int) -> BertAgent:
-    if dad_ai_level == 5:
+    if _normalized_ai_level(dad_ai_level) == 5:
         return get_barnabas_agent()
     return get_bert_agent()
 
 
 def _bert_posture_for_level(dad_ai_level: int, state: GameState | None) -> str:
+    level = _normalized_ai_level(dad_ai_level)
     # Bert uses a stable balanced posture; Old House (level 5) uses Barnabas posture.
-    if dad_ai_level == 4:
+    if level == 4:
         return "balanced"
-    if dad_ai_level == 5:
+    if level == 5:
         return "cutthroat"
     return _level5_posture_from_state(state)
 
@@ -256,6 +267,7 @@ def shape_end_of_hand_learning_reward(
     dealer_index: int,
     state: GameState | None = None,
 ) -> float:
+    dad_ai_level = _normalized_ai_level(dad_ai_level)
     base = float(ai_points - player_points)
     base += float(crib_points if dealer_index == 1 else -crib_points)
     if dad_ai_level != 5:
@@ -530,6 +542,8 @@ def choose_discard_indices(
     Returns:
         List of 2 card indices [i, j] to discard
     """
+    dad_ai_level = _normalized_ai_level(dad_ai_level)
+
     # Apply timeout wrapper for expensive levels if requested
     if timeout_seconds and dad_ai_level >= 3 and not _uses_adaptive_ai(dad_ai_level):
         return _run_discard_with_timeout(
@@ -561,6 +575,8 @@ def _choose_discard_indices_impl(
     score_labels_hand: Callable[[list[str], str, bool], int],
     game_state: GameState | None = None,
 ) -> list[int]:
+    dad_ai_level = _normalized_ai_level(dad_ai_level)
+
     if len(dad_labels) != 6:
         return [0, 1]
 
@@ -603,8 +619,13 @@ def _choose_discard_indices_impl(
                     bert_action=(int(idx1), int(idx2)),
                     barnabas_action=barnabas_pick,
                 )
-                if isinstance(resolved, tuple) and len(resolved) == 2:
-                    return [int(resolved[0]), int(resolved[1])]
+                if (
+                    isinstance(resolved, tuple)
+                    and len(resolved) == 2
+                    and all(isinstance(v, int) for v in resolved)
+                ):
+                    resolved_pair = cast(tuple[int, int], resolved)
+                    return [resolved_pair[0], resolved_pair[1]]
         if dad_ai_level == 5:
             hard_pick = _choose_discard_indices_impl(
                 dad_labels=dad_labels,
@@ -805,6 +826,8 @@ def choose_pegging_index(
     own_cards_remaining: int | None = None,
     game_state: GameState | None = None,
 ) -> int | None:
+    dad_ai_level = _normalized_ai_level(dad_ai_level)
+
     legal = [
         i
         for i, label in enumerate(hand_labels)

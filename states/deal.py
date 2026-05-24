@@ -2,12 +2,10 @@ import pygame
 
 from animations import EffectsManager
 from bert_persona import choose_line
-from cards import Card
-from cards import parse_card_label
-from cards import value_for_fifteen
-from stats_manager import record_difficulty_win
+from cards import Card, parse_card_label, value_for_fifteen
 from src.renderer import BoardRenderer, RenderingContext
 from states.intro import IntroState
+from stats_manager import record_difficulty_win
 
 from .base import GameStateBase
 
@@ -25,6 +23,7 @@ class DealState(GameStateBase):
         self.phase = "discard"
         self.status_message = "Select 2 cards to discard to the crib."
         self.end_hand_summary: dict[str, object] | None = None
+        self.round_summary_spoken = False
         self.game_result_recorded = False
         self.game_over_voice_played = False
         self.ai_action_cooldown_ms = 320
@@ -78,6 +77,9 @@ class DealState(GameStateBase):
         if self.phase == "counting":
             return "Counting hands..."
         if self.phase == "end":
+            ai_reason = str(getattr(getattr(engine, "state", object()), "ai_last_decision_reason", "")).strip()
+            if ai_reason:
+                return ai_reason
             return "Hand complete. Review scoring below."
         return "Play cribbage."
 
@@ -123,6 +125,7 @@ class DealState(GameStateBase):
 
         phase = self.phase
         if phase == "discard":
+            self.round_summary_spoken = False
             clicked_idx = self._clicked_player_index(event.pos)
             if clicked_idx is not None:
                 self._handle_discard_click(clicked_idx, engine, app)
@@ -147,6 +150,7 @@ class DealState(GameStateBase):
                 engine.state.dad_ai_level = self.dad_ai_level
                 self.selected_indices.clear()
                 self.end_hand_summary = None
+                self.round_summary_spoken = False
                 self._sync_from_engine(engine)
                 self._play_audio(app, "score")
             except Exception:
@@ -168,6 +172,43 @@ class DealState(GameStateBase):
         except Exception:
             return
 
+    def _speak_round_summary(self, app, engine) -> None:
+        if self.round_summary_spoken or not isinstance(self.end_hand_summary, dict):
+            return
+
+        voice = getattr(app, "voice", None)
+        settings = getattr(app, "settings", None)
+        if voice is None or settings is None:
+            return
+
+        style = str(getattr(settings, "bert_voice_style", "downeast"))
+        scores = list(getattr(engine.state, "scores", [0, 0]))
+        pegging_points = list(getattr(engine.state, "round_pegging_points", [0, 0]))
+        context = {
+            "player_score": int(scores[0]) if len(scores) > 0 else 0,
+            "bert_score": int(scores[1]) if len(scores) > 1 else 0,
+            "player_hand_points": int(self.end_hand_summary.get("player", 0)),
+            "bert_hand_points": int(self.end_hand_summary.get("ai", 0)),
+            "crib_points": int(self.end_hand_summary.get("crib", 0)),
+            "player_pegging_points": int(pegging_points[0]) if len(pegging_points) > 0 else 0,
+            "bert_pegging_points": int(pegging_points[1]) if len(pegging_points) > 1 else 0,
+            "bert_is_dealer": int(getattr(engine.state, "dealer", 0)) == 1,
+        }
+        line = choose_line("round_summary", style=style, dad_ai_level=self.dad_ai_level, context=context)
+        if not line:
+            return
+
+        try:
+            voice.speak_bert(
+                line,
+                dad_ai_level=self.dad_ai_level,
+                bypass_cooldown=True,
+                voice_style=style,
+            )
+            self.round_summary_spoken = True
+        except Exception:
+            return
+
     def _handle_discard_click(self, card_idx: int, engine, app) -> None:
         if card_idx in self.selected_indices:
             self.selected_indices.remove(card_idx)
@@ -181,6 +222,14 @@ class DealState(GameStateBase):
             return
 
         selected = list(self.selected_indices[:2])
+        selected_cards: list[tuple[object, int]] = []
+        try:
+            player_hand = list(getattr(engine.state, "player_hand", []))
+            for idx in selected:
+                if 0 <= idx < len(player_hand):
+                    selected_cards.append((player_hand[idx], idx))
+        except Exception:
+            selected_cards = []
         self.selected_indices.clear()
         try:
             ok = bool(engine.handle_discard(selected))
@@ -188,6 +237,7 @@ class DealState(GameStateBase):
             ok = False
         if ok:
             self._play_audio(app, "score")
+            self._animate_discard_to_crib(selected_cards, app)
             self._sync_from_engine(engine)
             return
         self.status_message = "Discard selection failed. Try a different pair."
@@ -199,6 +249,9 @@ class DealState(GameStateBase):
                 start_rect = rect
                 break
 
+        pre_hand = list(getattr(engine.state, "player_hand", []))
+        played_card = pre_hand[card_idx] if 0 <= card_idx < len(pre_hand) else None
+
         pile_before = len(list(getattr(engine.state, "pegging_pile", [])))
         try:
             points = int(engine.play_pegging_card(0, card_idx) or 0)
@@ -209,11 +262,9 @@ class DealState(GameStateBase):
         self._sync_from_engine(engine)
         pile_after = len(list(getattr(engine.state, "pegging_pile", [])))
 
-        if start_rect is not None and pile_after >= pile_before:
-            player_hand = list(getattr(engine.state, "player_hand", []))
-            preview = player_hand[min(card_idx, max(0, len(player_hand) - 1))] if player_hand else None
-            if preview is not None:
-                key = self._asset_key_for_card(preview)
+        if start_rect is not None and pile_after >= pile_before and played_card is not None:
+            key = self._asset_key_for_card(played_card)
+            if key:
                 self._try_add_flight(start_rect, key, app)
 
         if points > 0 and start_rect is not None:
@@ -239,8 +290,51 @@ class DealState(GameStateBase):
         img = assets.get_card_image(card_key)
         if img is None:
             return
-        target = (from_rect.centerx, max(220, from_rect.centery - 180))
-        self.effects.add_card_flight(img, from_rect.center, target, duration_ms=260)
+        screen = getattr(app, "screen", None)
+        if screen is not None:
+            sw = int(screen.get_width())
+            sh = int(screen.get_height())
+        else:
+            sw, sh = (1200, 800)
+
+        table_center_x = sw // 2
+        lane_y = max(220, int(sh * 0.44))
+        side_bias = -22 if from_rect.centerx > table_center_x else 22
+        target = (table_center_x + side_bias, lane_y)
+
+        distance = abs(target[0] - from_rect.centerx) + abs(target[1] - from_rect.centery)
+        duration = max(220, min(380, int(180 + (distance * 0.28))))
+        self.effects.add_card_flight(img, from_rect.center, target, duration_ms=duration)
+
+    def _animate_discard_to_crib(self, selected_cards: list[tuple[object, int]], app) -> None:
+        assets = getattr(app, "assets", None)
+        screen = getattr(app, "screen", None)
+        if assets is None or screen is None or not selected_cards:
+            return
+
+        sw = int(screen.get_width())
+        sh = int(screen.get_height())
+        crib_center = (min(sw - 180, int(sw * 0.78)), max(170, int(sh * 0.24)))
+
+        for order, (card, source_idx) in enumerate(selected_cards):
+            key = self._asset_key_for_card(card)
+            img = assets.get_card_image(key)
+            if img is None:
+                continue
+
+            source_rect = next((rect for idx, rect in self.player_card_rects if idx == source_idx), None)
+            if source_rect is None:
+                continue
+
+            offset_x = -16 if order % 2 == 0 else 16
+            target = (crib_center[0] + offset_x, crib_center[1] + order * 6)
+            self.effects.add_card_flight(
+                img,
+                source_rect.center,
+                target,
+                duration_ms=300,
+                start_delay_ms=order * 85,
+            )
 
     def _fallback_ai_pegging_index(self, engine, valid: list[int]) -> int:
         total = int(getattr(engine, "_current_pegging_total", lambda: 0)())
@@ -308,6 +402,17 @@ class DealState(GameStateBase):
 
         self._sync_from_engine(engine)
 
+        if self.phase == "pegging" and int(getattr(engine.state, "player_turn", 0)) == 0:
+            player_hand = list(getattr(engine.state, "player_hand", []))
+            if not player_hand and not self._player_has_valid_pegging_play(engine):
+                # When the player is out of cards, auto-issue Go so opponent can finish pegging.
+                try:
+                    engine.pass_pegging_turn(0)
+                except Exception:
+                    pass
+                self._sync_from_engine(engine)
+                return
+
         if self.phase == "pegging" and int(getattr(engine.state, "player_turn", 0)) == 1:
             self.ai_action_cooldown_ms = max(0, self.ai_action_cooldown_ms - int(dt))
             if self.ai_action_cooldown_ms == 0:
@@ -361,6 +466,7 @@ class DealState(GameStateBase):
                         "ai_breakdown": list(result.get("ai_breakdown", [])),
                         "crib_breakdown": list(result.get("crib_breakdown", [])),
                     }
+                    self._speak_round_summary(app, engine)
                 self._play_audio(app, "score")
             except Exception:
                 pass
@@ -401,6 +507,8 @@ class DealState(GameStateBase):
             self.game_result_recorded = True
 
     def draw(self, screen, engine, assets, app):
+        app.screen = screen
+        app.assets = assets
         settings = getattr(app, "settings", None)
         ui_style = str(getattr(settings, "ui_style", "classic"))
         background_theme = str(getattr(settings, "background_theme", "auto"))
@@ -438,6 +546,8 @@ class DealState(GameStateBase):
             }
         )
 
+        sw, sh = screen.get_width(), screen.get_height()
+
         ai_reason = str(getattr(engine.state, "ai_last_decision_reason", "")).strip()
         if ai_reason:
             reason_font = pygame.font.SysFont("segoe ui", 16)
@@ -448,7 +558,6 @@ class DealState(GameStateBase):
             screen.blit(reason_text, (reason_box.x + 10, reason_box.y + 5))
 
         shake_x, shake_y = self.effects.shake_offset()
-        sw, sh = screen.get_width(), screen.get_height()
         card_w, card_h = 120, 180
         playfield = BoardRenderer._playfield_rect(screen)
         top_y = playfield.top + 48

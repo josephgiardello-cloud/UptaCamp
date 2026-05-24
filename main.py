@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -7,13 +8,29 @@ from typing import Any
 
 import pygame
 
-from audio_manager import AudioManager
 from app_context import AppContext
 from asset_manager import AssetManager
+from audio_manager import AudioManager
 from cribbage_engine import CribbageEngine
 from settings_manager import load_settings
 from states.intro import IntroState
 from voice_manager import VoiceManager
+
+
+def _default_online_url() -> str:
+    return (
+        os.getenv("UPTACAMP_ONLINE_URL")
+        or os.getenv("UPTACAMP_ONLINE_URL_PROD")
+        or "https://uptacamp-api.onrender.com"
+    )
+
+
+def _default_online_ws_url() -> str:
+    return (
+        os.getenv("UPTACAMP_ONLINE_WS_URL")
+        or os.getenv("UPTACAMP_ONLINE_WS_URL_PROD")
+        or "wss://uptacamp-ws.onrender.com"
+    )
 
 
 class RuntimeMode(str, Enum):
@@ -173,6 +190,8 @@ def _run_state_client(args: Any) -> int:
         online_reconnect_delay_s=max(0.5, float(args.online_reconnect_delay)),
     )
     app.settings = settings
+    app.screen = screen
+    app.assets = assets
     app.audio = AudioManager(volume=app.volume)
     app.voice = VoiceManager(
         enabled=bool(settings.bert_voice_enabled),
@@ -217,8 +236,8 @@ def _run_once(args: Any) -> int:
 def main():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--debug-play", action="store_true")
-    parser.add_argument("--online-url", default="http://127.0.0.1:8787")
-    parser.add_argument("--online-ws-url", default="ws://127.0.0.1:8790")
+    parser.add_argument("--online-url", default=_default_online_url())
+    parser.add_argument("--online-ws-url", default=_default_online_ws_url())
     parser.add_argument(
         "--fps-cap",
         type=int,

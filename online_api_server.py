@@ -12,6 +12,7 @@ from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from dotenv import load_dotenv
+
 from online_backend import OnlineBackend
 
 try:
