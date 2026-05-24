@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import json
 import logging
 import os
@@ -12,14 +13,11 @@ from dotenv import load_dotenv
 
 from online_backend import OnlineBackend
 
-sentry_sdk: Any | None
-_sentry_sdk: Any | None
+sentry_sdk: Any | None = None
 try:
-    import sentry_sdk as _sentry_sdk
+    sentry_sdk = importlib.import_module("sentry_sdk")
 except Exception:  # pragma: no cover - optional dependency at runtime
-    _sentry_sdk = None
-
-sentry_sdk = _sentry_sdk
+    sentry_sdk = None
 
 LOGGER = logging.getLogger(__name__)
 
