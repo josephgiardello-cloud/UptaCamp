@@ -6,7 +6,7 @@ Beta test release for Windows desktop testers.
 
 ## Download
 
-- Direct beta zip: https://github.com/josephgiardello-cloud/UptaCamp/raw/master/CribbageGame-Windows-Test.zip
+- Direct beta zip: https://github.com/josephgiardello-cloud/UptaCamp/releases/download/v1.1.0-beta/CribbageGame-Windows-Test.zip
 
 ## Beta Warning
 
