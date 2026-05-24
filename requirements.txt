@@ -10,7 +10,7 @@ click==8.4.0
 colorama==0.4.6
 comtypes==1.4.16
 coverage==7.14.0
-cssselect2==0.8.0
+cssselect2==0.9.0
 defusedxml==0.7.1
 distlib==0.4.0
 filelock==3.29.0
