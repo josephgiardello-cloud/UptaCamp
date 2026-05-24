@@ -270,7 +270,10 @@ def _show_fatal_startup_error(exc: Exception) -> None:
         pass
 
     try:
-        ctypes.windll.user32.MessageBoxW(0, message, "CribbageGame Startup Error", 0x10)
+        windll: Any = getattr(ctypes, "windll", None)
+        if windll is None:
+            raise AttributeError("ctypes.windll is unavailable")
+        windll.user32.MessageBoxW(0, message, "CribbageGame Startup Error", 0x10)
     except Exception:
         print(message)
 
