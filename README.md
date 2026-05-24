@@ -1,55 +1,87 @@
-# UptaCamp - The Camp Cribbage Game
+# UptaCamp - Camp Cribbage (Beta)
 
-UptaCamp is a Python + Pygame cribbage game with a state-driven local client and an online backend/websocket stack.
+UptaCamp is a Python + Pygame cribbage game with local play, AI opponents, and online friend matchmaking through hosted API/WebSocket services.
+
+## Beta Download (Windows)
+
+[Download Windows Beta ZIP (direct)](https://github.com/josephgiardello-cloud/UptaCamp/raw/master/CribbageGame-Windows-Test.zip)
+
+> [!WARNING]
+> This is a beta build for testing. Expect bugs, balancing changes, and occasional online service interruptions.
+> Save data and online compatibility may change between beta drops.
 
 [![Online API Status](https://img.shields.io/badge/Online%20API-Health%20Check-success?style=for-the-badge)](https://uptacamp-api.onrender.com/health)
 
-> Note: This repository does not currently host a browser-playable web client.  
-> The button above checks backend health only (`/health`).
+> The API status badge checks backend health only.
+> This repository does not currently host a browser-playable web client.
 
-## Highlights
+## Current Project State (May 2026)
 
-- Full cribbage flow: deal, discard, pegging, counting, round reset, game over.
-- Centralized scoring in `cards.py`:
-  - hand scoring (`score_hand`)
-  - pegging scoring (`score_pegging_play`)
-  - run detection with multiplicity (`find_all_runs`)
-- Five AI tiers in the intro flow:
-  - 1 Easy
-  - 2 Medium
-  - 3 Hard
-  - 4 Bert
-  - 5 Barnabas (final boss)
-- State-driven visual client with animation/audio effects.
-- Online API + websocket stack with auth tokens, turn validation, idempotency, matchmaking, profile/leaderboard data.
-- Test and static-analysis gates integrated and actively used.
+- Desktop-first game client (Python/Pygame) is the primary way to play.
+- Online mode is supported in-client via hosted API + WebSocket endpoints.
+- Multiple AI levels are available, including Barnabas as the top tier.
+- Automated tests are active under `tests/` and used as part of the quality gates.
+- Windows beta build is distributed as a zip containing the packaged executable.
 
-## Screenshots
+## Screenshots (Current Beta UI)
 
-### Title / Welcome
-![Upta title screen](screenshots/readme_title.png)
+### New Beta Screenshot Series
 
-### Discard Phase
-![Discard phase](screenshots/readme_discard.png)
+All screenshots in this series live under `screenshots/beta_series_2026_05/`.
 
-### Pegging Phase
-![Pegging phase](screenshots/readme_pegging.png)
+### Title Screen (Current Intro)
+![Title with level cards](screenshots/beta_series_2026_05/01_title_levels.png)
 
-### End-of-Hand Counting
-![Counting phase](screenshots/readme_counting.png)
+### Title Screen (Classic Framing)
+![Title classic framing](screenshots/beta_series_2026_05/02_title_classic.png)
 
-## Installation
+### Gameplay - Easy Level (Discard)
+![Easy level discard](screenshots/beta_series_2026_05/03_level_easy_discard.png)
 
-### Prerequisites
+### Gameplay - Medium Level (Discard)
+![Medium level discard](screenshots/beta_series_2026_05/04_level_medium_discard.png)
+
+### Gameplay - Hard Level (Discard)
+![Hard level discard](screenshots/beta_series_2026_05/05_level_hard_discard.png)
+
+### Gameplay - Bert Level (Discard)
+![Bert level discard](screenshots/beta_series_2026_05/06_level_bert_discard.png)
+
+### Gameplay - Barnabas Level (Discard)
+![Barnabas level discard](screenshots/beta_series_2026_05/07_level_barnabas_discard.png)
+
+### Gameplay - Pegging Phase
+![Gameplay pegging phase](screenshots/beta_series_2026_05/08_gameplay_pegging.png)
+
+### Gameplay - Counting / End Of Hand
+![Gameplay counting phase](screenshots/beta_series_2026_05/09_gameplay_counting.png)
+
+### Level Selection Coverage
+
+The title screens above show the current selectable difficulty cards:
+
+- Easy
+- Medium
+- Hard
+- Bert
+- Barnabas
+
+## How To Play
+
+### Option A: Windows beta zip (fastest)
+
+1. Download the beta zip from the link at the top.
+2. Extract it.
+3. Run CribbageGame.exe.
+
+### Option B: Run from source
+
+Prerequisites:
 
 - Python 3.10+
 - pip
 
-### Setup
-
-1. Clone and enter the repo.
-2. Create and activate a virtual environment.
-3. Install in editable mode with dev dependencies.
+Setup:
 
 ```bash
 python -m venv .venv
@@ -58,103 +90,61 @@ python -m pip install -U pip
 pip install -e .[dev]
 ```
 
-## Running The Game
-
-## How To Actually Play
-
-- Local desktop game: run `python main.py` (or use the packaged Windows `.exe`).
-- Online multiplayer mode: launch the desktop game, choose `Play With Friend`, and connect to the hosted API/WS endpoints.
-- Browser-only play is not supported in this repo today.
-
-### Default launch (state-driven client)
+Start game:
 
 ```bash
 python main.py
 ```
 
-### Play online with a friend (easy mode)
+## Online Play
 
-1. Start the online services (API + websocket):
+Online play happens inside the desktop game, not in the browser.
 
-```bash
-python online_api_server.py --host 127.0.0.1 --port 8787 --db online_state.db
-python online_ws_server.py --host 127.0.0.1 --port 8790 --db online_state.db
-```
+In-game flow:
 
-2. Start the client:
+1. Launch game.
+2. Choose Play With Friend.
+3. Enter display name.
+4. Choose Host Friend Match, Join With Code, or Quick Match.
 
-```bash
-python main.py --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
-```
+Default production endpoints are now used by the client unless overridden:
 
-For production endpoints configured in `.env`, launch with:
+- API: https://uptacamp-api.onrender.com
+- WebSocket: wss://uptacamp-ws.onrender.com
 
-```bash
-python main.py --online-url %UPTACAMP_ONLINE_URL_PROD% --online-ws-url %UPTACAMP_ONLINE_WS_URL_PROD%
-```
-
-3. In-game flow:
-- Choose `Play With Friend`
-- Enter your display name
-- Pick one:
-  - `Host Friend Match`: creates a share code for your friend
-  - `Join With Code`: enter your friend's code and press Enter
-  - `Quick Match`: auto-pair with available players
-
-### Online client path (advanced)
+For local development servers:
 
 ```bash
+python online_api_server.py --host 127.0.0.1 --port 8787 --db data/online_state.db
+python online_ws_server.py --host 127.0.0.1 --port 8790 --db data/online_state.db
 python main.py --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1:8790
 ```
 
 ## Controls
 
-- `Enter`/`Space`: start from intro.
-- Mouse click: choose difficulty on intro, select discard cards, and play pegging cards.
-- Click player-name field on intro: edit profile name, `Enter` to save.
-- `R`: next round (end screen) or back to intro (game over).
-- `O`: jump to online mode from intro.
-- `P`: jump to direct P2P lobby from intro.
-- `S`: settings modal on intro.
+- Enter or Space: start from intro
+- Mouse click: select difficulty, discard cards, and play pegging cards
+- O: open online flow
+- P: open direct P2P lobby
+- S: open settings
+- R: next round or return to intro after game over
+- Esc: back/pause depending on current state
 
-## Rules Coverage
+## Build A New Windows Test Zip
 
-The implementation includes the standard cribbage scoring categories:
+From repository root:
 
-- Fifteens
-- Pairs / triples / quadruples
-- Runs including duplicated-rank multiplicity handling
-- Flush (hand and crib rules)
-- Nobs
-- Pegging events (15, 31, pairs, runs, go, last card)
-
-Target score is 121.
-
-## Project Layout
-
-```text
-.
-|- main.py
-|- engine.py
-|- game_state.py
-|- phase_states.py
-|- cards.py
-|- ai_strategy.py
-|- app_context.py
-|- stats_manager.py
-|- online_api_server.py
-|- online_ws_server.py
-|- online_backend.py
-|- tests/
-|- assets/
-|- tools/
-|- pyproject.toml
-`- README.md
+```powershell
+.\build_windows.ps1 -SkipPip
 ```
 
-## Quality Gates
+Output artifact:
 
-Run all static and test gates:
+- CribbageGame-Windows-Test.zip (repo root)
+
+See deployment details in docs/DEPLOY_ONLINE.md and beta release notes in docs/RELEASE_v1.1.0-beta.md.
+
+## Quality Gates
 
 ```bash
 python -m ruff check .
@@ -163,80 +153,10 @@ python -m mypy --ignore-missing-imports .
 python -m pytest -q .
 ```
 
-## Test Coverage Focus
-
-The test suite includes dedicated files for:
-
-- scoring behavior (`tests/test_scoring.py`, `tests/test_scoring_vectors.py`, `tests/test_cards_pegging_scoring.py`)
-- engine behavior (`tests/test_engine.py`, `tests/test_game_logic.py`)
-- phase transitions (`tests/test_phase_transitions.py`)
-- state model (`tests/test_game_state.py`, `tests/test_game_state_model.py`)
-- entry points (`tests/test_main_entrypoint.py`)
-- online backend/websocket flows (`tests/test_online_backend.py`, `tests/test_online_ws_server.py`, etc.)
-
-## Online Backend
-
-> **Status**: Online multiplayer support is implemented with API + websocket stack. The backend supports authentication, matchmaking, leaderboards, and turn-by-turn match progression. See tests in `tests/test_online_*.py` for full coverage.
-
-### Start API server
-
-```bash
-python online_api_server.py --host 127.0.0.1 --port 8787 --db data/online_state.db
-```
-
-### Start websocket server
-
-```bash
-python online_ws_server.py --host 127.0.0.1 --port 8790 --db data/online_state.db
-```
-
-## Deploy Online Services (Free Tier)
-
-Use Render free web services for both API and WebSocket processes.
-
-1. Connect the repo in Render.
-2. Use `render.yaml` in this repo to provision services.
-3. Set environment variables from `.env.example`.
-4. Keep `UPTACAMP_DB_PATH` on a persistent disk mount path.
-
-See `docs/DEPLOY_ONLINE.md` for full deployment steps.
-
-## Error Tracking
-
-Sentry is supported for both API and WebSocket services.
-
-- Set `SENTRY_DSN` in the deployment environment.
-- Errors and unhandled exceptions are captured automatically.
-
-### Key endpoints
-
-- `POST /players` (login/create session)
-- `POST /invites/create`
-- `POST /invites/accept`
-- `POST /matchmaking/enqueue`
-- `POST /matchmaking/pair`
-- `POST /matches/{match_id}/turns`
-- `POST /matches/{match_id}/finish`
-- `GET /matches/{match_id}`
-- `GET /leaderboard`
-
-## Capture Helpers
-
-Generate README screenshots/video from the game runtime:
-
-```bash
-python main.py --capture-title screenshots/readme_title.png --exit-after-capture
-python main.py --capture-discard screenshots/readme_discard.png --exit-after-capture
-python main.py --capture-gameplay screenshots/readme_pegging.png --exit-after-capture
-python main.py --capture-video screenshots/gameplay_hand.mp4
-```
-
-If `ffmpeg` is unavailable, frame PNGs are still emitted to a sibling frames directory.
-
 ## Contributing
 
-See `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md`.
+See CONTRIBUTING.md and CODE_OF_CONDUCT.md.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See LICENSE.
