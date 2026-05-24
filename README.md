@@ -125,8 +125,9 @@ python main.py --online-url http://127.0.0.1:8787 --online-ws-url ws://127.0.0.1
 
 - Enter or Space: start from intro
 - Mouse click: select difficulty, discard cards, and play pegging cards
-- O: open online flow
-- P: open direct P2P lobby
+- H: open high scores (from intro)
+- O: open online flow (from intro)
+- P: open direct P2P lobby (from intro)
 - S: open settings
 - R: next round or return to intro after game over
 - Esc: back/pause depending on current state

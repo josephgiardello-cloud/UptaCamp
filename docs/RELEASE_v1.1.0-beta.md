@@ -18,11 +18,13 @@ This beta build is intended for testing and feedback, not stable production use.
 
 ## What's New In This Beta
 
-- Added packaged Windows beta distribution zip at repo root.
+- Added packaged Windows beta distribution zip as a GitHub release asset.
 - Added `build_windows.ps1` for repeatable one-command Windows packaging.
 - Updated default online client endpoints to production API/WS.
 - Improved route/base-url failure messaging in online client flow.
 - Updated README to reflect actual current project state and desktop-first play model.
+- Fixed game-close behavior so normal window close exits cleanly (no auto-relaunch default).
+- Switched local AI voice path to direct Piper synthesis with fallback and added narration toggle in settings.
 
 ## Included Artifacts
 
