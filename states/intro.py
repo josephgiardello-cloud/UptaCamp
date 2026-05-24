@@ -265,6 +265,37 @@ class IntroState(GameStateBase):
             save_settings(self.settings)
             return
 
+        piper_rect = rects.get("settings_piper_rect")
+        if piper_rect is not None and piper_rect.collidepoint(pos):
+            if self.settings.bert_voice_backend == "local_ai":
+                self.settings.bert_voice_backend = "sapi"
+            else:
+                self.settings.bert_voice_backend = "local_ai"
+
+            voice = getattr(app, "voice", None)
+            if voice is not None:
+                try:
+                    voice.stop()
+                except Exception:
+                    pass
+                try:
+                    voice.configure_backend(
+                        backend=str(self.settings.bert_voice_backend),
+                        local_ai_model_path=str(self.settings.bert_local_model_path),
+                        barnabas_local_model_path=str(self.settings.barnabas_local_model_path),
+                        local_ai_exe_path=str(self.settings.bert_local_exe_path),
+                        rvc_enabled=bool(self.settings.bert_rvc_enabled),
+                        rvc_exe_path=str(self.settings.bert_rvc_exe_path),
+                        rvc_model_path=str(self.settings.bert_rvc_model_path),
+                        rvc_index_path=str(self.settings.bert_rvc_index_path),
+                        rvc_pitch_shift=int(self.settings.bert_rvc_pitch_shift),
+                    )
+                except Exception:
+                    pass
+
+            save_settings(self.settings)
+            return
+
         ai_left = rects.get("settings_ai_left_rect")
         ai_right = rects.get("settings_ai_right_rect")
         if ai_left is not None and ai_left.collidepoint(pos):

@@ -47,6 +47,8 @@ class VoiceManager:
         self._last_spoken_at = 0.0
         self._last_text = ""
         self._is_windows = os.name == "nt"
+        if os.getenv("UPTACAMP_DISABLE_ONNX", "").strip().lower() in {"1", "true", "yes", "on"}:
+            backend = "sapi"
         self.backend = backend if backend in ("sapi", "local_ai") else "sapi"
         self.local_ai_model_path = str(local_ai_model_path or "")
         self.barnabas_local_model_path = str(barnabas_local_model_path or "")
@@ -99,6 +101,8 @@ class VoiceManager:
         rvc_index_path: str,
         rvc_pitch_shift: int,
     ) -> None:
+        if os.getenv("UPTACAMP_DISABLE_ONNX", "").strip().lower() in {"1", "true", "yes", "on"}:
+            backend = "sapi"
         self.backend = backend if backend in ("sapi", "local_ai") else "sapi"
         self.local_ai_model_path = str(local_ai_model_path or "")
         self.barnabas_local_model_path = str(barnabas_local_model_path or "")
@@ -247,8 +251,22 @@ class VoiceManager:
         worker.start()
 
     def _speak_local_ai(self, text: str, dad_ai_level: int) -> None:
+        if os.getenv("UPTACAMP_DISABLE_ONNX", "").strip().lower() in {"1", "true", "yes", "on"}:
+            if self._is_windows:
+                self._speak_windows(text, 5)
+            return
+
+        python_runtime_found = self._resolve_piper_espeak_data_dir() is not None
+        exe_found = self._resolve_runtime_executable(self.local_ai_exe_path or "piper") is not None
+        if not (python_runtime_found or exe_found):
+            self.backend = "sapi"
+            if self._is_windows:
+                self._speak_windows(text, 5)
+            return
+
         model_path = self._resolve_local_ai_model_path(dad_ai_level)
         if model_path is None or not model_path.exists():
+            self.backend = "sapi"
             if self._is_windows:
                 self._speak_windows(text, 5)
             return
@@ -301,10 +319,19 @@ class VoiceManager:
         global PiperVoice
         if PiperVoice is None:
             try:
-                from piper import PiperVoice as _PiperVoice  # type: ignore[import-not-found]
-            except ImportError:
+                import importlib
+
+                module = importlib.import_module("piper")
+                _PiperVoice = getattr(module, "PiperVoice", None)
+                if _PiperVoice is None:
+                    return None
+            except Exception:
                 return None
             PiperVoice = _PiperVoice
+
+        piper_voice_cls = PiperVoice
+        if piper_voice_cls is None:
+            return None
 
         config_path = model_path.with_suffix(f"{model_path.suffix}.json")
         espeak_dir = self._resolve_piper_espeak_data_dir()
@@ -322,7 +349,7 @@ class VoiceManager:
                 if espeak_dir is not None:
                     load_kwargs["espeak_data_dir"] = str(espeak_dir)
 
-                voice = PiperVoice.load(str(model_path), **load_kwargs)
+                voice = piper_voice_cls.load(str(model_path), **load_kwargs)
             except Exception:
                 return None
 

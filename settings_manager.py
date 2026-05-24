@@ -20,7 +20,7 @@ class GameSettings:
     dark_shadows_unlocked: bool = False
     bert_voice_enabled: bool = True
     bert_voice_style: str = "downeast"
-    bert_voice_backend: str = "local_ai"
+    bert_voice_backend: str = "sapi"
     bert_local_model_path: str = "bert_voice_models/en_US-joe-medium.onnx"
     barnabas_local_model_path: str = ""
     bert_local_exe_path: str = "piper"
@@ -89,7 +89,7 @@ def load_settings(path: Path | None = None) -> GameSettings:
         dark_shadows_unlocked=raw.get("dark_shadows_unlocked", False),
         bert_voice_enabled=raw.get("bert_voice_enabled", True),
         bert_voice_style=raw.get("bert_voice_style", "downeast"),
-        bert_voice_backend=raw.get("bert_voice_backend", "local_ai"),
+        bert_voice_backend=raw.get("bert_voice_backend", "sapi"),
         bert_local_model_path=raw.get(
             "bert_local_model_path", "bert_voice_models/en_US-joe-medium.onnx"
         ),

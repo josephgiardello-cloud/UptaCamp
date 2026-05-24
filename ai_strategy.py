@@ -1,4 +1,5 @@
 ﻿import random
+import os
 import threading
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -6,7 +7,18 @@ from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
 from shutil import copy2
-from typing import Any, cast
+from typing import Any, TypeGuard, cast
+
+
+def _is_int_pair(obj: object) -> TypeGuard[tuple[int, int]]:
+    if not isinstance(obj, tuple):
+        return False
+    items = cast(tuple[object, ...], obj)
+    if len(items) != 2:
+        return False
+    first, second = items
+    return isinstance(first, int) and isinstance(second, int)
+
 
 from bert_agent import BertAgent
 from game_state import GameState
@@ -140,6 +152,8 @@ def _choose_level4_bridge_action(
 
 def _uses_adaptive_ai(dad_ai_level: int) -> bool:
     level = _normalized_ai_level(dad_ai_level)
+    if os.getenv("UPTACAMP_DISABLE_ONNX", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return False
     return level in {4, 5}
 
 
@@ -595,12 +609,22 @@ def _choose_discard_indices_impl(
         state = game_state or GameState()
         posture = _bert_posture_for_level(dad_ai_level, state)
         agent = _agent_for_level(dad_ai_level)
-        agent.set_posture(posture)
         try:
-            idx1, idx2 = agent.choose_discard(dad_labels, state, posture=posture)
-        except TypeError:
-            # Backward compatibility for older BertAgent signatures.
-            idx1, idx2 = agent.choose_discard(dad_labels, state)
+            agent.set_posture(posture)
+            try:
+                idx1, idx2 = agent.choose_discard(dad_labels, state, posture=posture)
+            except TypeError:
+                # Backward compatibility for older BertAgent signatures.
+                idx1, idx2 = agent.choose_discard(dad_labels, state)
+        except Exception:
+            return _choose_discard_indices_impl(
+                dad_labels=dad_labels,
+                dad_ai_level=3,
+                dealer_is_dad=dealer_is_dad,
+                canonical_deck_labels=canonical_deck_labels,
+                score_labels_hand=score_labels_hand,
+                game_state=game_state,
+            )
         if dad_ai_level == 4:
             # For Bert level 4, clamp decision pressure between hard baseline and Barnabas signal.
             unseen_pool = list(set(canonical_deck_labels) - set(dad_labels))
@@ -614,26 +638,25 @@ def _choose_discard_indices_impl(
                     game_state=game_state,
                 )
                 barnabas_pick: tuple[int, int] | None = None
-                barnabas = get_barnabas_agent()
-                barnabas.set_posture("cutthroat")
+                barnabas_pick = None
                 try:
-                    b1, b2 = barnabas.choose_discard(dad_labels, state, posture="cutthroat")
-                except TypeError:
-                    b1, b2 = barnabas.choose_discard(dad_labels, state)
-                barnabas_pick = (int(b1), int(b2))
+                    barnabas = get_barnabas_agent()
+                    barnabas.set_posture("cutthroat")
+                    try:
+                        b1, b2 = barnabas.choose_discard(dad_labels, state, posture="cutthroat")
+                    except TypeError:
+                        b1, b2 = barnabas.choose_discard(dad_labels, state)
+                    barnabas_pick = (int(b1), int(b2))
+                except Exception:
+                    barnabas_pick = None
                 resolved = _choose_level4_bridge_action(
                     agent=agent,
                     hard_action=tuple(hard_pick),
                     bert_action=(int(idx1), int(idx2)),
                     barnabas_action=barnabas_pick,
                 )
-                if (
-                    isinstance(resolved, tuple)
-                    and len(resolved) == 2
-                    and all(isinstance(v, int) for v in resolved)
-                ):
-                    resolved_pair = cast(tuple[int, int], resolved)
-                    return [resolved_pair[0], resolved_pair[1]]
+                if _is_int_pair(resolved):
+                    return [resolved[0], resolved[1]]
         if dad_ai_level == 5:
             hard_pick = _choose_discard_indices_impl(
                 dad_labels=dad_labels,
@@ -942,12 +965,15 @@ def choose_pegging_index(
         state = game_state or GameState()
         posture = _bert_posture_for_level(dad_ai_level, state)
         agent = _agent_for_level(dad_ai_level)
-        agent.set_posture(posture)
         try:
-            bert_pick = agent.choose_pegging(hand_labels, current_total, state, posture=posture)
-        except TypeError:
-            # Backward compatibility for older BertAgent signatures.
-            bert_pick = agent.choose_pegging(hand_labels, current_total, state)
+            agent.set_posture(posture)
+            try:
+                bert_pick = agent.choose_pegging(hand_labels, current_total, state, posture=posture)
+            except TypeError:
+                # Backward compatibility for older BertAgent signatures.
+                bert_pick = agent.choose_pegging(hand_labels, current_total, state)
+        except Exception:
+            return _fallback_legal_pick(posture)
 
         if dad_ai_level == 4 and len(legal) >= 3:
             hard_pick = choose_pegging_index(
@@ -965,17 +991,21 @@ def choose_pegging_index(
                 own_cards_remaining=own_cards_remaining,
                 game_state=game_state,
             )
-            barnabas = get_barnabas_agent()
-            barnabas.set_posture("cutthroat")
+            barnabas_pick = None
             try:
-                barnabas_pick = barnabas.choose_pegging(
-                    hand_labels,
-                    current_total,
-                    state,
-                    posture="cutthroat",
-                )
-            except TypeError:
-                barnabas_pick = barnabas.choose_pegging(hand_labels, current_total, state)
+                barnabas = get_barnabas_agent()
+                barnabas.set_posture("cutthroat")
+                try:
+                    barnabas_pick = barnabas.choose_pegging(
+                        hand_labels,
+                        current_total,
+                        state,
+                        posture="cutthroat",
+                    )
+                except TypeError:
+                    barnabas_pick = barnabas.choose_pegging(hand_labels, current_total, state)
+            except Exception:
+                barnabas_pick = None
 
             resolved = _choose_level4_bridge_action(
                 agent=agent,

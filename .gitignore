@@ -98,6 +98,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv311/
 env/
 venv/
 ENV/
@@ -151,6 +152,7 @@ tmp_online.db
 *.pkl
 .bert_voice_cache/
 CribbageGame-Windows-Test.zip
+CribbageGame-Windows*.zip
 
 # Local portable tools
 .tools/gh/

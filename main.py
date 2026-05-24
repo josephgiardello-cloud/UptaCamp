@@ -264,6 +264,11 @@ def _show_fatal_startup_error(exc: Exception) -> None:
         "If you launched from a .zip, extract all files first and run CribbageGame.exe from the extracted folder."
     )
     try:
+        with open("crash.log", "w", encoding="utf-8") as fh:
+            traceback.print_exc(file=fh)
+    except Exception:
+        pass
+    try:
         with open("startup_error.log", "w", encoding="utf-8") as fh:
             fh.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
     except Exception:
@@ -359,4 +364,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        try:
+            with open("crash.log", "w", encoding="utf-8") as fh:
+                traceback.print_exc(file=fh)
+        except Exception:
+            pass
+        raise

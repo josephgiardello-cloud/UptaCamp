@@ -136,6 +136,26 @@ def draw_settings_modal(
         ),
     )
 
+    piper_text = "On" if getattr(settings, "bert_voice_backend", "sapi") == "local_ai" else "Off"
+    piper_label = body_font.render(f"Piper (Local AI): {piper_text}", True, (245, 236, 218))
+    screen.blit(piper_label, (modal.x + 244, modal.y + 330))
+    settings_piper_rect = pygame.Rect(modal.x + 244, modal.y + 358, 174, 44)
+    pygame.draw.rect(
+        screen,
+        (62, 101, 74) if piper_text == "On" else (121, 72, 66),
+        settings_piper_rect,
+        border_radius=22,
+    )
+    pygame.draw.rect(screen, (255, 239, 212), settings_piper_rect, width=2, border_radius=22)
+    piper_toggle_text = body_font.render("Toggle", True, (255, 255, 255))
+    screen.blit(
+        piper_toggle_text,
+        (
+            settings_piper_rect.centerx - piper_toggle_text.get_width() // 2,
+            settings_piper_rect.centery - piper_toggle_text.get_height() // 2,
+        ),
+    )
+
     footer = small_font.render("Esc closes settings", True, (210, 198, 176))
     screen.blit(footer, (modal.centerx - footer.get_width() // 2, modal.bottom - 36))
 
@@ -147,4 +167,5 @@ def draw_settings_modal(
         "settings_style_left_rect": settings_style_left_rect,
         "settings_style_right_rect": settings_style_right_rect,
         "settings_voice_rect": settings_voice_rect,
+        "settings_piper_rect": settings_piper_rect,
     }
