@@ -6,7 +6,7 @@ CairoSVG==2.8.2
 certifi==2026.5.20
 cffi==2.0.0
 cfgv==3.5.0
-click==8.4.0
+click==8.4.1
 colorama==0.4.6
 comtypes==1.4.16
 coverage==7.14.0
