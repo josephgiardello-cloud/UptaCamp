@@ -93,7 +93,9 @@ def test_process_routes_mouse_action_to_pegging_when_in_pegging_phase():
 
     controller.process([{"type": "MOUSEBUTTONDOWN", "pos": (30, 40), "button": 1}])
 
-    assert legacy.calls == [("pegging", ({"type": "MOUSEBUTTONDOWN", "pos": (30, 40), "button": 1}, False))]
+    assert legacy.calls == [
+        ("pegging", ({"type": "MOUSEBUTTONDOWN", "pos": (30, 40), "button": 1}, False))
+    ]
 
 
 def test_game_application_initialize_creates_event_handler():

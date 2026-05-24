@@ -78,15 +78,13 @@ def test_handle_counting_moves_to_end_when_no_winner():
     engine.state.scores = [10, 12]
     engine.state.dealer = 1
 
-    engine.state.player_kept = _make_cards([
-        "2_of_clubs", "3_of_diamonds", "4_of_hearts", "5_of_spades"
-    ])
-    engine.state.ai_kept = _make_cards([
-        "6_of_clubs", "7_of_diamonds", "8_of_hearts", "9_of_spades"
-    ])
-    engine.state.crib = _make_cards([
-        "ace_of_clubs", "2_of_hearts", "3_of_spades", "4_of_diamonds"
-    ])
+    engine.state.player_kept = _make_cards(
+        ["2_of_clubs", "3_of_diamonds", "4_of_hearts", "5_of_spades"]
+    )
+    engine.state.ai_kept = _make_cards(
+        ["6_of_clubs", "7_of_diamonds", "8_of_hearts", "9_of_spades"]
+    )
+    engine.state.crib = _make_cards(["ace_of_clubs", "2_of_hearts", "3_of_spades", "4_of_diamonds"])
     engine.state.starter_card = "5_of_clubs"
 
     result = engine.count_hands(cards_mod.label_to_card)

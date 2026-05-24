@@ -145,11 +145,10 @@ class VoiceManager:
             else:
                 return
 
-        if (
-            not bypass_cooldown
-            and ((now - self._last_spoken_at) < self.min_interval_s or normalized == self._last_text)
+        if not bypass_cooldown and (
+            (now - self._last_spoken_at) < self.min_interval_s or normalized == self._last_text
         ):
-                return
+            return
 
         self._last_spoken_at = now
         self._last_text = normalized
@@ -188,7 +187,7 @@ class VoiceManager:
         # SSML alias keeps displayed text while guiding spoken pronunciation.
         return re.sub(
             r"\b(?:Barnabas|Barnahbus)\b",
-            "<sub alias=\"Barnahbus\">Barnabas</sub>",
+            '<sub alias="Barnahbus">Barnabas</sub>',
             escaped_text,
             flags=re.IGNORECASE,
         )
@@ -253,7 +252,9 @@ class VoiceManager:
                 self._speak_windows(text, 5)
             return
 
-        cache_key = self._build_cache_key(text, dad_ai_level=dad_ai_level, model_path=str(model_path))
+        cache_key = self._build_cache_key(
+            text, dad_ai_level=dad_ai_level, model_path=str(model_path)
+        )
         wav_path = self._cache_dir / f"{cache_key}.wav"
         if not wav_path.exists():
             if not self._synthesize_local_ai_wav(text, model_path, wav_path):
@@ -381,7 +382,9 @@ class VoiceManager:
 
     def _set_speaking_window(self, text: str) -> None:
         with self._speech_guard:
-            self._speaking_until = max(self._speaking_until, time.monotonic() + self._estimate_speech_seconds(text))
+            self._speaking_until = max(
+                self._speaking_until, time.monotonic() + self._estimate_speech_seconds(text)
+            )
 
     def _is_speaking(self, now: float | None = None) -> bool:
         check_at = now if now is not None else time.monotonic()
@@ -480,7 +483,11 @@ class VoiceManager:
         dad_ai_level = self._normalized_ai_level(dad_ai_level)
 
         if dad_ai_level in (1, 2, 3):
-            preferred_voices = ["Microsoft Zira Desktop", "Microsoft Hazel Desktop", "Microsoft Aria"]
+            preferred_voices = [
+                "Microsoft Zira Desktop",
+                "Microsoft Hazel Desktop",
+                "Microsoft Aria",
+            ]
             volume = 100
         elif dad_ai_level == 4:
             preferred_voices = ["Microsoft David Desktop", "Microsoft Guy"]
@@ -501,8 +508,8 @@ class VoiceManager:
         if dad_ai_level == 5:
             paused_ssml_text = self._inject_barnabas_ssml_cadence(escaped_ssml_text)
             ssml = (
-                "<speak version=\"1.0\" xml:lang=\"en-US\">"
-                "<prosody rate=\"-10%\" pitch=\"-7%\" volume=\"-2dB\">"
+                '<speak version="1.0" xml:lang="en-US">'
+                '<prosody rate="-10%" pitch="-7%" volume="-2dB">'
                 f"{paused_ssml_text}"
                 "</prosody>"
                 "</speak>"
@@ -517,8 +524,8 @@ class VoiceManager:
         elif dad_ai_level in (1, 2, 3):
             paused_ssml_text = self._inject_human_ssml_cadence(escaped_ssml_text)
             ssml = (
-                "<speak version=\"1.0\" xml:lang=\"en-US\">"
-                "<prosody rate=\"-2%\" pitch=\"+4%\" volume=\"+0dB\">"
+                '<speak version="1.0" xml:lang="en-US">'
+                '<prosody rate="-2%" pitch="+4%" volume="+0dB">'
                 f"{paused_ssml_text}"
                 "</prosody>"
                 "</speak>"
@@ -531,11 +538,7 @@ class VoiceManager:
                 "try { $synth.SpeakSsml($ssml) } catch { $synth.Speak($text) };"
             )
         else:
-            speak_cmd = (
-                f"$synth.Rate = {rate};"
-                f"$text = '{escaped_text}';"
-                "$synth.Speak($text);"
-            )
+            speak_cmd = f"$synth.Rate = {rate};" f"$text = '{escaped_text}';" "$synth.Speak($text);"
 
         if dad_ai_level in (1, 2, 3):
             fallback_clause = (
@@ -566,9 +569,7 @@ class VoiceManager:
             "foreach ($v in $preferred) {"
             "  try { $synth.SelectVoice($v); $selected = $true; break } catch {}"
             "};"
-            "if (-not $selected) {"
-            + fallback_clause
-            + "  if ($fallback) {"
+            "if (-not $selected) {" + fallback_clause + "  if ($fallback) {"
             "    try { $synth.SelectVoice($fallback.Name); $selected = $true } catch {}"
             "  }"
             "};"
@@ -625,10 +626,14 @@ class VoiceManager:
         }
 
         exe = self.local_ai_exe_path or "piper"
-        python_runtime_found = PiperVoice is not None and self._resolve_piper_espeak_data_dir() is not None
+        python_runtime_found = (
+            PiperVoice is not None and self._resolve_piper_espeak_data_dir() is not None
+        )
         exe_found = shutil.which(exe) is not None or Path(exe).exists() or python_runtime_found
         report["local_ai"]["executable_found"] = exe_found
-        model_path = resolve_runtime_path(self.local_ai_model_path) if self.local_ai_model_path else None
+        model_path = (
+            resolve_runtime_path(self.local_ai_model_path) if self.local_ai_model_path else None
+        )
         model_found = model_path is not None and model_path.exists()
         report["local_ai"]["model_found"] = model_found
         report["local_ai"]["ready"] = bool(exe_found and model_found)
@@ -657,7 +662,7 @@ class VoiceManager:
                 "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
                 "$voices = $s.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name };"
                 "$s.Dispose();"
-                "$voices -join \"`n\""
+                '$voices -join "`n"'
             ),
         ]
         try:
@@ -674,9 +679,13 @@ class VoiceManager:
             report["offline_ready"] = bool(report["local_ai"]["ready"])
 
         if not report["local_ai"]["executable_found"]:
-            report["notes"].append("Local AI backend not found: install the Piper package or set bert_local_exe_path.")
+            report["notes"].append(
+                "Local AI backend not found: install the Piper package or set bert_local_exe_path."
+            )
         if not report["local_ai"]["model_found"]:
-            report["notes"].append("Local AI model not found: set bert_local_model_path to a Piper model.")
+            report["notes"].append(
+                "Local AI model not found: set bert_local_model_path to a Piper model."
+            )
         if report["rvc"]["enabled"] and not report["rvc"]["ready"]:
             report["notes"].append(
                 "RVC enabled but not ready: set bert_rvc_exe_path and bert_rvc_model_path."

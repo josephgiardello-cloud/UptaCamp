@@ -17,7 +17,9 @@ from ai_strategy import get_bert_agent, save_bert_agent
 from engine import CribbageEngine
 
 
-def train_agent(num_games: int = 100, ai_level: int = 4, seed: int | None = None, verbose: bool = True) -> None:
+def train_agent(
+    num_games: int = 100, ai_level: int = 4, seed: int | None = None, verbose: bool = True
+) -> None:
     """Train Bert agent through self-play.
 
     Args:
@@ -64,7 +66,7 @@ def train_agent(num_games: int = 100, ai_level: int = 4, seed: int | None = None
 
     # Save trained agent
     save_bert_agent()
-    print("Training complete! Played {} games.".format(stats['games_completed']))
+    print("Training complete! Played {} games.".format(stats["games_completed"]))
     print(f"Player wins: {stats['player_wins']}, AI wins: {stats['ai_wins']}")
     print("Model saved to bert_model.pkl")
 

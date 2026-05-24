@@ -260,8 +260,10 @@ class OnlineApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         parts = [p for p in parsed.path.split("/") if p]
         payload = self._read_json_body()
-        player_hint = payload.get("player_id") or payload.get("host_player_id") or payload.get(
-            "guest_player_id"
+        player_hint = (
+            payload.get("player_id")
+            or payload.get("host_player_id")
+            or payload.get("guest_player_id")
         )
         if player_hint is not None and not isinstance(player_hint, str):
             player_hint = str(player_hint)

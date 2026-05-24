@@ -16,6 +16,7 @@ from cribbage_engine import CribbageEngine
 from settings_manager import load_settings
 from states.deal import DealState
 from states.intro import IntroState
+
 # isort: on
 
 

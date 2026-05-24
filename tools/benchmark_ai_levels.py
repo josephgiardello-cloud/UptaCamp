@@ -73,7 +73,9 @@ def _choose_player_pegging_move(
     return int(rng.choice(legal))
 
 
-def _choose_player_discard_indices(engine: CribbageEngine, player_level: int, rng: random.Random) -> list[int]:
+def _choose_player_discard_indices(
+    engine: CribbageEngine, player_level: int, rng: random.Random
+) -> list[int]:
     hand_labels = [card.label for card in engine.state.player_hand]
     if len(hand_labels) != 6:
         moves = [list(pair) for pair in combinations(range(len(engine.state.player_hand)), 2)]
@@ -89,7 +91,13 @@ def _choose_player_discard_indices(engine: CribbageEngine, player_level: int, rn
     if len(picked) != 2:
         return rng.sample(range(len(engine.state.player_hand)), 2)
     i1, i2 = int(picked[0]), int(picked[1])
-    if i1 == i2 or i1 < 0 or i2 < 0 or i1 >= len(engine.state.player_hand) or i2 >= len(engine.state.player_hand):
+    if (
+        i1 == i2
+        or i1 < 0
+        or i2 < 0
+        or i1 >= len(engine.state.player_hand)
+        or i2 >= len(engine.state.player_hand)
+    ):
         return rng.sample(range(len(engine.state.player_hand)), 2)
     return [i1, i2]
 
@@ -109,7 +117,9 @@ def _play_single(level: int, seed: int, player_level: int) -> MatchResult:
     rng = random.Random(seed)
     engine = CribbageEngine()
     player_hand, ai_hand, stock_labels = _deal_round(rng)
-    engine.start_new_game(player_hand=player_hand, ai_hand=ai_hand, stock_labels=stock_labels, dealer=0)
+    engine.start_new_game(
+        player_hand=player_hand, ai_hand=ai_hand, stock_labels=stock_labels, dealer=0
+    )
     engine.state.dad_ai_level = int(level)
 
     rounds = 0
@@ -125,7 +135,13 @@ def _play_single(level: int, seed: int, player_level: int) -> MatchResult:
 
             if phase == "discard":
                 if len(engine.state.player_hand) < 2:
-                    return MatchResult(level, None, rounds, int(engine.state.scores[0]), int(engine.state.scores[1]))
+                    return MatchResult(
+                        level,
+                        None,
+                        rounds,
+                        int(engine.state.scores[0]),
+                        int(engine.state.scores[1]),
+                    )
                 choice = _choose_player_discard_indices(engine, player_level, rng)
                 engine.handle_discard(choice)
                 continue
@@ -191,29 +207,55 @@ def _play_single(level: int, seed: int, player_level: int) -> MatchResult:
                     else:
                         engine.set_phase("end")
                 except Exception:
-                    return MatchResult(level, None, rounds, int(engine.state.scores[0]), int(engine.state.scores[1]))
+                    return MatchResult(
+                        level,
+                        None,
+                        rounds,
+                        int(engine.state.scores[0]),
+                        int(engine.state.scores[1]),
+                    )
                 continue
 
             if phase == "end":
                 winner = engine.state.winner
                 if winner is not None:
-                    return MatchResult(level, int(winner), rounds, int(engine.state.scores[0]), int(engine.state.scores[1]))
+                    return MatchResult(
+                        level,
+                        int(winner),
+                        rounds,
+                        int(engine.state.scores[0]),
+                        int(engine.state.scores[1]),
+                    )
                 player_hand, ai_hand, stock_labels = _deal_round(rng)
-                engine.start_next_round(player_hand=player_hand, ai_hand=ai_hand, stock_labels=stock_labels)
+                engine.start_next_round(
+                    player_hand=player_hand, ai_hand=ai_hand, stock_labels=stock_labels
+                )
                 engine.state.dad_ai_level = int(level)
                 break
 
             if phase in {"game_over", "finished"}:
                 winner = engine.state.winner
                 if winner is not None:
-                    return MatchResult(level, int(winner), rounds, int(engine.state.scores[0]), int(engine.state.scores[1]))
-                return MatchResult(level, None, rounds, int(engine.state.scores[0]), int(engine.state.scores[1]))
+                    return MatchResult(
+                        level,
+                        int(winner),
+                        rounds,
+                        int(engine.state.scores[0]),
+                        int(engine.state.scores[1]),
+                    )
+                return MatchResult(
+                    level, None, rounds, int(engine.state.scores[0]), int(engine.state.scores[1])
+                )
 
-            return MatchResult(level, None, rounds, int(engine.state.scores[0]), int(engine.state.scores[1]))
+            return MatchResult(
+                level, None, rounds, int(engine.state.scores[0]), int(engine.state.scores[1])
+            )
 
     winner = engine.state.winner
     if winner is not None:
-        return MatchResult(level, int(winner), rounds, int(engine.state.scores[0]), int(engine.state.scores[1]))
+        return MatchResult(
+            level, int(winner), rounds, int(engine.state.scores[0]), int(engine.state.scores[1])
+        )
     if engine.state.scores[0] != engine.state.scores[1]:
         return MatchResult(
             level,
@@ -222,10 +264,14 @@ def _play_single(level: int, seed: int, player_level: int) -> MatchResult:
             int(engine.state.scores[0]),
             int(engine.state.scores[1]),
         )
-    return MatchResult(level, None, rounds, int(engine.state.scores[0]), int(engine.state.scores[1]))
+    return MatchResult(
+        level, None, rounds, int(engine.state.scores[0]), int(engine.state.scores[1])
+    )
 
 
-def run_benchmark(levels: list[int], games_per_level: int, seed_base: int, player_level: int) -> list[MatchResult]:
+def run_benchmark(
+    levels: list[int], games_per_level: int, seed_base: int, player_level: int
+) -> list[MatchResult]:
     results: list[MatchResult] = []
     offset = 0
     for level in levels:
@@ -255,11 +301,15 @@ def _summarize(results: list[MatchResult], level: int) -> str:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Benchmark AI levels with a configurable strategic player baseline")
+    parser = argparse.ArgumentParser(
+        description="Benchmark AI levels with a configurable strategic player baseline"
+    )
     parser.add_argument("--levels", nargs="+", type=int, default=[3, 5, 6])
     parser.add_argument("--games", type=int, default=60, help="Games per level")
     parser.add_argument("--seed-base", type=int, default=9000)
-    parser.add_argument("--player-level", type=int, default=3, help="Strategic baseline level for player actions")
+    parser.add_argument(
+        "--player-level", type=int, default=3, help="Strategic baseline level for player actions"
+    )
     return parser
 
 

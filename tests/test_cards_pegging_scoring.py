@@ -78,6 +78,11 @@ def test_tricky_flush_hand_and_crib_behavior():
 def test_pegging_mixed_scoring_path_run_then_pair():
     # First play forms a run (4,5,6), next play forms a pair (6,6).
     run_pile = [_Labeled("4_of_hearts"), _Labeled("5_of_clubs"), _Labeled("6_of_spades")]
-    pair_pile = [_Labeled("4_of_hearts"), _Labeled("5_of_clubs"), _Labeled("6_of_spades"), _Labeled("6_of_diamonds")]
+    pair_pile = [
+        _Labeled("4_of_hearts"),
+        _Labeled("5_of_clubs"),
+        _Labeled("6_of_spades"),
+        _Labeled("6_of_diamonds"),
+    ]
     assert cards.score_pegging_play(run_pile) >= 3
     assert cards.score_pegging_play(pair_pile) >= 2

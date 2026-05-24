@@ -109,7 +109,9 @@ def _play_single(level: int, seed: int, max_rounds: int) -> MatchResult:
     )
 
 
-def run_benchmark(levels: list[int], games_per_level: int, seed_base: int, max_rounds: int, progress_every: int) -> list[MatchResult]:
+def run_benchmark(
+    levels: list[int], games_per_level: int, seed_base: int, max_rounds: int, progress_every: int
+) -> list[MatchResult]:
     results: list[MatchResult] = []
     done = 0
     total = max(1, len(levels) * max(1, games_per_level))
@@ -143,7 +145,9 @@ def _summarize(results: list[MatchResult], level: int) -> str:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Fast level calibration benchmark on runtime engine")
+    parser = argparse.ArgumentParser(
+        description="Fast level calibration benchmark on runtime engine"
+    )
     parser.add_argument("--levels", nargs="+", type=int, default=[1, 2, 3, 4, 5])
     parser.add_argument("--games", type=int, default=120, help="Games per level")
     parser.add_argument("--seed-base", type=int, default=25000)
@@ -165,7 +169,9 @@ def main() -> None:
         progress_every=max(0, int(args.progress_every)),
     )
 
-    print(f"Quick calibration complete: levels={levels}, games_per_level={games}, total={len(results)}")
+    print(
+        f"Quick calibration complete: levels={levels}, games_per_level={games}, total={len(results)}"
+    )
     for level in levels:
         print(_summarize(results, level))
 

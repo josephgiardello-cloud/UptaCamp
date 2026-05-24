@@ -212,9 +212,7 @@ class MatchEventStream:
                         )
                     )
                     while not self._stop.is_set():
-                        msg = await asyncio.wait_for(
-                            sock.recv(), timeout=self.ws_recv_timeout_s
-                        )
+                        msg = await asyncio.wait_for(sock.recv(), timeout=self.ws_recv_timeout_s)
                         data = json.loads(str(msg))
                         if "error" in data:
                             raise OnlineClientError(str(data["error"]))

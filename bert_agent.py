@@ -74,9 +74,7 @@ class BertAgent:
         hand_vals = tuple(
             sorted(cards.value_for_fifteen(cards.parse_card_label(lbl)[0]) for lbl in hand_labels)
         )
-        rank_hist = tuple(
-            sorted(cards.parse_card_label(lbl)[0] for lbl in hand_labels)
-        )
+        rank_hist = tuple(sorted(cards.parse_card_label(lbl)[0] for lbl in hand_labels))
         dealer_flag = 1 if state.dealer == 1 else 0
         bert_is_dealer = 1 if state.dealer == 1 else 0
         scores = (int(state.scores[0]), int(state.scores[1]))
@@ -198,6 +196,7 @@ class BertAgent:
         if random.random() < self.epsilon:
             action = random.choice(legal)
         else:
+
             def _pegging_posture_bonus(idx: int) -> float:
                 rank = cards.parse_card_label(hand_labels[idx])[0]
                 val = cards.value_for_fifteen(rank)
@@ -236,7 +235,9 @@ class BertAgent:
     def record_step_reward(self, reward: float) -> None:
         if not self._trajectory:
             return
-        self._trajectory[-1]["reward"] = float(self._trajectory[-1].get("reward", 0.0)) + float(reward)
+        self._trajectory[-1]["reward"] = float(self._trajectory[-1].get("reward", 0.0)) + float(
+            reward
+        )
 
     def end_of_hand_update(self, hand_reward: float) -> None:
         """Apply a discounted terminal-reward update over trajectory."""
@@ -245,7 +246,7 @@ class BertAgent:
 
         self.games_played += 1
         self.update_steps += len(self._trajectory)
-        effective_lr = max(0.02, self.lr * (0.9997 ** self.update_steps))
+        effective_lr = max(0.02, self.lr * (0.9997**self.update_steps))
         running_return = float(hand_reward)
         for step in reversed(self._trajectory):
             running_return = float(step.get("reward", 0.0)) + self.gamma * running_return
@@ -346,7 +347,9 @@ class BertAgent:
                     normalized[(str(mode), str(state_key), action)] = float(value)
                 elif isinstance(key, tuple) and len(key) == 2:
                     state_key, action = cast(tuple[Any, Any], key)
-                    inferred_mode = "discard" if str(state_key).startswith("discard|") else "pegging"
+                    inferred_mode = (
+                        "discard" if str(state_key).startswith("discard|") else "pegging"
+                    )
                     normalized[(inferred_mode, str(state_key), action)] = float(value)
 
         self.q_table = defaultdict(float, normalized)
@@ -431,7 +434,14 @@ def encode_game_state_as_vector(
         vector.append(0.0)
 
     # Phase encoding one-hot (6 dims)
-    phase_index = {"discard": 0, "pegging": 1, "counting": 2, "end": 3, "online_login": 4, "online_match": 5}
+    phase_index = {
+        "discard": 0,
+        "pegging": 1,
+        "counting": 2,
+        "end": 3,
+        "online_login": 4,
+        "online_match": 5,
+    }
     phase = state.phase if state.phase in phase_index else "end"
     for i in range(6):
         vector.append(1.0 if i == phase_index[phase] else 0.0)
@@ -500,13 +510,17 @@ class DQN:
             import torch  # pyright: ignore[reportMissingImports]
 
             with torch.no_grad():
-                state_tensor = torch.tensor(state_vector, dtype=torch.float32, device=self.device).unsqueeze(0)
+                state_tensor = torch.tensor(
+                    state_vector, dtype=torch.float32, device=self.device
+                ).unsqueeze(0)
                 q_values = self.model(state_tensor).squeeze(0)
                 return q_values.cpu().numpy().tolist()
         except Exception:
             return None
 
-    def update(self, state_vector: list[float], target_q_values: list[float], learning_rate: float = 0.001) -> float:
+    def update(
+        self, state_vector: list[float], target_q_values: list[float], learning_rate: float = 0.001
+    ) -> float:
         """Perform a single gradient update.
 
         Args:
@@ -528,8 +542,12 @@ class DQN:
         try:
             import torch  # pyright: ignore[reportMissingImports]
 
-            state_tensor = torch.tensor(state_vector, dtype=torch.float32, device=self.device).unsqueeze(0)
-            target_tensor = torch.tensor(target_q_values, dtype=torch.float32, device=self.device).unsqueeze(0)
+            state_tensor = torch.tensor(
+                state_vector, dtype=torch.float32, device=self.device
+            ).unsqueeze(0)
+            target_tensor = torch.tensor(
+                target_q_values, dtype=torch.float32, device=self.device
+            ).unsqueeze(0)
 
             self.optimizer.zero_grad()
             output = self.model(state_tensor)

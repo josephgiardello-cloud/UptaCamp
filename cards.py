@@ -244,12 +244,16 @@ def score_runs(cards: list[Card]) -> list[tuple[str, list[str], int]]:
     breakdown: list[tuple[str, list[str], int]] = []
     for run_len, multiplicity, run_cards in runs:
         for combo in _run_card_combinations(run_cards):
-            breakdown.append((f"Run of {run_len} (x{multiplicity})", [str(card) for card in combo], run_len))
+            breakdown.append(
+                (f"Run of {run_len} (x{multiplicity})", [str(card) for card in combo], run_len)
+            )
     return breakdown
 
 
 # Score flush
-def score_flush(hand: list[Card], starter: Card, is_crib: bool = False) -> list[tuple[str, list[str], int]]:
+def score_flush(
+    hand: list[Card], starter: Card, is_crib: bool = False
+) -> list[tuple[str, list[str], int]]:
     suits = [card.suit for card in hand]
     if not suits or not all(s == suits[0] for s in suits):
         return []
@@ -274,7 +278,9 @@ def score_nobs(hand: list[Card], starter: Card) -> list[tuple[str, list[str], in
 
 
 # Total hand score
-def score_hand(hand: list[Card], starter: Card, is_crib: bool = False) -> tuple[int, list[tuple[str, list[str], int]]]:
+def score_hand(
+    hand: list[Card], starter: Card, is_crib: bool = False
+) -> tuple[int, list[tuple[str, list[str], int]]]:
     breakdown: list[tuple[str, list[str], int]] = []
     breakdown += score_15s(hand + [starter])
     breakdown += score_pairs(hand + [starter])

@@ -82,7 +82,9 @@ def draw_settings_modal(
         pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
         pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
         txt = body_font.render(label, True, (255, 255, 255))
-        screen.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+        screen.blit(
+            txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2)
+        )
     ai_mid = body_font.render(str(settings.online_ai_level), True, (255, 255, 255))
     pygame.draw.rect(screen, (55, 48, 42), mid_rect, border_radius=18)
     pygame.draw.rect(screen, (233, 205, 153), mid_rect, width=2, border_radius=18)
@@ -100,7 +102,9 @@ def draw_settings_modal(
         pygame.draw.rect(screen, (64, 106, 154), rect, border_radius=18)
         pygame.draw.rect(screen, (208, 228, 245), rect, width=2, border_radius=18)
         txt = body_font.render(label, True, (255, 255, 255))
-        screen.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+        screen.blit(
+            txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2)
+        )
     pygame.draw.rect(screen, (55, 48, 42), style_mid_rect, border_radius=18)
     pygame.draw.rect(screen, (233, 205, 153), style_mid_rect, width=2, border_radius=18)
     style_text = small_font.render(ui_style_labels[settings.ui_style], True, (255, 255, 255))

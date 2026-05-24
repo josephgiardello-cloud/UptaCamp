@@ -119,9 +119,7 @@ class PeggingState(BasePhaseState):
         if engine.state.phase != self.phase_name.value:
             return engine.state.phase
         # Auto-progress once both hands are exhausted.
-        if engine.finalize_pegging_if_complete(
-            lambda: engine.get_pegging_total()
-        ):
+        if engine.finalize_pegging_if_complete(lambda: engine.get_pegging_total()):
             return engine.state.phase
 
         # Let AI make pegging plays in this phase when it's AI turn.
@@ -165,9 +163,7 @@ class PeggingState(BasePhaseState):
             engine.pass_pegging_turn(0)
             if engine.state.phase != self.phase_name.value:
                 return engine.state.phase
-            if engine.finalize_pegging_if_complete(
-                lambda: engine.get_pegging_total()
-            ):
+            if engine.finalize_pegging_if_complete(lambda: engine.get_pegging_total()):
                 return engine.state.phase
             return None
         if event_dict.get("action") != "peg_play":
@@ -199,9 +195,7 @@ class PeggingState(BasePhaseState):
         )
         if engine.state.phase != self.phase_name.value:
             return engine.state.phase
-        if engine.finalize_pegging_if_complete(
-            lambda: engine.get_pegging_total()
-        ):
+        if engine.finalize_pegging_if_complete(lambda: engine.get_pegging_total()):
             return engine.state.phase
         return None
 
@@ -317,11 +311,7 @@ class PhaseStateMachine:
         except ValueError:
             return False
         current = from_state or self.current
-        if (
-            not force
-            and current.allowed_transitions
-            and target not in current.allowed_transitions
-        ):
+        if not force and current.allowed_transitions and target not in current.allowed_transitions:
             return False
         current.exit(self.engine, ctx)
         self.engine.set_phase(target.value)

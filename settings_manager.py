@@ -90,7 +90,9 @@ def load_settings(path: Path | None = None) -> GameSettings:
         bert_voice_enabled=raw.get("bert_voice_enabled", True),
         bert_voice_style=raw.get("bert_voice_style", "downeast"),
         bert_voice_backend=raw.get("bert_voice_backend", "local_ai"),
-        bert_local_model_path=raw.get("bert_local_model_path", "bert_voice_models/en_US-joe-medium.onnx"),
+        bert_local_model_path=raw.get(
+            "bert_local_model_path", "bert_voice_models/en_US-joe-medium.onnx"
+        ),
         barnabas_local_model_path=raw.get("barnabas_local_model_path", ""),
         bert_local_exe_path=raw.get("bert_local_exe_path", "piper"),
         bert_rvc_enabled=raw.get("bert_rvc_enabled", False),

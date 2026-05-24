@@ -75,7 +75,9 @@ def main() -> None:
     print("=== Bert Voice Sample Prep ===")
     print(f"Samples dir: {report['samples_dir']}")
     print(f"Manifest: {report['out_csv']}")
-    print(f"Kept: {report['kept']} | Skipped: {report['skipped']} | Total wavs: {report['total_wavs']}")
+    print(
+        f"Kept: {report['kept']} | Skipped: {report['skipped']} | Total wavs: {report['total_wavs']}"
+    )
     print(f"Report: {report_path}")
 
 

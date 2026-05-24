@@ -193,22 +193,26 @@ class P2PMatchState(GameStateBase):
         self._peg_last_player = None
 
         dealer_label = "you" if self.dealer == 0 else "opponent"
-        self.message = f"Round {self.round_num}. Discard 2 cards to the crib. Dealer: {dealer_label}"
+        self.message = (
+            f"Round {self.round_num}. Discard 2 cards to the crib. Dealer: {dealer_label}"
+        )
 
-        app.p2p_host.send({
-            "type": "state",
-            "phase": "discard",
-            "your_hand": list(self._guest_hand),
-            "dealer": self.dealer,
-            "scores": list(self.scores),
-            "starter": None,
-            "peg_pile": [],
-            "peg_total": 0,
-            "active": "",
-            "message": f"Round {self.round_num}. Discard 2 cards to the crib. Dealer: {'opponent' if self.dealer == 0 else 'you'}",
-            "host_hand": None,
-            "result": None,
-        })
+        app.p2p_host.send(
+            {
+                "type": "state",
+                "phase": "discard",
+                "your_hand": list(self._guest_hand),
+                "dealer": self.dealer,
+                "scores": list(self.scores),
+                "starter": None,
+                "peg_pile": [],
+                "peg_total": 0,
+                "active": "",
+                "message": f"Round {self.round_num}. Discard 2 cards to the crib. Dealer: {'opponent' if self.dealer == 0 else 'you'}",
+                "host_hand": None,
+                "result": None,
+            }
+        )
 
     def _handle_host_input(self, event: pygame.event.Event, app) -> None:
         if self.phase == "discard":
@@ -323,10 +327,12 @@ class P2PMatchState(GameStateBase):
         your_turn = "your turn" if self.active_player == "host" else "opponent leads"
         self.message = f"Pegging! Starter: {self.starter}. {your_turn.capitalize()}."
 
-        app.p2p_host.send(self._build_state_msg(
-            your_hand=list(self._guest_peg_hand),
-            message=f"Pegging! Starter: {self.starter}. {'your turn' if self.active_player == 'guest' else 'opponent leads'}.".capitalize(),
-        ))
+        app.p2p_host.send(
+            self._build_state_msg(
+                your_hand=list(self._guest_peg_hand),
+                message=f"Pegging! Starter: {self.starter}. {'your turn' if self.active_player == 'guest' else 'opponent leads'}.".capitalize(),
+            )
+        )
 
     def _host_play_peg(self, hand_idx: int, app) -> None:
         """Host plays a card from their peg hand by index into my_hand."""
@@ -385,14 +391,20 @@ class P2PMatchState(GameStateBase):
         if _can_play_any(other_hand, self.peg_total):
             # Other player can still play
             self.active_player = other
-            name = app.p2p_host.host_name if player == "host" else (app.p2p_host.guest_name or "Guest")
+            name = (
+                app.p2p_host.host_name if player == "host" else (app.p2p_host.guest_name or "Guest")
+            )
             self.message = f"{name} says go. {other.capitalize()}'s turn."
         else:
             # Both can't play — last card point and reset
             if self._peg_last_player:
                 lcp_pi = 0 if self._peg_last_player == "host" else 1
                 self.scores[lcp_pi] += 1
-                lcp_name = app.p2p_host.host_name if self._peg_last_player == "host" else (app.p2p_host.guest_name or "Guest")
+                lcp_name = (
+                    app.p2p_host.host_name
+                    if self._peg_last_player == "host"
+                    else (app.p2p_host.guest_name or "Guest")
+                )
                 self.message = f"Both go. {lcp_name} scores 1 for last card."
             else:
                 self.message = "Both go. Pile reset."
@@ -426,17 +438,23 @@ class P2PMatchState(GameStateBase):
         """Send current pegging state to guest."""
         your_turn = self.active_player == "guest"
         msg_txt = self.message + (" Your turn." if your_turn else "")
-        app.p2p_host.send(self._build_state_msg(
-            your_hand=list(self._guest_peg_hand),
-            message=msg_txt,
-        ))
+        app.p2p_host.send(
+            self._build_state_msg(
+                your_hand=list(self._guest_peg_hand),
+                message=msg_txt,
+            )
+        )
 
     def _end_pegging(self, app) -> None:
         """Finalize pegging: award last-card point, move to counting."""
         if self._peg_last_player and self.peg_total != 31:
             pi = 0 if self._peg_last_player == "host" else 1
             self.scores[pi] += 1
-            lcp_name = app.p2p_host.host_name if self._peg_last_player == "host" else (app.p2p_host.guest_name or "Guest")
+            lcp_name = (
+                app.p2p_host.host_name
+                if self._peg_last_player == "host"
+                else (app.p2p_host.guest_name or "Guest")
+            )
             self.message = f"{lcp_name} scores 1 for last card. Counting hands…"
         else:
             self.message = "Pegging complete. Counting hands…"
@@ -488,18 +506,24 @@ class P2PMatchState(GameStateBase):
             "crib_owner": "guest" if self.dealer == 1 else "host",
         }
         guest_msg = (
-            f"Count: You {guest_pts}pts, {host_name} {host_pts}pts, "
-            f"Crib ({crib_owner_label}) {crib_pts}pts. "
-            f"Scores: {self.scores[0]} – {self.scores[1]}. "
-            f"Press N for next round."
-        ) if self.phase != "finished" else f"{'You win' if winner_idx == 1 else host_name + ' wins'} with {self.scores[winner_idx]} pts!"
+            (
+                f"Count: You {guest_pts}pts, {host_name} {host_pts}pts, "
+                f"Crib ({crib_owner_label}) {crib_pts}pts. "
+                f"Scores: {self.scores[0]} – {self.scores[1]}. "
+                f"Press N for next round."
+            )
+            if self.phase != "finished"
+            else f"{'You win' if winner_idx == 1 else host_name + ' wins'} with {self.scores[winner_idx]} pts!"
+        )
 
-        app.p2p_host.send(self._build_state_msg(
-            your_hand=list(self._guest_kept),
-            message=guest_msg,
-            host_hand=list(self._host_kept),
-            result=guest_result,
-        ))
+        app.p2p_host.send(
+            self._build_state_msg(
+                your_hand=list(self._guest_kept),
+                message=guest_msg,
+                host_hand=list(self._host_kept),
+                result=guest_result,
+            )
+        )
 
     def _host_next_round(self, app) -> None:
         if self.phase not in ("counting",):
@@ -621,15 +645,22 @@ class P2PMatchState(GameStateBase):
         # Header
         header = title_font.render(
             f"P2P Cribbage — Round {self.round_num}  |  {my_name}  ({role.capitalize()})",
-            True, (220, 240, 220),
+            True,
+            (220, 240, 220),
         )
         screen.blit(header, header.get_rect(center=(W // 2, 28)))
 
         # Scores
-        host_label = (app.p2p_host.host_name if role == "host" and getattr(app, "p2p_host", None)
-                      else (app.p2p_guest.host_name if getattr(app, "p2p_guest", None) else "Host"))
-        guest_label = (app.p2p_host.guest_name if role == "host" and getattr(app, "p2p_host", None)
-                       else (app.p2p_guest.guest_name if getattr(app, "p2p_guest", None) else "Guest")) or "Guest"
+        host_label = (
+            app.p2p_host.host_name
+            if role == "host" and getattr(app, "p2p_host", None)
+            else (app.p2p_guest.host_name if getattr(app, "p2p_guest", None) else "Host")
+        )
+        guest_label = (
+            app.p2p_host.guest_name
+            if role == "host" and getattr(app, "p2p_host", None)
+            else (app.p2p_guest.guest_name if getattr(app, "p2p_guest", None) else "Guest")
+        ) or "Guest"
         score_txt = f"{host_label}: {self.scores[0]}   |   {guest_label}: {self.scores[1]}"
         score_s = body_font.render(score_txt, True, (180, 220, 180))
         screen.blit(score_s, score_s.get_rect(center=(W // 2, 60)))
@@ -637,7 +668,8 @@ class P2PMatchState(GameStateBase):
         # Phase label
         phase_s = body_font.render(
             f"Phase: {self.phase.upper()}  |  Dealer: {'you' if self.dealer == (0 if role == 'host' else 1) else 'opponent'}",
-            True, (160, 200, 255),
+            True,
+            (160, 200, 255),
         )
         screen.blit(phase_s, phase_s.get_rect(center=(W // 2, 90)))
 

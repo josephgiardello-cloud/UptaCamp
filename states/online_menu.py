@@ -82,7 +82,12 @@ class OnlineMenuState(GameStateBase):
             elif self.join_mode and event.key == pygame.K_RETURN:
                 return self._join_room(app)
             else:
-                if self.join_mode and event.unicode and event.unicode.isalnum() and len(self.join_code) < 12:
+                if (
+                    self.join_mode
+                    and event.unicode
+                    and event.unicode.isalnum()
+                    and len(self.join_code) < 12
+                ):
                     self.join_code += event.unicode.upper()
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.host_rect is not None and self.host_rect.collidepoint(event.pos):
@@ -95,7 +100,11 @@ class OnlineMenuState(GameStateBase):
             if self.quick_rect is not None and self.quick_rect.collidepoint(event.pos):
                 self.join_mode = False
                 return self._quick_match(app)
-            if self.copy_rect is not None and self.copy_rect.collidepoint(event.pos) and self.join_code:
+            if (
+                self.copy_rect is not None
+                and self.copy_rect.collidepoint(event.pos)
+                and self.join_code
+            ):
                 if self._copy_to_clipboard(self.join_code):
                     app.status_message = f"Code copied: {self.join_code}"
                     app.last_error = ""

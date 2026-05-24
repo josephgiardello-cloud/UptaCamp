@@ -175,7 +175,12 @@ class CribbageEngine:
         indexed = list(enumerate(self.state.ai_hand))
         indexed.sort(key=lambda pair: cribbage_cards.value_for_fifteen(self._to_card(pair[1]).rank))
         chosen = sorted([indexed[0][0], indexed[1][0]], reverse=True)
-        labels = sorted([self._to_label(self.state.ai_hand[chosen[0]]), self._to_label(self.state.ai_hand[chosen[1]])])
+        labels = sorted(
+            [
+                self._to_label(self.state.ai_hand[chosen[0]]),
+                self._to_label(self.state.ai_hand[chosen[1]]),
+            ]
+        )
         self.state.ai_last_decision_reason = (
             f"L{level} discard fallback: tossed lowest-value cards {labels[0]} and {labels[1]}."
         )
@@ -212,7 +217,11 @@ class CribbageEngine:
             self.state.ai_last_decision_reason = f"L{level} pegging: no legal play, calling go."
             return None
         idx = int(picked)
-        valid = self.get_valid_moves() if self.state.phase == "pegging" and int(self.state.player_turn) == 1 else []
+        valid = (
+            self.get_valid_moves()
+            if self.state.phase == "pegging" and int(self.state.player_turn) == 1
+            else []
+        )
         if idx in valid:
             label = hand_labels[idx]
             rank, _ = cribbage_cards.parse_card_label(label)
@@ -247,9 +256,7 @@ class CribbageEngine:
             label = hand_labels[best_idx]
             rank, _ = cribbage_cards.parse_card_label(label)
             total_after = total + cribbage_cards.value_for_fifteen(rank)
-            self.state.ai_last_decision_reason = (
-                f"L{level} pegging fallback: strategy pick invalid, played {label} for total {total_after}."
-            )
+            self.state.ai_last_decision_reason = f"L{level} pegging fallback: strategy pick invalid, played {label} for total {total_after}."
             return best_idx
 
         self.state.ai_last_decision_reason = f"L{level} pegging: no legal play, calling go."
@@ -283,7 +290,11 @@ class CribbageEngine:
         if starter_rank == "jack":
             heels_awarded = self._add_points(int(self.state.dealer), 2)
             if heels_awarded > 0 and self.state.phase != "game_over":
-                dealer_name = self.state.ai_name if int(self.state.dealer) == 1 else (self.state.player_name or "You")
+                dealer_name = (
+                    self.state.ai_name
+                    if int(self.state.dealer) == 1
+                    else (self.state.player_name or "You")
+                )
                 self.state.message = f"{dealer_name} scores 2 for his heels."
         if self.state.phase == "game_over":
             return True
@@ -398,7 +409,11 @@ class CribbageEngine:
             self.state.pegging_passes = [False, False]
 
         if not self.state.player_hand and not self.state.ai_hand:
-            if self.state.pegging_pile and total != 31 and self.state.last_pegging_player is not None:
+            if (
+                self.state.pegging_pile
+                and total != 31
+                and self.state.last_pegging_player is not None
+            ):
                 awarded = self._add_points(self.state.last_pegging_player, 1)
                 self.state.round_pegging_points[self.state.last_pegging_player] += int(awarded)
             if self.state.phase == "game_over":
@@ -433,14 +448,18 @@ class CribbageEngine:
             return {"player": 0, "ai": 0, "crib": 0}
 
         starter = self._to_card(self.state.starter_card)
-        player_cards = [self._to_card(c) for c in (self.state.player_kept or self.state.player_hand)]
+        player_cards = [
+            self._to_card(c) for c in (self.state.player_kept or self.state.player_hand)
+        ]
         ai_cards = [self._to_card(c) for c in (self.state.ai_kept or self.state.ai_hand)]
         crib_cards = [self._to_card(c) for c in self.state.crib]
 
         p_total, p_breakdown = cribbage_cards.score_hand(player_cards, starter, is_crib=False)
         a_total, a_breakdown = cribbage_cards.score_hand(ai_cards, starter, is_crib=False)
         c_total, c_breakdown = (
-            cribbage_cards.score_hand(crib_cards, starter, is_crib=True) if len(crib_cards) == 4 else (0, [])
+            cribbage_cards.score_hand(crib_cards, starter, is_crib=True)
+            if len(crib_cards) == 4
+            else (0, [])
         )
 
         awarded_player = self._add_points(0, p_total)

@@ -359,7 +359,9 @@ def test_finish_match_rejects_non_participant_finisher(backend: OnlineBackend) -
         )
 
 
-def test_get_match_details_requires_membership_when_requester_is_set(backend: OnlineBackend) -> None:
+def test_get_match_details_requires_membership_when_requester_is_set(
+    backend: OnlineBackend,
+) -> None:
     p1 = backend.login_player("Alice", player_id="p1")
     p3 = backend.login_player("Chris", player_id="p3")
     invite = backend.create_invite("p1")

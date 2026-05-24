@@ -127,10 +127,14 @@ class OnlineMatchState(GameStateBase):
             elif phase == "discard":
                 hand_labels = self._hand_from_snapshot(snapshot, app.player_id)
                 discard_indices = self._pick_discard_indices(hand_labels)
-                discard_cards = [hand_labels[idx] for idx in discard_indices] if discard_indices else [
-                    "5_of_hearts",
-                    "king_of_clubs",
-                ]
+                discard_cards = (
+                    [hand_labels[idx] for idx in discard_indices]
+                    if discard_indices
+                    else [
+                        "5_of_hearts",
+                        "king_of_clubs",
+                    ]
+                )
                 app.client.submit_turn(
                     self.match_id,
                     "discard",
@@ -138,8 +142,14 @@ class OnlineMatchState(GameStateBase):
                 )
                 self.last_action_msg = "Discard submitted"
             elif phase == "pegging":
-                game_state = snapshot["game_state"] if isinstance(snapshot.get("game_state"), dict) else {}
-                running_total = int(game_state.get("pegging_running_total", 0)) if isinstance(game_state, dict) else 0
+                game_state = (
+                    snapshot["game_state"] if isinstance(snapshot.get("game_state"), dict) else {}
+                )
+                running_total = (
+                    int(game_state.get("pegging_running_total", 0))
+                    if isinstance(game_state, dict)
+                    else 0
+                )
                 hand_labels = self._hand_from_snapshot(snapshot, app.player_id)
                 card_label = self._pick_pegging_card(hand_labels, running_total)
                 if not card_label:

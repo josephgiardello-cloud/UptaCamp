@@ -282,15 +282,9 @@ def test_mood_lanes_start_frustration_at_down_five():
 
 
 def test_level5_play_posture_escalates_with_trailing_gap():
-    assert (
-        bert_persona.level5_play_posture({"bert_score": 60, "player_score": 65}) == "balanced"
-    )
-    assert (
-        bert_persona.level5_play_posture({"bert_score": 60, "player_score": 75}) == "deliberate"
-    )
-    assert (
-        bert_persona.level5_play_posture({"bert_score": 60, "player_score": 82}) == "cutthroat"
-    )
+    assert bert_persona.level5_play_posture({"bert_score": 60, "player_score": 65}) == "balanced"
+    assert bert_persona.level5_play_posture({"bert_score": 60, "player_score": 75}) == "deliberate"
+    assert bert_persona.level5_play_posture({"bert_score": 60, "player_score": 82}) == "cutthroat"
 
 
 def test_gap_overlay_progresses_at_five_bands() -> None:

@@ -59,7 +59,9 @@ class HighScoresState(GameStateBase):
         title_rect = title.get_rect(center=(sw // 2, 68))
         screen.blit(title, title_rect)
 
-        subtitle = subtitle_font.render("Players, rankings, wins, losses, and top hands", True, (230, 220, 190))
+        subtitle = subtitle_font.render(
+            "Players, rankings, wins, losses, and top hands", True, (230, 220, 190)
+        )
         subtitle_rect = subtitle.get_rect(center=(sw // 2, title_rect.bottom + 20))
         screen.blit(subtitle, subtitle_rect)
 
@@ -107,10 +109,15 @@ class HighScoresState(GameStateBase):
         )
 
         if not rows:
-            empty = row_font.render("No recorded games yet. Finish matches to populate rankings.", True, (228, 220, 194))
+            empty = row_font.render(
+                "No recorded games yet. Finish matches to populate rankings.", True, (228, 220, 194)
+            )
             screen.blit(empty, (panel_x + 24, panel_y + 84))
         else:
-            current_name = str(getattr(getattr(app, "settings", None), "player_name", "Player")).strip() or "Player"
+            current_name = (
+                str(getattr(getattr(app, "settings", None), "player_name", "Player")).strip()
+                or "Player"
+            )
             row_h = 28
             max_rows = min(16, len(rows))
             for i, row in enumerate(rows[:max_rows]):

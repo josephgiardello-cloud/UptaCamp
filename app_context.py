@@ -30,10 +30,10 @@ class AppContext:
     voice: Any = None
 
     # Direct P2P fields (no central server required)
-    p2p_host: Any = None   # p2p.P2PHost when this player is hosting
+    p2p_host: Any = None  # p2p.P2PHost when this player is hosting
     p2p_guest: Any = None  # p2p.P2PGuest when this player is joining
-    p2p_role: str = ""     # "host" | "guest" | ""
-    p2p_name: str = ""     # display name for this player in P2P match
+    p2p_role: str = ""  # "host" | "guest" | ""
+    p2p_name: str = ""  # display name for this player in P2P match
 
     def __post_init__(self) -> None:
         self.client = OnlineClient(self.server_url)

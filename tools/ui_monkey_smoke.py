@@ -60,7 +60,9 @@ def run_session(session_idx: int, steps: int, seed: int) -> list[MonkeyIssue]:
             state.update(engine, 16, app)
             state.draw(screen, engine, assets, app)
         except Exception as exc:
-            issues.append(MonkeyIssue(session_idx, step, state_name, phase, f"update/draw exception: {exc}"))
+            issues.append(
+                MonkeyIssue(session_idx, step, state_name, phase, f"update/draw exception: {exc}")
+            )
             break
 
         # Weighted actions: mostly random clicks, sometimes keyboard shortcuts on intro.
@@ -80,7 +82,9 @@ def run_session(session_idx: int, steps: int, seed: int) -> list[MonkeyIssue]:
                 if state_name not in {"IntroState", "DealState"}:
                     state = IntroState()
         except Exception as exc:
-            issues.append(MonkeyIssue(session_idx, step, state_name, phase, f"handle_event exception: {exc}"))
+            issues.append(
+                MonkeyIssue(session_idx, step, state_name, phase, f"handle_event exception: {exc}")
+            )
             break
 
     return issues
@@ -90,7 +94,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Randomized UI monkey smoke for intro/deal flows")
     parser.add_argument("--sessions", type=int, default=30, help="Number of monkey sessions")
     parser.add_argument("--steps", type=int, default=1200, help="Steps per session")
-    parser.add_argument("--seed-base", type=int, default=91000, help="Seed base for reproducibility")
+    parser.add_argument(
+        "--seed-base", type=int, default=91000, help="Seed base for reproducibility"
+    )
     args = parser.parse_args()
 
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")

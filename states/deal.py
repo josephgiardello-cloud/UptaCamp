@@ -77,7 +77,9 @@ class DealState(GameStateBase):
         if self.phase == "counting":
             return "Counting hands..."
         if self.phase == "end":
-            ai_reason = str(getattr(getattr(engine, "state", object()), "ai_last_decision_reason", "")).strip()
+            ai_reason = str(
+                getattr(getattr(engine, "state", object()), "ai_last_decision_reason", "")
+            ).strip()
             if ai_reason:
                 return ai_reason
             return "Hand complete. Review scoring below."
@@ -144,7 +146,11 @@ class DealState(GameStateBase):
                 self._handle_player_pegging_click(clicked_idx, engine, app)
             return self
 
-        if phase == "end" and self.next_round_rect is not None and self.next_round_rect.collidepoint(event.pos):
+        if (
+            phase == "end"
+            and self.next_round_rect is not None
+            and self.next_round_rect.collidepoint(event.pos)
+        ):
             try:
                 engine.start_next_round()
                 engine.state.dad_ai_level = self.dad_ai_level
@@ -194,7 +200,9 @@ class DealState(GameStateBase):
             "bert_pegging_points": int(pegging_points[1]) if len(pegging_points) > 1 else 0,
             "bert_is_dealer": int(getattr(engine.state, "dealer", 0)) == 1,
         }
-        line = choose_line("round_summary", style=style, dad_ai_level=self.dad_ai_level, context=context)
+        line = choose_line(
+            "round_summary", style=style, dad_ai_level=self.dad_ai_level, context=context
+        )
         if not line:
             return
 
@@ -322,7 +330,9 @@ class DealState(GameStateBase):
             if img is None:
                 continue
 
-            source_rect = next((rect for idx, rect in self.player_card_rects if idx == source_idx), None)
+            source_rect = next(
+                (rect for idx, rect in self.player_card_rects if idx == source_idx), None
+            )
             if source_rect is None:
                 continue
 
@@ -388,7 +398,9 @@ class DealState(GameStateBase):
                 if self.dad_ai_level in (1, 2, 3):
                     line = "Cards dealt. Choose two cards for the crib."
                 else:
-                    line = choose_line("cards_dealt", style=style, dad_ai_level=self.dad_ai_level, context=None)
+                    line = choose_line(
+                        "cards_dealt", style=style, dad_ai_level=self.dad_ai_level, context=None
+                    )
                 if line:
                     try:
                         voice.speak_bert(
@@ -444,7 +456,9 @@ class DealState(GameStateBase):
                             color=(255, 201, 187),
                         )
                     if key is not None and self.ai_card_rects:
-                        source_rect = self.ai_card_rects[min(ai_idx, len(self.ai_card_rects) - 1)][1]
+                        source_rect = self.ai_card_rects[min(ai_idx, len(self.ai_card_rects) - 1)][
+                            1
+                        ]
                         self._try_add_flight(source_rect, key, app)
                 else:
                     engine.pass_pegging_turn(1)
@@ -483,7 +497,9 @@ class DealState(GameStateBase):
                     "player_score": int(getattr(engine.state, "scores", [0, 0])[0]),
                     "bert_score": int(getattr(engine.state, "scores", [0, 0])[1]),
                 }
-                line = choose_line(event, style=style, dad_ai_level=self.dad_ai_level, context=context)
+                line = choose_line(
+                    event, style=style, dad_ai_level=self.dad_ai_level, context=context
+                )
                 if line:
                     try:
                         voice.speak_bert(
@@ -502,7 +518,10 @@ class DealState(GameStateBase):
             and self.dad_ai_level == 5
             and int(winner) == 0
         ):
-            player_name = str(getattr(getattr(app, "settings", None), "player_name", "Player")).strip() or "Player"
+            player_name = (
+                str(getattr(getattr(app, "settings", None), "player_name", "Player")).strip()
+                or "Player"
+            )
             record_difficulty_win(player_name, "old_house")
             self.game_result_recorded = True
 
@@ -534,7 +553,7 @@ class DealState(GameStateBase):
         instruction_message = self._instruction_for_phase(engine)
         renderer.draw_board(
             {
-            "message": instruction_message,
+                "message": instruction_message,
                 "dealer": int(getattr(engine.state, "dealer", 0)),
                 "scores": list(getattr(engine.state, "scores", [0, 0])),
                 "dad_ai_level": self.dad_ai_level,
@@ -578,9 +597,15 @@ class DealState(GameStateBase):
         player_label = label_font.render(f"{player_name} Hand", True, label_color)
         opp_label_pos = (start_x, top_y + card_h + 2)
         player_label_pos = (start_x, bot_y - 34)
-        screen.blit(label_font.render("Opponent Hand", True, shadow_color), (opp_label_pos[0] + 2, opp_label_pos[1] + 2))
+        screen.blit(
+            label_font.render("Opponent Hand", True, shadow_color),
+            (opp_label_pos[0] + 2, opp_label_pos[1] + 2),
+        )
         screen.blit(opp_label, opp_label_pos)
-        screen.blit(label_font.render(f"{player_name} Hand", True, shadow_color), (player_label_pos[0] + 2, player_label_pos[1] + 2))
+        screen.blit(
+            label_font.render(f"{player_name} Hand", True, shadow_color),
+            (player_label_pos[0] + 2, player_label_pos[1] + 2),
+        )
         screen.blit(player_label, player_label_pos)
 
         back_img = assets.get_card_image("back") or getattr(assets, "card_back", None)
@@ -638,13 +663,19 @@ class DealState(GameStateBase):
             total_text = total_font.render(f"Pegging Total: {pegging_total}", True, (235, 221, 188))
             screen.blit(total_text, (sw // 2 - total_text.get_width() // 2, pile_y - 28))
 
-        show_go = self.phase == "pegging" and int(getattr(engine.state, "player_turn", 0)) == 0 and not self._player_has_valid_pegging_play(engine)
+        show_go = (
+            self.phase == "pegging"
+            and int(getattr(engine.state, "player_turn", 0)) == 0
+            and not self._player_has_valid_pegging_play(engine)
+        )
         if show_go:
             self.go_button_rect = pygame.Rect(sw // 2 - 85, sh // 2 + 86, 170, 44)
             go_hover = self.go_button_rect.collidepoint(pygame.mouse.get_pos())
             go_draw = self.go_button_rect.move(0, -2 if go_hover else 0)
             pygame.draw.rect(screen, (0, 0, 0, 80), go_draw.move(0, 4), border_radius=10)
-            pygame.draw.rect(screen, (55, 70, 92) if not go_hover else (67, 84, 108), go_draw, border_radius=10)
+            pygame.draw.rect(
+                screen, (55, 70, 92) if not go_hover else (67, 84, 108), go_draw, border_radius=10
+            )
             pygame.draw.rect(screen, (197, 212, 238), go_draw, width=2, border_radius=10)
             go_font = pygame.font.SysFont("segoe ui", 22, bold=True)
             go_text = go_font.render("Go", True, (235, 241, 252))
@@ -663,7 +694,9 @@ class DealState(GameStateBase):
             nr_hover = self.next_round_rect.collidepoint(pygame.mouse.get_pos())
             nr_draw = self.next_round_rect.move(0, -2 if nr_hover else 0)
             pygame.draw.rect(screen, (0, 0, 0, 80), nr_draw.move(0, 4), border_radius=10)
-            pygame.draw.rect(screen, (58, 88, 60) if not nr_hover else (70, 102, 72), nr_draw, border_radius=10)
+            pygame.draw.rect(
+                screen, (58, 88, 60) if not nr_hover else (70, 102, 72), nr_draw, border_radius=10
+            )
             pygame.draw.rect(screen, (205, 224, 188), nr_draw, width=2, border_radius=10)
             nr_font = pygame.font.SysFont("segoe ui", 22, bold=True)
             nr_text = nr_font.render("Next Round", True, (236, 246, 223))
@@ -710,7 +743,9 @@ class DealState(GameStateBase):
         draw_rect = self.back_button_rect.move(0, -2 if hovered else 0)
 
         pygame.draw.rect(screen, (0, 0, 0, 80), draw_rect.move(0, 4), border_radius=12)
-        pygame.draw.rect(screen, (42, 62, 52) if not hovered else (54, 78, 66), draw_rect, border_radius=12)
+        pygame.draw.rect(
+            screen, (42, 62, 52) if not hovered else (54, 78, 66), draw_rect, border_radius=12
+        )
         pygame.draw.rect(screen, (214, 184, 113), draw_rect, width=2, border_radius=12)
 
         btn_font = pygame.font.SysFont("segoe ui", 21, bold=True)

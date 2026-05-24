@@ -496,8 +496,10 @@ class OnlineBackend:
         requester_player_id: str | None = None,
         session_token: str | None = None,
     ) -> dict[str, Any]:
-        if requester_player_id and session_token and not self.verify_session_token(
-            requester_player_id, session_token
+        if (
+            requester_player_id
+            and session_token
+            and not self.verify_session_token(requester_player_id, session_token)
         ):
             raise PermissionError("Invalid session token")
         with self._connection() as conn:
@@ -915,13 +917,17 @@ class OnlineBackend:
         requester_player_id: str | None = None,
         session_token: str | None = None,
     ) -> list[dict[str, Any]]:
-        if requester_player_id and session_token and not self.verify_session_token(
-            requester_player_id, session_token
+        if (
+            requester_player_id
+            and session_token
+            and not self.verify_session_token(requester_player_id, session_token)
         ):
             raise PermissionError("Invalid session token")
         with self._connection() as conn:
             if requester_player_id:
-                match = conn.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,)).fetchone()
+                match = conn.execute(
+                    "SELECT * FROM matches WHERE match_id = ?", (match_id,)
+                ).fetchone()
                 if match is None:
                     raise ValueError("Match does not exist")
                 self._require_match_membership(cast(sqlite3.Row, match), requester_player_id)

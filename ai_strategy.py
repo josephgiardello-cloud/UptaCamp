@@ -466,7 +466,15 @@ def _intrinsic_keep_score(labels: Sequence[str]) -> float:
     flush_bonus = FLUSH_WEIGHT if len(set(suits)) == 1 and suits[0] else 0.0
     five_bonus = 0.65 * values.count(5)
 
-    return pair_bonus + trips_bonus + run_bonus + fifteen_bonus + low_card_bonus + flush_bonus + five_bonus
+    return (
+        pair_bonus
+        + trips_bonus
+        + run_bonus
+        + fifteen_bonus
+        + low_card_bonus
+        + flush_bonus
+        + five_bonus
+    )
 
 
 def _discard_crib_score(labels: Sequence[str]) -> float:
@@ -652,7 +660,11 @@ def _choose_discard_indices_impl(
                     own_total += float(score_labels_hand(kept, starter, False))
                 own_ev = own_total / float(len(unseen_pool))
                 crib_bias = LEVEL_4_DEALER_CRIB if dealer_is_dad else LEVEL_4_PONE_CRIB
-                return own_ev + (LEVEL_4_INTRINSIC * _intrinsic_keep_score(kept)) + (crib_bias * _discard_crib_score(discards))
+                return (
+                    own_ev
+                    + (LEVEL_4_INTRINSIC * _intrinsic_keep_score(kept))
+                    + (crib_bias * _discard_crib_score(discards))
+                )
 
             barnabas_pair = (int(idx1), int(idx2))
             hard_pair = (int(hard_pick[0]), int(hard_pick[1]))
@@ -679,13 +691,17 @@ def _choose_discard_indices_impl(
                 total += score_labels_hand(kept, starter, False)
             score = total / len(unseen_pool)
             score += LEVEL_2_INTRINSIC * _intrinsic_keep_score(kept)
-            score += (LEVEL_2_DEALER_CRIB if dealer_is_dad else LEVEL_2_PONE_CRIB) * _discard_crib_score(discards)
+            score += (
+                LEVEL_2_DEALER_CRIB if dealer_is_dad else LEVEL_2_PONE_CRIB
+            ) * _discard_crib_score(discards)
             level2_scored.append((float(score), (int(discard_idxs[0]), int(discard_idxs[1]))))
         elif dad_ai_level == 3:
             trials = LEVEL_3_TRIALS
             total = 0.0
             for _ in range(trials):
-                weights = [3.0 if _value_for_15(_parse_label(lbl)[0]) >= 10 else 1.0 for lbl in unseen_pool]
+                weights = [
+                    3.0 if _value_for_15(_parse_label(lbl)[0]) >= 10 else 1.0 for lbl in unseen_pool
+                ]
                 opp_discards = random.choices(unseen_pool, weights=weights, k=2)
                 rem = [lbl for lbl in unseen_pool if lbl not in opp_discards]
                 if not rem:
@@ -697,14 +713,18 @@ def _choose_discard_indices_impl(
                 total += own_score + (crib_score if dealer_is_dad else -crib_score)
             score = total / max(1, trials)
             score += LEVEL_3_INTRINSIC * _intrinsic_keep_score(kept)
-            score += (LEVEL_3_DEALER_CRIB if dealer_is_dad else LEVEL_3_PONE_CRIB) * _discard_crib_score(discards)
+            score += (
+                LEVEL_3_DEALER_CRIB if dealer_is_dad else LEVEL_3_PONE_CRIB
+            ) * _discard_crib_score(discards)
         else:
             # Legacy high-tier predefined simulation (e.g. Barnabas):
             # deeper search with heavier intrinsic weighting.
             trials = LEVEL_4_TRIALS
             total = 0.0
             for _ in range(trials):
-                weights = [3.0 if _value_for_15(_parse_label(lbl)[0]) >= 10 else 1.0 for lbl in unseen_pool]
+                weights = [
+                    3.0 if _value_for_15(_parse_label(lbl)[0]) >= 10 else 1.0 for lbl in unseen_pool
+                ]
                 opp_discards = random.choices(unseen_pool, weights=weights, k=2)
                 rem = [lbl for lbl in unseen_pool if lbl not in opp_discards]
                 if not rem:
@@ -716,7 +736,9 @@ def _choose_discard_indices_impl(
                 total += own_score + (crib_score if dealer_is_dad else -crib_score)
             score = total / max(1, trials)
             score += LEVEL_4_INTRINSIC * _intrinsic_keep_score(kept)
-            score += (LEVEL_4_DEALER_CRIB if dealer_is_dad else LEVEL_4_PONE_CRIB) * _discard_crib_score(discards)
+            score += (
+                LEVEL_4_DEALER_CRIB if dealer_is_dad else LEVEL_4_PONE_CRIB
+            ) * _discard_crib_score(discards)
 
         if score > best_score:
             best_score = score
@@ -772,7 +794,8 @@ def analyze_discard_options(
             # Approximate crib influence by expected random opponent discard value.
             # This keeps analysis deterministic and fast for learning feedback.
             total += own_score + (
-                (ANALYSIS_DEALER_CRIB if dealer_is_player else ANALYSIS_PONE_CRIB) * _discard_crib_score(discards)
+                (ANALYSIS_DEALER_CRIB if dealer_is_player else ANALYSIS_PONE_CRIB)
+                * _discard_crib_score(discards)
             )
         expected = total / len(unseen_pool)
         scored.append(
@@ -990,7 +1013,9 @@ def choose_pegging_index(
                 if bert_idx in legal:
                     if dad_ai_level == 5:
                         baseline_idx = _fallback_legal_pick("cutthroat")
-                        if _score_legal_choice(baseline_idx, "cutthroat") > _score_legal_choice(bert_idx, "cutthroat"):
+                        if _score_legal_choice(baseline_idx, "cutthroat") > _score_legal_choice(
+                            bert_idx, "cutthroat"
+                        ):
                             return baseline_idx
                     return bert_idx
             except (TypeError, ValueError):

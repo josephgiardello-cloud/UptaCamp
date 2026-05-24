@@ -56,9 +56,13 @@ def main() -> None:
     # Validate option transitions from intro.
     try:
         if state.online_button_rect is not None:
-            s = state.handle_event(_mouse_down_at(state.online_button_rect.center), engine, assets, app)
+            s = state.handle_event(
+                _mouse_down_at(state.online_button_rect.center), engine, assets, app
+            )
             if s.__class__.__name__ != "OnlineLoginState":
-                issues.append(SmokeIssue("online_option", f"unexpected state: {s.__class__.__name__}"))
+                issues.append(
+                    SmokeIssue("online_option", f"unexpected state: {s.__class__.__name__}")
+                )
         else:
             issues.append(SmokeIssue("online_option", "online button rect missing"))
     except Exception as exc:
@@ -68,7 +72,9 @@ def main() -> None:
         state = IntroState()
         state.draw(screen, engine, assets, app)
         if state.p2p_button_rect is not None:
-            s = state.handle_event(_mouse_down_at(state.p2p_button_rect.center), engine, assets, app)
+            s = state.handle_event(
+                _mouse_down_at(state.p2p_button_rect.center), engine, assets, app
+            )
             if s.__class__.__name__ != "P2PLobbyState":
                 issues.append(SmokeIssue("p2p_option", f"unexpected state: {s.__class__.__name__}"))
         else:
@@ -83,12 +89,16 @@ def main() -> None:
         if state.start_button_rect is None:
             issues.append(SmokeIssue("start_option", "start button rect missing"))
         else:
-            state = state.handle_event(_mouse_down_at(state.start_button_rect.center), engine, assets, app)
+            state = state.handle_event(
+                _mouse_down_at(state.start_button_rect.center), engine, assets, app
+            )
     except Exception as exc:
         issues.append(SmokeIssue("start_option", f"exception: {exc}"))
 
     if state.__class__.__name__ != "DealState":
-        issues.append(SmokeIssue("local_game", f"start did not enter DealState: {state.__class__.__name__}"))
+        issues.append(
+            SmokeIssue("local_game", f"start did not enter DealState: {state.__class__.__name__}")
+        )
 
     # Run local gameplay loop via UI events until at least one end phase is observed.
     saw_end = False

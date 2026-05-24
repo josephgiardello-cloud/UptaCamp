@@ -71,7 +71,9 @@ class IntroState(GameStateBase):
                 return self
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.player_name_editing = False
-                self.settings.player_name = (str(self.settings.player_name).strip() or "Player")[:24]
+                self.settings.player_name = (str(self.settings.player_name).strip() or "Player")[
+                    :24
+                ]
                 save_settings(self.settings)
                 try:
                     create_player_profile(self.settings.player_name)
@@ -84,7 +86,12 @@ class IntroState(GameStateBase):
                 return self
 
             ch = getattr(event, "unicode", "")
-            if ch and ch.isprintable() and not ch.isspace() and len(str(self.settings.player_name)) < 24:
+            if (
+                ch
+                and ch.isprintable()
+                and not ch.isspace()
+                and len(str(self.settings.player_name)) < 24
+            ):
                 self.settings.player_name = f"{self.settings.player_name}{ch}"
                 return self
             if ch == " " and len(str(self.settings.player_name)) < 24:
@@ -139,13 +146,17 @@ class IntroState(GameStateBase):
                         save_settings(self.settings)
                     return self
 
-            if self.start_button_rect is not None and self.start_button_rect.collidepoint(event.pos):
+            if self.start_button_rect is not None and self.start_button_rect.collidepoint(
+                event.pos
+            ):
                 self._play_audio(app, "score")
                 self._speak_event(app, "game_start")
                 from .deal import DealState
 
                 return DealState(dad_ai_level=self.dad_ai_level)
-            if self.online_button_rect is not None and self.online_button_rect.collidepoint(event.pos):
+            if self.online_button_rect is not None and self.online_button_rect.collidepoint(
+                event.pos
+            ):
                 self._play_audio(app, "card")
                 from .online_login import OnlineLoginState
 
@@ -155,10 +166,15 @@ class IntroState(GameStateBase):
                 from .p2p_lobby import P2PLobbyState
 
                 return P2PLobbyState()
-            if self.settings_button_rect is not None and self.settings_button_rect.collidepoint(event.pos):
+            if self.settings_button_rect is not None and self.settings_button_rect.collidepoint(
+                event.pos
+            ):
                 self.settings_open = True
                 self._play_audio(app, "card")
-            if self.high_scores_button_rect is not None and self.high_scores_button_rect.collidepoint(event.pos):
+            if (
+                self.high_scores_button_rect is not None
+                and self.high_scores_button_rect.collidepoint(event.pos)
+            ):
                 self._play_audio(app, "card")
                 from .high_scores import HighScoresState
 
@@ -189,7 +205,9 @@ class IntroState(GameStateBase):
 
         if self.dad_ai_level in (1, 2, 3):
             if event == "level_selected":
-                level_name = self.ai_level_labels.get(self.dad_ai_level, f"Level {self.dad_ai_level}")
+                level_name = self.ai_level_labels.get(
+                    self.dad_ai_level, f"Level {self.dad_ai_level}"
+                )
                 line = f"{level_name} difficulty selected."
             elif event == "game_start":
                 line = "Cards are on the table. Good luck."
@@ -250,12 +268,16 @@ class IntroState(GameStateBase):
         ai_left = rects.get("settings_ai_left_rect")
         ai_right = rects.get("settings_ai_right_rect")
         if ai_left is not None and ai_left.collidepoint(pos):
-            self.settings.online_ai_level = 3 if self.settings.online_ai_level == 1 else self.settings.online_ai_level - 1
+            self.settings.online_ai_level = (
+                3 if self.settings.online_ai_level == 1 else self.settings.online_ai_level - 1
+            )
             app.preferred_online_ai_level = self.settings.online_ai_level
             save_settings(self.settings)
             return
         if ai_right is not None and ai_right.collidepoint(pos):
-            self.settings.online_ai_level = 1 if self.settings.online_ai_level == 3 else self.settings.online_ai_level + 1
+            self.settings.online_ai_level = (
+                1 if self.settings.online_ai_level == 3 else self.settings.online_ai_level + 1
+            )
             app.preferred_online_ai_level = self.settings.online_ai_level
             save_settings(self.settings)
             return
@@ -300,10 +322,10 @@ class IntroState(GameStateBase):
         screen.blit(title_shadow, (title_rect.x + 2, title_rect.y + 2))
         screen.blit(title, title_rect)
 
-        subtitle = subtitle_font.render("Dockside cards, mountain air, and one stubborn Bert.", True, (230, 220, 190))
-        subtitle_rect = subtitle.get_rect(
-            center=(sw // 2, title_rect.bottom + 18)
+        subtitle = subtitle_font.render(
+            "Dockside cards, mountain air, and one stubborn Bert.", True, (230, 220, 190)
         )
+        subtitle_rect = subtitle.get_rect(center=(sw // 2, title_rect.bottom + 18))
         screen.blit(subtitle, subtitle_rect)
 
         name_label_font = pygame.font.SysFont("segoe ui", 20, bold=True)
@@ -316,7 +338,9 @@ class IntroState(GameStateBase):
         name_hover = self.player_name_rect.collidepoint(mouse_pos)
         name_active = self.player_name_editing
         box_fill = (56, 49, 42, 210) if (name_active or name_hover) else (42, 36, 31, 200)
-        name_box = pygame.Surface((self.player_name_rect.width, self.player_name_rect.height), pygame.SRCALPHA)
+        name_box = pygame.Surface(
+            (self.player_name_rect.width, self.player_name_rect.height), pygame.SRCALPHA
+        )
         name_box.fill(box_fill)
         screen.blit(name_box, self.player_name_rect)
         pygame.draw.rect(
@@ -386,7 +410,9 @@ class IntroState(GameStateBase):
         p2p_hover = self.p2p_button_rect.collidepoint(mouse_pos)
         p2p_draw = self.p2p_button_rect.move(0, -2 if p2p_hover else 0)
         pygame.draw.rect(screen, (0, 0, 0, 80), p2p_draw.move(0, 5), border_radius=10)
-        pygame.draw.rect(screen, (48, 86, 58) if not p2p_hover else (60, 102, 72), p2p_draw, border_radius=10)
+        pygame.draw.rect(
+            screen, (48, 86, 58) if not p2p_hover else (60, 102, 72), p2p_draw, border_radius=10
+        )
         pygame.draw.rect(screen, (114, 178, 126), p2p_draw, width=1, border_radius=10)
 
         p2p_font = pygame.font.SysFont("bahnschrift", 24, bold=True)
@@ -423,5 +449,3 @@ class IntroState(GameStateBase):
             hint_y = min(max_hint_y, self.start_button_rect.bottom + 8)
         hint_rect = hint.get_rect(topleft=(sw // 2 - hint.get_width() // 2, max(8, hint_y)))
         screen.blit(hint, hint_rect)
-
-

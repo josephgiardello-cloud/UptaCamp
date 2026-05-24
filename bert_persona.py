@@ -337,9 +337,7 @@ def _load_external_generator_data() -> None:
                 if not isinstance(values, list):
                     continue
                 cleaned = tuple(
-                    v
-                    for v in cast(list[Any], values)
-                    if isinstance(v, str) and v.strip()
+                    v for v in cast(list[Any], values) if isinstance(v, str) and v.strip()
                 )
                 if cleaned:
                     _THEMATIC_PHRASES[category] = cleaned
@@ -386,6 +384,7 @@ def _load_external_generator_data() -> None:
 
     barnabas_cfg = _load_json_file(data_dir / "barnabas_lines.json")
     if barnabas_cfg:
+
         def _extract_line_bank(raw: Any) -> dict[str, list[str]]:
             if not isinstance(raw, dict):
                 return {}
@@ -393,7 +392,9 @@ def _load_external_generator_data() -> None:
             for event, values in cast(dict[str, Any], raw).items():
                 if not isinstance(values, list):
                     continue
-                cleaned = [v.strip() for v in cast(list[Any], values) if isinstance(v, str) and v.strip()]
+                cleaned = [
+                    v.strip() for v in cast(list[Any], values) if isinstance(v, str) and v.strip()
+                ]
                 if cleaned:
                     parsed[event] = cleaned
             return parsed
@@ -442,7 +443,7 @@ _MOOD_VARIANT_FILLERS: dict[str, tuple[str, ...]] = {
         "Teeth out now. Count every inch.",
         "No soft tosses in this weather.",
         "I'm workin sharp edges from here.",
-        "Keep your hands tight, bub."
+        "Keep your hands tight, bub.",
     ),
     "trailing": (
         "No panic. Just tighter knots.",
@@ -997,7 +998,7 @@ def _choose_downeast_line(event: str, context: dict[str, Any]) -> str:
         if player_score <= 90 and bert_score >= 110:
             return _pick(
                 "You're near skunk shoals now. Better find points quick.",
-                "Scoreboard's lookin skunkish, ayuh."
+                "Scoreboard's lookin skunkish, ayuh.",
             )
         if mood in {"hot", "boiling"} and score_known:
             return _pick(
@@ -1196,7 +1197,7 @@ def _choose_downeast_line(event: str, context: dict[str, Any]) -> str:
             return _pick(
                 "You won this one. We continue.",
                 "Fair win. Reset and deal again.",
-                    lane="leading",
+                lane="leading",
             )
         if score_known:
             return _pick(

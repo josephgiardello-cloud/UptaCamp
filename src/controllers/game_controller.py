@@ -55,9 +55,7 @@ class GameController:
 
     def handle_pegging(self, event: Any | None = None, *, auto_player: bool = False) -> None:
         """Run pegging-phase handler for a single event or auto-tick."""
-        self._get_hooks().handle_pegging(
-            self._to_runtime_event(event), auto_player=auto_player
-        )
+        self._get_hooks().handle_pegging(self._to_runtime_event(event), auto_player=auto_player)
 
     def _to_runtime_event(self, payload: Any) -> Any:
         """Convert normalized action dicts into pygame-like event objects.
@@ -171,7 +169,13 @@ class GameController:
                 self.handle_action(action_type, action)
                 continue
 
-            if action_type in {"mousedown", "mousebuttondown", "mousebuttonup", "mousemove", "mousemotion"}:
+            if action_type in {
+                "mousedown",
+                "mousebuttondown",
+                "mousebuttonup",
+                "mousemove",
+                "mousemotion",
+            }:
                 phase = self._current_phase()
                 if phase == "discard":
                     self.handle_discard(action)
@@ -179,7 +183,19 @@ class GameController:
                     self.handle_pegging(action)
                 continue
 
-            if action_type in {"keydown", "keyup", "ai_level_change", "settings_toggle", "reset_hand", "online_mode", "ai_level_select", "settings_input", "settings_backspace", "settings_submit", "settings_cancel"}:
+            if action_type in {
+                "keydown",
+                "keyup",
+                "ai_level_change",
+                "settings_toggle",
+                "reset_hand",
+                "online_mode",
+                "ai_level_select",
+                "settings_input",
+                "settings_backspace",
+                "settings_submit",
+                "settings_cancel",
+            }:
                 hooks = self._get_hooks()
                 key_value = action.get("key")
                 if hasattr(hooks, "handle_key_press") and key_value is not None:

@@ -15,7 +15,9 @@ class IntroControlsLayout(TypedDict):
     high_scores_btn_rect: pygame.Rect
 
 
-def _pick_font(candidates: Sequence[str], size: int, bold: bool = False, italic: bool = False) -> pygame.font.Font:
+def _pick_font(
+    candidates: Sequence[str], size: int, bold: bool = False, italic: bool = False
+) -> pygame.font.Font:
     for name in candidates:
         try:
             matched = pygame.font.match_font(name, bold=bold, italic=italic)
@@ -36,7 +38,9 @@ def _draw_lock_badge(
     cx, cy = center
 
     # Warm glow so the lock pops against the blackout card.
-    glow_rect = pygame.Rect(cx - int(30 * scale), cy - int(18 * scale), int(60 * scale), int(60 * scale))
+    glow_rect = pygame.Rect(
+        cx - int(30 * scale), cy - int(18 * scale), int(60 * scale), int(60 * scale)
+    )
     glow = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
     pygame.draw.ellipse(glow, (255, 190, 70, 39), glow.get_rect())
     screen.blit(glow, glow_rect.topleft)
@@ -49,7 +53,9 @@ def _draw_lock_badge(
         int(30 * scale),
     )
     shadow = pygame.Surface(shadow_rect.size, pygame.SRCALPHA)
-    pygame.draw.rect(shadow, (0, 0, 0, 110), shadow.get_rect(), border_radius=max(4, int(7 * scale)))
+    pygame.draw.rect(
+        shadow, (0, 0, 0, 110), shadow.get_rect(), border_radius=max(4, int(7 * scale))
+    )
     screen.blit(shadow, (shadow_rect.x + int(2 * scale), shadow_rect.y + int(3 * scale)))
 
     # Body with a beveled, 3D treatment.
@@ -57,7 +63,11 @@ def _draw_lock_badge(
     body_h = int(30 * scale)
     body_rect = pygame.Rect(cx - body_w // 2, cy - body_h // 2 + int(10 * scale), body_w, body_h)
     pygame.draw.rect(screen, body_color, body_rect, border_radius=max(4, int(7 * scale)))
-    highlight = (min(255, body_color[0] + 70), min(255, body_color[1] + 70), min(255, body_color[2] + 70))
+    highlight = (
+        min(255, body_color[0] + 70),
+        min(255, body_color[1] + 70),
+        min(255, body_color[2] + 70),
+    )
     lowlight = (max(0, body_color[0] - 35), max(0, body_color[1] - 35), max(0, body_color[2] - 35))
     pygame.draw.line(
         screen,
@@ -73,10 +83,25 @@ def _draw_lock_badge(
         (body_rect.right - int(4 * scale), body_rect.bottom - int(4 * scale)),
         max(1, int(2 * scale)),
     )
-    plate = pygame.Rect(body_rect.left + int(4 * scale), body_rect.top + int(8 * scale), body_rect.width - int(8 * scale), int(7 * scale))
-    plate_color = (min(255, body_color[0] + 35), min(255, body_color[1] + 28), min(255, body_color[2] + 18))
+    plate = pygame.Rect(
+        body_rect.left + int(4 * scale),
+        body_rect.top + int(8 * scale),
+        body_rect.width - int(8 * scale),
+        int(7 * scale),
+    )
+    plate_color = (
+        min(255, body_color[0] + 35),
+        min(255, body_color[1] + 28),
+        min(255, body_color[2] + 18),
+    )
     pygame.draw.rect(screen, plate_color, plate, border_radius=max(2, int(2 * scale)))
-    pygame.draw.rect(screen, accent_color, body_rect, width=max(1, int(2 * scale)), border_radius=max(4, int(7 * scale)))
+    pygame.draw.rect(
+        screen,
+        accent_color,
+        body_rect,
+        width=max(1, int(2 * scale)),
+        border_radius=max(4, int(7 * scale)),
+    )
 
     # Thick shackle with metallic highlight.
     shackle_rect = pygame.Rect(
@@ -89,21 +114,50 @@ def _draw_lock_badge(
     pygame.draw.arc(screen, accent_color, shackle_rect, math.pi, 2 * math.pi, stroke)
     leg_y0 = shackle_rect.centery
     leg_y1 = body_rect.top + int(2 * scale)
-    pygame.draw.line(screen, accent_color, (shackle_rect.left, leg_y0), (shackle_rect.left, leg_y1), stroke)
-    pygame.draw.line(screen, accent_color, (shackle_rect.right, leg_y0), (shackle_rect.right, leg_y1), stroke)
-    shackle_highlight = (min(255, accent_color[0] + 50), min(255, accent_color[1] + 50), min(255, accent_color[2] + 50))
-    pygame.draw.arc(screen, shackle_highlight, shackle_rect.inflate(-int(2 * scale), -int(2 * scale)), math.pi, 2 * math.pi, max(1, int(1 * scale)))
+    pygame.draw.line(
+        screen, accent_color, (shackle_rect.left, leg_y0), (shackle_rect.left, leg_y1), stroke
+    )
+    pygame.draw.line(
+        screen, accent_color, (shackle_rect.right, leg_y0), (shackle_rect.right, leg_y1), stroke
+    )
+    shackle_highlight = (
+        min(255, accent_color[0] + 50),
+        min(255, accent_color[1] + 50),
+        min(255, accent_color[2] + 50),
+    )
+    pygame.draw.arc(
+        screen,
+        shackle_highlight,
+        shackle_rect.inflate(-int(2 * scale), -int(2 * scale)),
+        math.pi,
+        2 * math.pi,
+        max(1, int(1 * scale)),
+    )
 
     # Keyhole
     pygame.draw.circle(screen, accent_color, (cx, cy + int(14 * scale)), max(2, int(2.5 * scale)))
     pygame.draw.rect(
         screen,
         accent_color,
-        (cx - max(1, int(1.5 * scale)), cy + int(14 * scale), max(2, int(3 * scale)), max(5, int(6 * scale))),
+        (
+            cx - max(1, int(1.5 * scale)),
+            cy + int(14 * scale),
+            max(2, int(3 * scale)),
+            max(5, int(6 * scale)),
+        ),
         border_radius=max(1, int(1 * scale)),
     )
-    keyhole_glint = (min(255, accent_color[0] + 45), min(255, accent_color[1] + 45), min(255, accent_color[2] + 45))
-    pygame.draw.circle(screen, keyhole_glint, (cx - max(1, int(1 * scale)), cy + int(13 * scale)), max(1, int(1.2 * scale)))
+    keyhole_glint = (
+        min(255, accent_color[0] + 45),
+        min(255, accent_color[1] + 45),
+        min(255, accent_color[2] + 45),
+    )
+    pygame.draw.circle(
+        screen,
+        keyhole_glint,
+        (cx - max(1, int(1 * scale)), cy + int(13 * scale)),
+        max(1, int(1.2 * scale)),
+    )
 
 
 def draw_intro_controls(
@@ -129,7 +183,9 @@ def draw_intro_controls(
     pygame.draw.rect(screen, (84, 152, 92), panel_rect, width=2, border_radius=18)
 
     rim = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
-    pygame.draw.rect(rim, (140, 200, 148, 40), rim.get_rect().inflate(-4, -4), width=1, border_radius=16)
+    pygame.draw.rect(
+        rim, (140, 200, 148, 40), rim.get_rect().inflate(-4, -4), width=1, border_radius=16
+    )
     screen.blit(rim, panel_rect.topleft)
 
     panel_pad = 28
@@ -143,10 +199,14 @@ def draw_intro_controls(
     button_height = 132
     total_width = button_count * button_width + (button_count - 1) * button_spacing
     if total_width > available_w:
-        button_spacing = max(8, (available_w - button_count * button_width) // max(1, button_count - 1))
+        button_spacing = max(
+            8, (available_w - button_count * button_width) // max(1, button_count - 1)
+        )
         total_width = button_count * button_width + (button_count - 1) * button_spacing
     if total_width > available_w:
-        button_width = max(84, (available_w - button_spacing * (button_count - 1)) // max(1, button_count))
+        button_width = max(
+            84, (available_w - button_spacing * (button_count - 1)) // max(1, button_count)
+        )
         total_width = button_count * button_width + (button_count - 1) * button_spacing
 
     start_x = panel_rect.x + panel_pad + max(0, (available_w - total_width) // 2)
@@ -165,7 +225,9 @@ def draw_intro_controls(
     bubble_y = speech_rect.y - 12
     bubble_w = speech_w + 64
     bubble_h = speech_h + 62
-    bubble_surface = pygame.Surface((bubble_w * bubble_scale, bubble_h * bubble_scale), pygame.SRCALPHA)
+    bubble_surface = pygame.Surface(
+        (bubble_w * bubble_scale, bubble_h * bubble_scale), pygame.SRCALPHA
+    )
 
     speech_local = pygame.Rect(
         (speech_rect.x - bubble_x) * bubble_scale,
@@ -212,7 +274,10 @@ def draw_intro_controls(
     screen.blit(bubble_surface, (bubble_x, bubble_y))
     screen.blit(
         yankee_line,
-        (speech_rect.centerx - yankee_line.get_width() // 2, speech_rect.centery - yankee_line.get_height() // 2),
+        (
+            speech_rect.centerx - yankee_line.get_width() // 2,
+            speech_rect.centery - yankee_line.get_height() // 2,
+        ),
     )
 
     # Clean modern block stack (with robust fallbacks) for all level cards.
@@ -236,7 +301,15 @@ def draw_intro_controls(
     card_badge_font = _pick_font(supporting_stack, 11, bold=True)
     card_desc_font = _pick_font(supporting_stack, 13, bold=False)
 
-    def outlined(surf: pygame.Surface, font: pygame.font.Font, text: str, color: tuple[int, int, int], ox: int, oy: int, outline_width: int = 2) -> None:
+    def outlined(
+        surf: pygame.Surface,
+        font: pygame.font.Font,
+        text: str,
+        color: tuple[int, int, int],
+        ox: int,
+        oy: int,
+        outline_width: int = 2,
+    ) -> None:
         shadow = font.render(text, True, (0, 0, 0))
         for dx in range(-outline_width, outline_width + 1):
             for dy in range(-outline_width, outline_width + 1):
@@ -248,7 +321,15 @@ def draw_intro_controls(
     def tracked_width(font: pygame.font.Font, text: str, spacing: int = 4) -> int:
         return sum(font.size(c)[0] for c in text.upper()) + spacing * max(0, len(text) - 1)
 
-    def tracked(surf: pygame.Surface, font: pygame.font.Font, text: str, color: tuple[int, int, int], cx_text: int, y_text: int, spacing: int = 4) -> None:
+    def tracked(
+        surf: pygame.Surface,
+        font: pygame.font.Font,
+        text: str,
+        color: tuple[int, int, int],
+        cx_text: int,
+        y_text: int,
+        spacing: int = 4,
+    ) -> None:
         x_text = cx_text - tracked_width(font, text, spacing) // 2
         for c in text.upper():
             surf.blit(font.render(c, True, color), (x_text, y_text))
@@ -396,9 +477,17 @@ def draw_intro_controls(
             # Subtle gothic cross-hatch to avoid flat modern card look.
             step = 14
             for px in range(-draw_rect.height, draw_rect.width, step):
-                pygame.draw.line(gothic, (170, 170, 176, 22), (px, 0), (px + draw_rect.height, draw_rect.height), 1)
+                pygame.draw.line(
+                    gothic,
+                    (170, 170, 176, 22),
+                    (px, 0),
+                    (px + draw_rect.height, draw_rect.height),
+                    1,
+                )
             for px in range(0, draw_rect.width + draw_rect.height, step):
-                pygame.draw.line(gothic, (20, 20, 22, 22), (px, 0), (px - draw_rect.height, draw_rect.height), 1)
+                pygame.draw.line(
+                    gothic, (20, 20, 22, 22), (px, 0), (px - draw_rect.height, draw_rect.height), 1
+                )
 
             local_points = [(x - draw_rect.x, y - draw_rect.y) for x, y in maine_points]
             clip_surface = pygame.Surface(draw_rect.size, pygame.SRCALPHA)
@@ -456,7 +545,11 @@ def draw_intro_controls(
         screen.blit(text_plate, text_plate_rect)
         pygame.draw.rect(screen, (230, 210, 160, 46), text_plate_rect, width=1, border_radius=6)
 
-        level_color = (196, 198, 204) if is_locked else ((255, 252, 235) if level == dad_ai_level else (246, 239, 220))
+        level_color = (
+            (196, 198, 204)
+            if is_locked
+            else ((255, 252, 235) if level == dad_ai_level else (246, 239, 220))
+        )
         if is_old_house_selected:
             level_color = (226, 226, 232) if level == dad_ai_level else (198, 198, 204)
         name_up = "LOCKED" if is_locked else name.upper()
@@ -471,8 +564,24 @@ def draw_intro_controls(
         }
         name_spacing = spacing_map.get(name_up, 1)
         level_y = draw_rect.y + 36
-        tracked(screen, card_name_font, name_up, (0, 0, 0), draw_rect.centerx + 2, level_y + 2, spacing=name_spacing)
-        tracked(screen, card_name_font, name_up, level_color, draw_rect.centerx, level_y, spacing=name_spacing)
+        tracked(
+            screen,
+            card_name_font,
+            name_up,
+            (0, 0, 0),
+            draw_rect.centerx + 2,
+            level_y + 2,
+            spacing=name_spacing,
+        )
+        tracked(
+            screen,
+            card_name_font,
+            name_up,
+            level_color,
+            draw_rect.centerx,
+            level_y,
+            spacing=name_spacing,
+        )
 
         if is_locked:
             _draw_lock_badge(
@@ -508,7 +617,9 @@ def draw_intro_controls(
     start_hover = start_btn_rect.collidepoint(mouse_pos)
     start_draw = start_btn_rect.move(0, -2 if start_hover else 0)
     pygame.draw.rect(screen, (0, 0, 0, 80), start_draw.move(0, 5), border_radius=10)
-    pygame.draw.rect(screen, (32, 70, 36) if not start_hover else (42, 88, 48), start_draw, border_radius=10)
+    pygame.draw.rect(
+        screen, (32, 70, 36) if not start_hover else (42, 88, 48), start_draw, border_radius=10
+    )
     pygame.draw.rect(screen, (96, 152, 102), start_draw, width=1, border_radius=10)
 
     start_text = start_font.render("START GAME", True, (238, 232, 214))
@@ -527,7 +638,8 @@ def draw_intro_controls(
     screen.blit(
         start_icon,
         (
-            start_btn_rect.centerx - (start_text.get_width() + icon_gap + start_icon.get_width()) // 2,
+            start_btn_rect.centerx
+            - (start_text.get_width() + icon_gap + start_icon.get_width()) // 2,
             start_draw.centery - start_icon.get_height() // 2 - 1,
         ),
     )
@@ -543,7 +655,9 @@ def draw_intro_controls(
     online_hover = online_btn_rect.collidepoint(mouse_pos)
     online_draw = online_btn_rect.move(0, -2 if online_hover else 0)
     pygame.draw.rect(screen, (0, 0, 0, 80), online_draw.move(0, 5), border_radius=10)
-    pygame.draw.rect(screen, (44, 72, 108) if not online_hover else (56, 88, 128), online_draw, border_radius=10)
+    pygame.draw.rect(
+        screen, (44, 72, 108) if not online_hover else (56, 88, 128), online_draw, border_radius=10
+    )
     pygame.draw.rect(screen, (92, 142, 192), online_draw, width=1, border_radius=10)
 
     online_text = start_font.render("ONLINE MODE", True, (218, 230, 244))
@@ -561,7 +675,8 @@ def draw_intro_controls(
     screen.blit(
         online_icon,
         (
-            online_btn_rect.centerx - (online_text.get_width() + icon_gap + online_icon.get_width()) // 2,
+            online_btn_rect.centerx
+            - (online_text.get_width() + icon_gap + online_icon.get_width()) // 2,
             online_draw.centery - online_icon.get_height() // 2 - 1,
         ),
     )

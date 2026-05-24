@@ -76,7 +76,9 @@ def _load_store_from(path: Path) -> dict[str, Any]:
     return loaded
 
 
-def _bootstrap_player_store(player_name: str, stats_path: Path, *, migrate_legacy: bool = True) -> None:
+def _bootstrap_player_store(
+    player_name: str, stats_path: Path, *, migrate_legacy: bool = True
+) -> None:
     if stats_path.exists():
         return
 
@@ -240,12 +242,8 @@ def get_player_profile(
     avg_dealer = bucket["total_hand_points_as_dealer"] / hands_as_dealer if hands_as_dealer else 0.0
     avg_pone = bucket["total_hand_points_as_pone"] / hands_as_pone if hands_as_pone else 0.0
     avg_pegging = bucket["total_pegging_points"] / hand_total if hand_total else 0.0
-    avg_margin_win = (
-        max(0, int(bucket["total_margin_wins"])) / wins if wins else 0.0
-    )
-    avg_margin_loss = (
-        max(0, int(bucket["total_margin_losses"])) / losses if losses else 0.0
-    )
+    avg_margin_win = max(0, int(bucket["total_margin_wins"])) / wins if wins else 0.0
+    avg_margin_loss = max(0, int(bucket["total_margin_losses"])) / losses if losses else 0.0
 
     return {
         "player_name": player_name,

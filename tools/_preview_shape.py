@@ -18,7 +18,7 @@ colors = [
     (190, 50, 50),
     (80, 100, 130),
 ]
-badge_text_colors = [(10,44,48),(72,38,10),(245,226,220),(200,220,240)]
+badge_text_colors = [(10, 44, 48), (72, 38, 10), (245, 226, 220), (200, 220, 240)]
 
 font = pygame.font.SysFont("segoe ui", 15)
 
@@ -40,12 +40,12 @@ for i, (label, color, tc) in enumerate(zip(labels, colors, badge_text_colors, st
     ms = min(avail_w / raw_sw, avail_h / raw_sh)
     ox = draw_rect.x + shape_pad + (avail_w - raw_sw * ms) / 2
     oy = draw_rect.y + shape_pad + (avail_h - raw_sh * ms) / 2
-    pts = [(int(ox + (p[0]-min_x)*ms), int(oy + (p[1]-min_y)*ms)) for p in MAINE_SHAPE]
+    pts = [(int(ox + (p[0] - min_x) * ms), int(oy + (p[1] - min_y) * ms)) for p in MAINE_SHAPE]
 
-    shadow_pts = [(x,y+5) for x,y in pts]
-    pygame.draw.polygon(screen, (20,20,20), shadow_pts)
+    shadow_pts = [(x, y + 5) for x, y in pts]
+    pygame.draw.polygon(screen, (20, 20, 20), shadow_pts)
     pygame.draw.polygon(screen, color, pts)
-    pygame.draw.aalines(screen, (255,255,255), True, pts)
+    pygame.draw.aalines(screen, (255, 255, 255), True, pts)
 
     # Label above shape
     badge_text = font.render(label, True, tc)

@@ -15,11 +15,17 @@ from train_bert import train
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train Barnabas from Bert baseline and specialize level-6 behavior")
+    parser = argparse.ArgumentParser(
+        description="Train Barnabas from Bert baseline and specialize level-6 behavior"
+    )
     parser.add_argument("--episodes", type=int, default=18000)
     parser.add_argument("--model-path", type=Path, default=Path("barnabas_model.pkl"))
     parser.add_argument("--bert-model", type=Path, default=Path("bert_model.pkl"))
-    parser.add_argument("--bootstrap", action="store_true", help="Copy Bert model into Barnabas model before training")
+    parser.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="Copy Bert model into Barnabas model before training",
+    )
     parser.add_argument("--overwrite-bootstrap", action="store_true")
     parser.add_argument("--seed", type=int, default=89)
     return parser

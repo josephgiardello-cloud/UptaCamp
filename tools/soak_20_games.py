@@ -38,7 +38,11 @@ def run_game(game_idx: int, seed: int) -> tuple[int | None, int, list[GameIssue]
 
             if phase == "discard":
                 if len(engine.state.player_hand) != 6 or len(engine.state.ai_hand) != 6:
-                    issues.append(GameIssue(game_idx, rounds, phase, "Discard phase started with invalid hand size"))
+                    issues.append(
+                        GameIssue(
+                            game_idx, rounds, phase, "Discard phase started with invalid hand size"
+                        )
+                    )
                     return None, rounds, issues
                 combos = engine.get_valid_moves()
                 if not combos:
@@ -47,7 +51,14 @@ def run_game(game_idx: int, seed: int) -> tuple[int | None, int, list[GameIssue]
                 choice = rng.choice(combos)
                 ok = engine.handle_discard(choice)
                 if not ok:
-                    issues.append(GameIssue(game_idx, rounds, phase, f"handle_discard rejected legal choice {choice}"))
+                    issues.append(
+                        GameIssue(
+                            game_idx,
+                            rounds,
+                            phase,
+                            f"handle_discard rejected legal choice {choice}",
+                        )
+                    )
                     return None, rounds, issues
                 continue
 
@@ -60,7 +71,14 @@ def run_game(game_idx: int, seed: int) -> tuple[int | None, int, list[GameIssue]
                 else:
                     result = engine.pass_pegging_turn(turn)
                     if not result.get("ok"):
-                        issues.append(GameIssue(game_idx, rounds, phase, f"pass_pegging_turn failed for player {turn}"))
+                        issues.append(
+                            GameIssue(
+                                game_idx,
+                                rounds,
+                                phase,
+                                f"pass_pegging_turn failed for player {turn}",
+                            )
+                        )
                         return None, rounds, issues
                 continue
 
@@ -68,7 +86,9 @@ def run_game(game_idx: int, seed: int) -> tuple[int | None, int, list[GameIssue]
                 try:
                     _ = engine.end_hand_counting()
                 except Exception as exc:  # pragma: no cover - soak runner guard
-                    issues.append(GameIssue(game_idx, rounds, phase, f"end_hand_counting exception: {exc}"))
+                    issues.append(
+                        GameIssue(game_idx, rounds, phase, f"end_hand_counting exception: {exc}")
+                    )
                     return None, rounds, issues
                 continue
 
@@ -83,10 +103,24 @@ def run_game(game_idx: int, seed: int) -> tuple[int | None, int, list[GameIssue]
             return None, rounds, issues
 
         else:
-            issues.append(GameIssue(game_idx, rounds, str(engine.state.phase), "Round step limit exceeded (potential stall)"))
+            issues.append(
+                GameIssue(
+                    game_idx,
+                    rounds,
+                    str(engine.state.phase),
+                    "Round step limit exceeded (potential stall)",
+                )
+            )
             return None, rounds, issues
 
-    issues.append(GameIssue(game_idx, rounds, str(engine.state.phase), "Game round limit exceeded (potential endless game)"))
+    issues.append(
+        GameIssue(
+            game_idx,
+            rounds,
+            str(engine.state.phase),
+            "Game round limit exceeded (potential endless game)",
+        )
+    )
     return None, rounds, issues
 
 
@@ -112,7 +146,9 @@ def main() -> None:
 
     print(f"Games run: {total_games}")
     print(f"Average rounds/game: {rounds_total / total_games:.2f}")
-    print(f"Winners -> Player: {winners.get(0, 0)}, Bert: {winners.get(1, 0)}, Tie: {winners.get(-1, 0)}")
+    print(
+        f"Winners -> Player: {winners.get(0, 0)}, Bert: {winners.get(1, 0)}, Tie: {winners.get(-1, 0)}"
+    )
     print(f"Issues found: {len(all_issues)}")
 
     for issue in all_issues[:40]:

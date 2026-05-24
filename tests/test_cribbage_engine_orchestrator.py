@@ -88,7 +88,9 @@ def test_end_hand_counting_scores_hands_and_transitions_to_end():
 
     result = engine.end_hand_counting()
 
-    assert {"player", "ai", "crib", "player_breakdown", "ai_breakdown", "crib_breakdown"} <= set(result)
+    assert {"player", "ai", "crib", "player_breakdown", "ai_breakdown", "crib_breakdown"} <= set(
+        result
+    )
     assert engine.state.phase == "end"
     assert engine.current_phase == "end"
     assert isinstance(result["player"], int)
@@ -156,7 +158,9 @@ def test_local_ai_discard_uses_ai_strategy(monkeypatch):
         assert len(kwargs["dad_labels"]) == 6
         return [4, 5]
 
-    monkeypatch.setattr("cribbage_engine.ai_strategy.choose_discard_indices", _fake_choose_discard_indices)
+    monkeypatch.setattr(
+        "cribbage_engine.ai_strategy.choose_discard_indices", _fake_choose_discard_indices
+    )
 
     picked = engine._ai_discard_indices()
 
@@ -177,7 +181,9 @@ def test_local_ai_pegging_uses_ai_strategy(monkeypatch):
         assert kwargs["dad_ai_level"] == 4
         return 0
 
-    monkeypatch.setattr("cribbage_engine.ai_strategy.choose_pegging_index", _fake_choose_pegging_index)
+    monkeypatch.setattr(
+        "cribbage_engine.ai_strategy.choose_pegging_index", _fake_choose_pegging_index
+    )
 
     picked = engine.ai_pegging_move()
 
@@ -197,7 +203,9 @@ def test_local_ai_pegging_invalid_strategy_pick_falls_back_to_legal_move(monkeyp
     def _fake_choose_pegging_index(**kwargs):
         return 99
 
-    monkeypatch.setattr("cribbage_engine.ai_strategy.choose_pegging_index", _fake_choose_pegging_index)
+    monkeypatch.setattr(
+        "cribbage_engine.ai_strategy.choose_pegging_index", _fake_choose_pegging_index
+    )
 
     picked = engine.ai_pegging_move()
 

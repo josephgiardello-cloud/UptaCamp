@@ -261,10 +261,10 @@ def test_speak_windows_uses_ssml_for_barnabas(monkeypatch):
 
     script = " ".join(captured.get("cmd", []))
     assert "SpeakSsml" in script
-    assert "pitch=\"-7%\"" in script
-    assert "rate=\"-10%\"" in script
+    assert 'pitch="-7%"' in script
+    assert 'rate="-10%"' in script
     assert "break time=" in script and "170ms" in script
-    assert "<sub alias=\"Barnahbus\">Barnabas</sub>" in script
+    assert '<sub alias="Barnahbus">Barnabas</sub>' in script
     assert "Gender -eq [System.Speech.Synthesis.VoiceGender]::Male" in script
     assert "catch { $synth.Speak($text) }" in script
 
@@ -310,8 +310,8 @@ def test_speak_windows_uses_human_ssml_for_levels_1_to_3(monkeypatch):
 
     script = " ".join(captured.get("cmd", []))
     assert "SpeakSsml" in script
-    assert "pitch=\"+4%\"" in script
-    assert "rate=\"-2%\"" in script
+    assert 'pitch="+4%"' in script
+    assert 'rate="-2%"' in script
     assert "break time=" in script and "110ms" in script
     assert "Gender -eq [System.Speech.Synthesis.VoiceGender]::Female" in script
 

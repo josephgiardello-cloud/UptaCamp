@@ -96,7 +96,13 @@ class CribbageEngine:
         assert len(self.state.crib) <= 4, "Crib cannot exceed 4 cards"
 
         assert self.state.phase in (
-            "intro", "discard", "pegging", "counting", "end", "online_login", "online_match"
+            "intro",
+            "discard",
+            "pegging",
+            "counting",
+            "end",
+            "online_login",
+            "online_match",
         ), f"Invalid phase: {self.state.phase}"
 
         if self.state.phase == "pegging":
@@ -232,7 +238,9 @@ class CribbageEngine:
             name = player_name if player_idx == 0 else self._dealer_name()
             point_note = f" (+{points})" if points else ""
 
-            total = sum(value_for_15(parse_label(self._label(c))[0]) for c in self.state.pegging_pile)
+            total = sum(
+                value_for_15(parse_label(self._label(c))[0]) for c in self.state.pegging_pile
+            )
             if total == 31:
                 self.state.message = f"{name} played 31{point_note}. New count."
                 self.state.pegging_pile.clear()
@@ -278,9 +286,11 @@ class CribbageEngine:
             self.state.message = (
                 "Go for you (+1). New count."
                 if last_card_point and self.state.last_pegging_player == 0
-                else f"Go for {self._dealer_name()} (+1). New count."
-                if last_card_point
-                else "No plays. New count."
+                else (
+                    f"Go for {self._dealer_name()} (+1). New count."
+                    if last_card_point
+                    else "No plays. New count."
+                )
             )
             self._set_winner_if_needed()
             return {"ok": True, "points": last_card_point, "go_completed": True}
@@ -378,7 +388,9 @@ class CribbageEngine:
         result = {"player": 0, "ai": 0, "crib": 0}
         breakdown = {"player": [], "ai": [], "crib": []}
 
-        def _score_player(index: int, total: int, score_breakdown: list[tuple[str, list[str], int]], key: str) -> bool:
+        def _score_player(
+            index: int, total: int, score_breakdown: list[tuple[str, list[str], int]], key: str
+        ) -> bool:
             if total <= 0:
                 return False
             self.state.scores[index] += total
@@ -496,19 +508,22 @@ class CribbageEngine:
         raw_discards = getattr(state, "discard_by_player", {})
         if isinstance(raw_discards, dict):
             state.discard_by_player = {
-                str(pid): [str(card) for card in list(cards)]
-                for pid, cards in raw_discards.items()
+                str(pid): [str(card) for card in list(cards)] for pid, cards in raw_discards.items()
             }
         else:
             state.discard_by_player = {}
 
         state.pegging_pile = list(getattr(state, "pegging_pile", []))
         raw_passes = list(getattr(state, "pegging_passes", [False, False]))
-        state.pegging_passes = [bool(raw_passes[0]), bool(raw_passes[1])] if len(raw_passes) >= 2 else [False, False]
+        state.pegging_passes = (
+            [bool(raw_passes[0]), bool(raw_passes[1])] if len(raw_passes) >= 2 else [False, False]
+        )
         state.last_pegging_player = getattr(state, "last_pegging_player", None)
         state.last_action = dict(getattr(state, "last_action", {}) or {})
         state.phase_progress = max(0, int(getattr(state, "phase_progress", 0) or 0))
-        state.phase_index = int(getattr(state, "phase_index", self._remote_phase_index(state.phase)) or 0)
+        state.phase_index = int(
+            getattr(state, "phase_index", self._remote_phase_index(state.phase)) or 0
+        )
         state.count_by_player = {
             str(pid): bool(done)
             for pid, done in dict(getattr(state, "count_by_player", {}) or {}).items()
@@ -516,7 +531,10 @@ class CribbageEngine:
         state.player_hand = list(getattr(state, "player_hand", []))
         state.ai_hand = list(getattr(state, "ai_hand", []))
         state.pegging_running_total = int(
-            getattr(state, "pegging_running_total", cribbage_cards.pegging_total(state.pegging_pile)) or 0
+            getattr(
+                state, "pegging_running_total", cribbage_cards.pegging_total(state.pegging_pile)
+            )
+            or 0
         )
 
     def dump_remote_snapshot(self) -> dict[str, Any]:
@@ -626,7 +644,9 @@ class CribbageEngine:
         elif played and hand:
             hand.pop()
 
-        self.state.pegging_running_total = int(cribbage_cards.pegging_total(self.state.pegging_pile))
+        self.state.pegging_running_total = int(
+            cribbage_cards.pegging_total(self.state.pegging_pile)
+        )
         self.state.phase_progress += 1
         self._finalize_remote_pegging_if_needed()
         return {
@@ -645,7 +665,9 @@ class CribbageEngine:
     ) -> dict[str, Any]:
         idx = self._remote_player_index(player_id, player_one_id, player_two_id)
         result = self.pass_pegging_turn(idx)
-        self.state.pegging_running_total = int(cribbage_cards.pegging_total(self.state.pegging_pile))
+        self.state.pegging_running_total = int(
+            cribbage_cards.pegging_total(self.state.pegging_pile)
+        )
         self.state.phase_progress += 1
         self._finalize_remote_pegging_if_needed()
         if not result.get("ok"):

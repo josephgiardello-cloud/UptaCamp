@@ -208,11 +208,13 @@ class P2PLobbyState(GameStateBase):
         entry = body_font.render(self.name or "Type name…", True, (20, 20, 20))
         screen.blit(entry, (box.x + 12, box.y + 12))
 
-        for i, (key, text) in enumerate([
-            ("H", "Host a game  —  others connect to you"),
-            ("J", "Join a game  —  enter join code or host address"),
-            ("Esc", "Back to main menu"),
-        ]):
+        for i, (key, text) in enumerate(
+            [
+                ("H", "Host a game  —  others connect to you"),
+                ("J", "Join a game  —  enter join code or host address"),
+                ("Esc", "Back to main menu"),
+            ]
+        ):
             col = (160, 220, 160) if key != "Esc" else (180, 180, 180)
             line = body_font.render(f"{key})  {text}", True, col)
             screen.blit(line, line.get_rect(center=(W // 2, 290 + i * 52)))
@@ -226,13 +228,15 @@ class P2PLobbyState(GameStateBase):
         app,
     ) -> None:
         addr = self.status  # set to host.address
-        for y, (text, color) in enumerate([
-            ("Hosting at:", (210, 210, 210)),
-            (addr, (120, 240, 120)),
-            (f"Join code: {self.join_code}", (160, 220, 255)),
-            ("Share code or address with your opponent.", (200, 200, 200)),
-            ("Waiting for them to connect…", (245, 210, 100)),
-        ]):
+        for y, (text, color) in enumerate(
+            [
+                ("Hosting at:", (210, 210, 210)),
+                (addr, (120, 240, 120)),
+                (f"Join code: {self.join_code}", (160, 220, 255)),
+                ("Share code or address with your opponent.", (200, 200, 200)),
+                ("Waiting for them to connect…", (245, 210, 100)),
+            ]
+        ):
             s = body_font.render(text, True, color)
             screen.blit(s, s.get_rect(center=(W // 2, 160 + y * 56)))
 
