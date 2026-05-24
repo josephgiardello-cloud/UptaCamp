@@ -30,7 +30,7 @@ class CribbageEngine:
     def _dealer_name(self) -> str:
         if self.state.dad_ai_level == 4:
             return "Bert"
-        if self.state.dad_ai_level in (5, 6):
+        if self.state.dad_ai_level >= 5:
             return "Barnabas"
         return "AI"
 
@@ -415,7 +415,7 @@ class CribbageEngine:
         self.state.counting_resolved = True
         self.state.counting_next_phase = "game_over" if self.state.phase == "game_over" else "end"
 
-        if self.state.dad_ai_level in (5, 6):
+        if self.state.dad_ai_level >= 5:
             # Reward is net hand value from AI's perspective.
             ai_reward = ai_strategy.shape_end_of_hand_learning_reward(
                 dad_ai_level=int(self.state.dad_ai_level),
@@ -425,15 +425,9 @@ class CribbageEngine:
                 dealer_index=int(self.state.dealer),
                 state=self.state,
             )
-            if self.state.dad_ai_level == 5:
-                ai_strategy.get_barnabas_agent().end_of_hand_update(ai_reward)
-            else:
-                ai_strategy.get_bert_agent().end_of_hand_update(ai_reward)
+            ai_strategy.get_barnabas_agent().end_of_hand_update(ai_reward)
             try:
-                if self.state.dad_ai_level == 5:
-                    ai_strategy.save_barnabas_agent()
-                else:
-                    ai_strategy.save_bert_agent()
+                ai_strategy.save_barnabas_agent()
             except OSError:
                 # Gameplay should continue even if model persistence fails.
                 pass

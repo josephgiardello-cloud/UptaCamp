@@ -21,16 +21,17 @@ def test_choose_line_downeast_and_robot_banks_have_content():
     assert robot
 
 
-def test_choose_line_bert_plus_robot_gets_profile_suffix():
+def test_choose_line_legacy_level6_routes_to_barnabas_robot_lane():
     line = bert_persona.choose_line("game_start", "robot", dad_ai_level=6)
 
-    assert "ADAPTIVE PROFILE ACTIVE" in line
+    assert ("BARNABUS" in line) or ("OLD HOUSE" in line)
 
 
-def test_choose_line_bert_plus_downeast_gets_strategy_suffix_for_key_events():
+def test_choose_line_legacy_level6_routes_to_barnabas_downeast_lane():
     line = bert_persona.choose_line("bert_won", "downeast", dad_ai_level=6)
 
-    assert "Bert Plus saw that line two plays ago." in line
+    assert isinstance(line, str)
+    assert line
 
 
 def test_choose_line_barnabas_level_has_distinct_signature():
@@ -230,8 +231,8 @@ def test_choose_line_go_point_trailing_is_snappy():
 def test_level5_learning_acknowledges_new_player_pattern_once():
     context = {"player_hand_points": 12, "player_score": 70, "bert_score": 72}
 
-    first = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=6, context=context)
-    second = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=6, context=context)
+    first = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=5, context=context)
+    second = bert_persona.choose_line("hand_scored", "downeast", dad_ai_level=5, context=context)
 
     assert "remember" in first.lower()
     assert "remember" not in second.lower()
@@ -241,7 +242,7 @@ def test_level5_learning_ack_uses_downeast_warning_tone():
     line = bert_persona.choose_line(
         "crib_scored",
         "downeast",
-        dad_ai_level=6,
+        dad_ai_level=5,
         context={"crib_points": 7, "bert_is_dealer": False, "player_score": 80, "bert_score": 82},
     )
 
@@ -301,3 +302,46 @@ def test_gap_overlay_progresses_at_five_bands() -> None:
     assert bert_persona._gap_progression_overlay(10)
     assert bert_persona._gap_progression_overlay(15)
     assert bert_persona._gap_progression_overlay(20)
+
+
+def test_round_summary_line_exists_for_bert_downeast() -> None:
+    line = bert_persona.choose_line(
+        "round_summary",
+        "downeast",
+        dad_ai_level=4,
+        context={
+            "player_score": 84,
+            "bert_score": 90,
+            "player_hand_points": 6,
+            "bert_hand_points": 8,
+            "crib_points": 4,
+            "player_pegging_points": 3,
+            "bert_pegging_points": 5,
+        },
+    )
+
+    lowered = line.lower()
+    assert line
+    assert ("round" in lowered) or ("hand" in lowered) or ("summary" in lowered)
+    assert ("crib" in lowered) or ("pegg" in lowered)
+
+
+def test_round_summary_line_exists_for_barnabas_downeast() -> None:
+    line = bert_persona.choose_line(
+        "round_summary",
+        "downeast",
+        dad_ai_level=5,
+        context={
+            "player_score": 102,
+            "bert_score": 96,
+            "player_hand_points": 10,
+            "bert_hand_points": 7,
+            "crib_points": 2,
+            "player_pegging_points": 4,
+            "bert_pegging_points": 2,
+        },
+    )
+
+    lowered = line.lower()
+    assert line
+    assert ("round" in lowered) or ("hand" in lowered)

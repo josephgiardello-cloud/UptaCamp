@@ -2,7 +2,10 @@
 
 UptaCamp is a Python + Pygame cribbage game with a state-driven local client and an online backend/websocket stack.
 
-[![Play Online](https://img.shields.io/badge/Play%20Online-UptaCamp-success?style=for-the-badge)](https://uptacamp-api.onrender.com/health)
+[![Online API Status](https://img.shields.io/badge/Online%20API-Health%20Check-success?style=for-the-badge)](https://uptacamp-api.onrender.com/health)
+
+> Note: This repository does not currently host a browser-playable web client.  
+> The button above checks backend health only (`/health`).
 
 ## Highlights
 
@@ -11,13 +14,12 @@ UptaCamp is a Python + Pygame cribbage game with a state-driven local client and
   - hand scoring (`score_hand`)
   - pegging scoring (`score_pegging_play`)
   - run detection with multiplicity (`find_all_runs`)
-- Six AI tiers in the intro flow:
+- Five AI tiers in the intro flow:
   - 1 Easy
   - 2 Medium
   - 3 Hard
   - 4 Bert
-  - 5 Old House (Barnabas)
-  - 6 Barnabas (unlock/progression gated)
+  - 5 Barnabas (final boss)
 - State-driven visual client with animation/audio effects.
 - Online API + websocket stack with auth tokens, turn validation, idempotency, matchmaking, profile/leaderboard data.
 - Test and static-analysis gates integrated and actively used.
@@ -57,6 +59,12 @@ pip install -e .[dev]
 ```
 
 ## Running The Game
+
+## How To Actually Play
+
+- Local desktop game: run `python main.py` (or use the packaged Windows `.exe`).
+- Online multiplayer mode: launch the desktop game, choose `Play With Friend`, and connect to the hosted API/WS endpoints.
+- Browser-only play is not supported in this repo today.
 
 ### Default launch (state-driven client)
 

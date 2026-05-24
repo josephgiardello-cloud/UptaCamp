@@ -44,6 +44,11 @@ class OnlineClient:
                 detail = json.loads(body).get("error", body)
             except Exception:
                 detail = str(exc)
+            if isinstance(detail, str) and detail.strip().lower() == "route not found":
+                detail = (
+                    f"Route not found at {self.base_url}. "
+                    "Check your online service URL configuration."
+                )
             raise OnlineClientError(f"{method} {path} failed: {detail}") from exc
         except urllib.error.URLError as exc:
             raise OnlineClientError(f"Cannot reach online service at {self.base_url}") from exc

@@ -106,18 +106,18 @@ def test_level5_discard_uses_barnabas_agent(monkeypatch) -> None:
     assert choice == [0, 3]
 
 
-def test_level6_discard_uses_bert_agent(monkeypatch) -> None:
-    class _FakeBert:
+def test_legacy_level6_discard_normalizes_to_barnabas_agent(monkeypatch) -> None:
+    class _FakeBarnabas:
         def choose_discard(self, hand_labels, state, posture="balanced"):
             assert len(hand_labels) == 6
             assert isinstance(state, GameState)
-            assert posture in {"balanced", "aggressive", "deliberate", "cutthroat"}
+            assert posture == "cutthroat"
             return (2, 5)
 
         def set_posture(self, posture):
-            assert posture in {"balanced", "aggressive", "deliberate", "cutthroat"}
+            assert posture == "cutthroat"
 
-    monkeypatch.setattr(ai_strategy, "get_bert_agent", lambda: _FakeBert())
+    monkeypatch.setattr(ai_strategy, "get_barnabas_agent", lambda: _FakeBarnabas())
 
     choice = ai_strategy.choose_discard_indices(
         dad_labels=[
@@ -171,18 +171,18 @@ def test_level4_discard_uses_bert_agent(monkeypatch) -> None:
 
 
 def test_level6_pegging_uses_bert_agent(monkeypatch) -> None:
-    class _FakeBert:
+    class _FakeBarnabas:
         def choose_pegging(self, hand_labels, current_total, state, posture="balanced"):
             assert hand_labels[0] == "10_of_hearts"
             assert current_total == 11
             assert isinstance(state, GameState)
-            assert posture in {"balanced", "aggressive", "deliberate", "cutthroat"}
+            assert posture == "cutthroat"
             return 1
 
         def set_posture(self, posture):
-            assert posture in {"balanced", "aggressive", "deliberate", "cutthroat"}
+            assert posture == "cutthroat"
 
-    monkeypatch.setattr(ai_strategy, "get_bert_agent", lambda: _FakeBert())
+    monkeypatch.setattr(ai_strategy, "get_barnabas_agent", lambda: _FakeBarnabas())
 
     choice = ai_strategy.choose_pegging_index(
         hand_labels=["10_of_hearts", "4_of_clubs"],
@@ -263,10 +263,10 @@ def test_level5_pegging_uses_barnabas_agent(monkeypatch) -> None:
     assert choice == 1
 
 
-def test_level6_posture_routing_deliberate_when_behind_by_five(monkeypatch) -> None:
+def test_level6_posture_routing_cutthroat_when_behind_by_five(monkeypatch) -> None:
     seen: dict[str, str] = {}
 
-    class _FakeBert:
+    class _FakeBarnabas:
         def choose_discard(self, hand_labels, state, posture="balanced"):
             seen["posture"] = posture
             return (0, 1)
@@ -274,7 +274,7 @@ def test_level6_posture_routing_deliberate_when_behind_by_five(monkeypatch) -> N
         def set_posture(self, posture):
             seen["set_posture"] = posture
 
-    monkeypatch.setattr(ai_strategy, "get_bert_agent", lambda: _FakeBert())
+    monkeypatch.setattr(ai_strategy, "get_barnabas_agent", lambda: _FakeBarnabas())
 
     gs = GameState(scores=[66, 61])
     _ = ai_strategy.choose_discard_indices(
@@ -293,14 +293,14 @@ def test_level6_posture_routing_deliberate_when_behind_by_five(monkeypatch) -> N
         game_state=gs,
     )
 
-    assert seen["posture"] == "balanced"
-    assert seen["set_posture"] == "balanced"
+    assert seen["posture"] == "cutthroat"
+    assert seen["set_posture"] == "cutthroat"
 
 
-def test_level6_posture_routing_aggressive_when_trailing_by_fifteen(monkeypatch) -> None:
+def test_level6_posture_routing_cutthroat_when_trailing_by_fifteen(monkeypatch) -> None:
     seen: dict[str, str] = {}
 
-    class _FakeBert:
+    class _FakeBarnabas:
         def choose_pegging(self, hand_labels, current_total, state, posture="balanced"):
             seen["posture"] = posture
             return 0
@@ -308,7 +308,7 @@ def test_level6_posture_routing_aggressive_when_trailing_by_fifteen(monkeypatch)
         def set_posture(self, posture):
             seen["set_posture"] = posture
 
-    monkeypatch.setattr(ai_strategy, "get_bert_agent", lambda: _FakeBert())
+    monkeypatch.setattr(ai_strategy, "get_barnabas_agent", lambda: _FakeBarnabas())
 
     gs = GameState(scores=[85, 70])
     _ = ai_strategy.choose_pegging_index(
@@ -325,14 +325,14 @@ def test_level6_posture_routing_aggressive_when_trailing_by_fifteen(monkeypatch)
         game_state=gs,
     )
 
-    assert seen["posture"] == "aggressive"
-    assert seen["set_posture"] == "aggressive"
+    assert seen["posture"] == "cutthroat"
+    assert seen["set_posture"] == "cutthroat"
 
 
-def test_level6_posture_routing_aggressive_when_trailing_by_twenty(monkeypatch) -> None:
+def test_level6_posture_routing_cutthroat_when_trailing_by_twenty(monkeypatch) -> None:
     seen: dict[str, str] = {}
 
-    class _FakeBert:
+    class _FakeBarnabas:
         def choose_pegging(self, hand_labels, current_total, state, posture="balanced"):
             seen["posture"] = posture
             return 0
@@ -340,7 +340,7 @@ def test_level6_posture_routing_aggressive_when_trailing_by_twenty(monkeypatch) 
         def set_posture(self, posture):
             seen["set_posture"] = posture
 
-    monkeypatch.setattr(ai_strategy, "get_bert_agent", lambda: _FakeBert())
+    monkeypatch.setattr(ai_strategy, "get_barnabas_agent", lambda: _FakeBarnabas())
 
     gs = GameState(scores=[90, 70])
     _ = ai_strategy.choose_pegging_index(
@@ -357,14 +357,14 @@ def test_level6_posture_routing_aggressive_when_trailing_by_twenty(monkeypatch) 
         game_state=gs,
     )
 
-    assert seen["posture"] == "aggressive"
-    assert seen["set_posture"] == "aggressive"
+    assert seen["posture"] == "cutthroat"
+    assert seen["set_posture"] == "cutthroat"
 
 
 def test_level6_posture_routing_cutthroat_when_trailing_by_twenty_two_plus(monkeypatch) -> None:
     seen: dict[str, str] = {}
 
-    class _FakeBert:
+    class _FakeBarnabas:
         def choose_pegging(self, hand_labels, current_total, state, posture="balanced"):
             seen["posture"] = posture
             return 0
@@ -372,7 +372,7 @@ def test_level6_posture_routing_cutthroat_when_trailing_by_twenty_two_plus(monke
         def set_posture(self, posture):
             seen["set_posture"] = posture
 
-    monkeypatch.setattr(ai_strategy, "get_bert_agent", lambda: _FakeBert())
+    monkeypatch.setattr(ai_strategy, "get_barnabas_agent", lambda: _FakeBarnabas())
 
     gs = GameState(scores=[95, 72])
     _ = ai_strategy.choose_pegging_index(

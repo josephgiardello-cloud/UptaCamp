@@ -9,21 +9,19 @@ from typing import Any, cast
 import bert_persona
 from cards import parse_card_label
 
-
 AI_LEVELS: dict[int, str] = {
     1: "Easy",
     2: "Standard",
     3: "Hard",
     4: "Gumption",
-    5: "Old House",
-    6: "Barnabas",
+    5: "Barnabas",
 }
 
 
 def _opponent_name_for_level(dad_ai_level: int) -> str:
     if dad_ai_level == 4:
         return "Bert"
-    if dad_ai_level in (5, 6):
+    if dad_ai_level >= 5:
         return "Barnabas"
     return "AI"
 
@@ -126,7 +124,7 @@ class BoardRenderer:
         import pygame
 
         if self.context.assets is not None and hasattr(self.context.assets, "card_back"):
-            back = getattr(self.context.assets, "card_back")
+            back = self.context.assets.card_back
             if back is not None:
                 scaled = pygame.transform.smoothscale(back, (rect.width, rect.height))
                 screen.blit(scaled, rect.topleft)
@@ -929,7 +927,7 @@ class BoardRenderer:
         )
         self._draw_label(
             score_surface,
-            f"AI Difficulty: {AI_LEVELS[dad_ai_level]}",
+            f"AI Difficulty: {AI_LEVELS.get(min(max(int(dad_ai_level), 1), 5), 'Medium')}",
             (panel_rect.x + 18, panel_rect.y + 150),
             small_font,
             (164, 177, 208) if self.context.ui_style == "competitive_minimal" else (214, 203, 174),

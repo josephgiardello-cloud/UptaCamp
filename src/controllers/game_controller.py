@@ -10,8 +10,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from src.input import EventHandler
-from src.renderer import AnimationManager
-from src.renderer import BoardRenderer, RenderingContext
+from src.renderer import AnimationManager, BoardRenderer, RenderingContext
 from src.utils.asset_loader import AssetManager
 
 

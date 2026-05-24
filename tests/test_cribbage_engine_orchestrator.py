@@ -58,6 +58,7 @@ def test_process_pegging_play_accepts_index_and_scores():
     assert result["ok"] is True
     assert result["points"] >= 2
     assert engine.state.scores[0] >= 2
+    assert engine.state.round_pegging_points[0] >= 2
 
 
 def test_end_hand_counting_scores_hands_and_transitions_to_end():
@@ -116,6 +117,7 @@ def test_pegging_go_awards_last_card_point_when_both_pass():
     assert second["go_completed"] is True
     assert second["points"] == 1
     assert engine.state.scores[1] == 1
+    assert engine.state.round_pegging_points[1] == 1
 
 
 def test_start_new_game_seed_is_deterministic():

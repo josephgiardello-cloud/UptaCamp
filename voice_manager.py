@@ -97,6 +97,15 @@ class VoiceManager:
         self.rvc_index_path = str(rvc_index_path or "")
         self.rvc_pitch_shift = int(rvc_pitch_shift)
 
+    @staticmethod
+    def _normalized_ai_level(dad_ai_level: int) -> int:
+        level = int(dad_ai_level)
+        if level < 1:
+            return 1
+        if level >= 5:
+            return 5
+        return level
+
     def speak_bert(
         self,
         text: str,
@@ -104,7 +113,9 @@ class VoiceManager:
         bypass_cooldown: bool = False,
         voice_style: str = "downeast",
     ) -> None:
-        if not self.enabled or dad_ai_level not in (1, 2, 3, 4, 5, 6):
+        dad_ai_level = self._normalized_ai_level(dad_ai_level)
+
+        if not self.enabled or dad_ai_level not in (1, 2, 3, 4, 5):
             return
 
         normalized = str(text).strip()
@@ -353,7 +364,7 @@ class VoiceManager:
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
     def _resolve_local_ai_model_path(self, dad_ai_level: int) -> Path | None:
-        if dad_ai_level in (5, 6) and self.barnabas_local_model_path:
+        if self._normalized_ai_level(dad_ai_level) == 5 and self.barnabas_local_model_path:
             barnabas_path = Path(self.barnabas_local_model_path)
             if barnabas_path.exists():
                 return barnabas_path
@@ -367,6 +378,7 @@ class VoiceManager:
         Short lines should feel snappy, while long lines need slower pacing
         so they remain clear and natural.
         """
+        dad_ai_level = self._normalized_ai_level(dad_ai_level)
         word_count = max(1, len(str(text).split()))
         if dad_ai_level == 4:
             base_rate = -1
@@ -384,6 +396,8 @@ class VoiceManager:
         return max(-4, base_rate - 2)
 
     def _speak_windows(self, text: str, dad_ai_level: int) -> None:
+        dad_ai_level = self._normalized_ai_level(dad_ai_level)
+
         if dad_ai_level in (1, 2, 3):
             preferred_voices = ["Microsoft Zira Desktop", "Microsoft Hazel Desktop", "Microsoft Aria"]
             volume = 100
@@ -524,7 +538,7 @@ class VoiceManager:
             "recommended": {
                 "bert_level4": ["Microsoft David Desktop", "Microsoft Guy"],
                 "old_house_level5": ["Microsoft Zira Desktop", "Microsoft Mark"],
-                "bert_plus_level6": ["Microsoft Guy", "Microsoft David Desktop", "Microsoft Mark"],
+                "barnabas_level5": ["Microsoft Guy", "Microsoft David Desktop", "Microsoft Mark"],
             },
             "notes": [],
         }

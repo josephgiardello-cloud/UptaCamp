@@ -118,6 +118,7 @@ class CribbageEngine:
         self.state.ai_kept = []
         self.state.pegging_pile = []
         self.state.pegging_passes = [False, False]
+        self.state.round_pegging_points = [0, 0]
         self.state.last_pegging_player = None
         self.state.player_turn = 1 - self.state.dealer
         self.state.starter_card = None
@@ -136,6 +137,7 @@ class CribbageEngine:
         self.state.ai_kept = []
         self.state.pegging_pile = []
         self.state.pegging_passes = [False, False]
+        self.state.round_pegging_points = [0, 0]
         self.state.last_pegging_player = None
         self.state.player_turn = 1 - self.state.dealer
         self.state.starter_card = None
@@ -287,6 +289,7 @@ class CribbageEngine:
             return True
         self.state.pegging_pile = []
         self.state.pegging_passes = [False, False]
+        self.state.round_pegging_points = [0, 0]
         self.state.last_pegging_player = None
         self.state.player_turn = 1 - self.state.dealer
         if heels_awarded > 0:
@@ -338,6 +341,7 @@ class CribbageEngine:
             ):
                 points = 1
                 points = self._add_points(self.state.last_pegging_player, 1)
+                self.state.round_pegging_points[self.state.last_pegging_player] += int(points)
             self.state.pegging_pile = []
             self.state.pegging_passes = [False, False]
             if self.state.last_pegging_player is not None:
@@ -377,6 +381,7 @@ class CribbageEngine:
         raw_points = cribbage_cards.score_pegging_play(self.state.pegging_pile)
         scorer = self.state.player_turn
         points = self._add_points(scorer, raw_points)
+        self.state.round_pegging_points[scorer] += int(points)
         total = self._current_pegging_total()
         self.state.last_pegging_player = scorer
 
@@ -394,7 +399,8 @@ class CribbageEngine:
 
         if not self.state.player_hand and not self.state.ai_hand:
             if self.state.pegging_pile and total != 31 and self.state.last_pegging_player is not None:
-                self._add_points(self.state.last_pegging_player, 1)
+                awarded = self._add_points(self.state.last_pegging_player, 1)
+                self.state.round_pegging_points[self.state.last_pegging_player] += int(awarded)
             if self.state.phase == "game_over":
                 return {
                     "ok": True,

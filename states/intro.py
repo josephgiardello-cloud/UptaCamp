@@ -3,9 +3,9 @@
 from assets.maine_shape import maine_shape
 from bert_persona import choose_line
 from settings_manager import load_settings, save_settings
-from stats_manager import create_player_profile, get_difficulty_wins
 from src.renderer.intro_controls_renderer import draw_intro_controls
 from src.renderer.settings_modal_renderer import draw_settings_modal
+from stats_manager import create_player_profile
 
 from .base import GameStateBase
 
@@ -24,11 +24,6 @@ class IntroState(GameStateBase):
         self.player_name_rect: pygame.Rect | None = None
         self.player_name_editing = False
         self.settings = load_settings()
-        self._barnabas_unlock_wins = 10
-        self._barnabas_unlocked = False
-        self._show_barnabas_dev_preview = True
-        self._barnabas_wins = 0
-        self._barnabas_remaining_wins = self._barnabas_unlock_wins
 
         # Keep labels local to avoid coupling intro state to old monolith globals.
         self.difficulty_descriptions = {
@@ -37,7 +32,6 @@ class IntroState(GameStateBase):
             3: "Risk simulation\nHard opponent",
             4: "Gumption\nMode",
             5: "Old House\nBarnabas at the table",
-            6: "Storm-table tactician\nNo mercy",
         }
         self.ai_level_labels = {1: "Easy", 2: "Medium", 3: "Hard"}
         self.ui_style_labels = {
@@ -54,37 +48,20 @@ class IntroState(GameStateBase):
         }
 
     def _visible_difficulty_levels(self, app) -> list[tuple[int, str]]:
-        player_name = str(getattr(self.settings, "player_name", "Player")).strip() or "Player"
-        old_house_wins = get_difficulty_wins(player_name, "old_house")
-        legacy_bert_plus_wins = get_difficulty_wins(player_name, "bert_plus")
-        self._barnabas_wins = max(old_house_wins, legacy_bert_plus_wins)
-        self._barnabas_remaining_wins = max(0, self._barnabas_unlock_wins - self._barnabas_wins)
-        self._barnabas_unlocked = self._barnabas_wins >= self._barnabas_unlock_wins
-
         levels: list[tuple[int, str]] = [
             (1, "Easy"),
             (2, "Medium"),
             (3, "Hard"),
             (4, "Bert"),
-            (5, "Old House"),
+            (5, "Barnabas"),
         ]
-        if self._barnabas_unlocked or self._show_barnabas_dev_preview:
-            levels.append((6, "Barnabas"))
-
-        if not self._barnabas_unlocked and self.dad_ai_level == 6:
+        # Migrate legacy difficulty snapshots where level 6 represented Barnabas.
+        if self.dad_ai_level >= 6:
             self.dad_ai_level = 5
 
         if self.dad_ai_level not in {lvl for lvl, _ in levels}:
             self.dad_ai_level = 5
         return levels
-
-    def _barnabas_unlock_message(self) -> str:
-        if self._barnabas_unlocked:
-            return "Barnabas unlocked."
-        return (
-            f"Barnabas locked: {self._barnabas_wins}/{self._barnabas_unlock_wins} "
-            f"Old House wins ({self._barnabas_remaining_wins} to go)."
-        )
 
     def handle_event(self, event, engine, assets, app):
         if event.type == pygame.KEYDOWN and self.player_name_editing and not self.settings_open:
@@ -153,9 +130,6 @@ class IntroState(GameStateBase):
 
             for level, rect in self.difficulty_buttons.items():
                 if rect.collidepoint(event.pos):
-                    if level == 6 and not self._barnabas_unlocked:
-                        self._play_audio(app, "card")
-                        return self
                     self.dad_ai_level = int(level)
                     self._play_audio(app, "score")
                     self._speak_event(app, "level_selected")
@@ -370,7 +344,7 @@ class IntroState(GameStateBase):
             difficulty_options=self._visible_difficulty_levels(app),
             difficulty_descriptions=self.difficulty_descriptions,
             maine_shape=maine_shape,
-            locked_levels={6} if not self._barnabas_unlocked else set(),
+            locked_levels=set(),
         )
 
         self.difficulty_buttons = layout["difficulty_buttons"]
@@ -438,12 +412,4 @@ class IntroState(GameStateBase):
         hint_rect = hint.get_rect(topleft=(sw // 2 - hint.get_width() // 2, max(8, hint_y)))
         screen.blit(hint, hint_rect)
 
-        if not self._barnabas_unlocked:
-            unlock_font = pygame.font.SysFont("segoe ui", 18, bold=True)
-            unlock_text = unlock_font.render(self._barnabas_unlock_message(), True, (250, 220, 154))
-            unlock_shadow = unlock_font.render(self._barnabas_unlock_message(), True, (0, 0, 0))
-            unlock_y = min(sh - unlock_text.get_height() - 8, hint_rect.bottom + 8)
-            unlock_x = sw // 2 - unlock_text.get_width() // 2
-            screen.blit(unlock_shadow, (unlock_x + 1, unlock_y + 1))
-            screen.blit(unlock_text, (unlock_x, unlock_y))
 

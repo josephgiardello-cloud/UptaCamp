@@ -1,7 +1,6 @@
 ﻿from __future__ import annotations
 
 # pyright: reportConstantRedefinition=false
-
 import json
 import random
 import re
@@ -82,6 +81,11 @@ _DOWNEAST_LINES: dict[str, list[str]] = {
         "Ayuh, them crib cahds done their job.",
         "Counted the crib. Every point earns.",
     ],
+    "round_summary": [
+        "Hand's closed. Peg board, hand count, crib done proper.",
+        "That's the round: pegs marked, crib counted, on to the next cut.",
+        "Round summary's in. Keep the toss tight next hand, bub.",
+    ],
 }
 
 _ROBOT_LINES: dict[str, list[str]] = {
@@ -98,6 +102,7 @@ _ROBOT_LINES: dict[str, list[str]] = {
     "bert_won": ["RESULT: BERT VICTORY."],
     "hand_scored": ["HAND COUNT FINALIZED.", "SCORING COMPLETE."],
     "crib_scored": ["CRIB EVALUATION COMPLETE.", "CRIB SCORED."],
+    "round_summary": ["ROUND SUMMARY GENERATED.", "HAND CLOSED. PREPARE NEXT DEAL."],
 }
 
 _BARNABUS_DOWNEAST_LINES: dict[str, list[str]] = {
@@ -166,6 +171,11 @@ _BARNABUS_DOWNEAST_LINES: dict[str, list[str]] = {
         "Barnabas counts the crib clean.",
         "Crib is in. Barnabas takes what is there.",
     ],
+    "round_summary": [
+        "Round closed. Peg lane, hand count, and crib all accounted.",
+        "That hand is settled: throws punished, pegs harvested, crib counted.",
+        "Summary stands. Cut again if you dare.",
+    ],
 }
 
 _BARNABUS_ROBOT_LINES: dict[str, list[str]] = {
@@ -182,6 +192,7 @@ _BARNABUS_ROBOT_LINES: dict[str, list[str]] = {
     "bert_won": ["RESULT: BARNABUS VICTORY."],
     "hand_scored": ["HAND SCORING FINALIZED."],
     "crib_scored": ["CRIB SCORING FINALIZED."],
+    "round_summary": ["ROUND SUMMARY COMPLETE."],
 }
 
 _BARNABUS_GENTLEMAN_TAILS: tuple[str, ...] = (
@@ -380,16 +391,16 @@ def _load_external_generator_data() -> None:
                 return {}
             parsed: dict[str, list[str]] = {}
             for event, values in cast(dict[str, Any], raw).items():
-                if not isinstance(event, str) or not isinstance(values, list):
+                if not isinstance(values, list):
                     continue
-                cleaned = [v.strip() for v in values if isinstance(v, str) and v.strip()]
+                cleaned = [v.strip() for v in cast(list[Any], values) if isinstance(v, str) and v.strip()]
                 if cleaned:
                     parsed[event] = cleaned
             return parsed
 
         def _extract_tails(raw: Any) -> tuple[str, ...]:
             if not isinstance(raw, list):
-                return tuple()
+                return ()
             cleaned = tuple(v.strip() for v in raw if isinstance(v, str) and v.strip())
             return cleaned
 
@@ -789,11 +800,11 @@ def _choose_downeast_line(event: str, context: dict[str, Any]) -> str:
         if bert_is_dealer:
             return _pick(
                 "Bert's deal. Toss light and don't feed my crib, ayuh.",
-                "I'm dealin. Keep your discards lean, bub, not generous.",
+                "I'm dealin. Keep the throw lean and deny the crib lane, bub.",
             )
         return _pick(
-            "Your deal. Keep your two-card gift honest, now.",
-            "Your crib this hand. Don't you go throwin paint at the wall, bub.",
+            "Your deal. Keep your two-card throw honest now.",
+            "Your crib this hand. Don't leak me fifteens on the toss, bub.",
         )
 
     if event == "go_called":
@@ -817,8 +828,8 @@ def _choose_downeast_line(event: str, context: dict[str, Any]) -> str:
             )
         if pegging_total >= 27:
             return _pick(
-                "Go? Ayuh, I was hopin you'd say that this close to thirty-one.",
-                "Go at twenty-somethin? That's invitin trouble, bub.",
+                "Go? Ayuh, this close to thirty-one is where hands turn.",
+                "Go at twenty-somethin? That's invitin a clean thirty-one, bub.",
             )
         return _pick(
             "Go called. Bert'll steer this count.",
@@ -931,7 +942,7 @@ def _choose_downeast_line(event: str, context: dict[str, Any]) -> str:
         if pegging_total >= 20:
             return _pick(
                 "That's a sharp peg late in the count.",
-                "Late-count peg. That's where steady players eat, bub.",
+                "Late-count peg. That's where steady cribbage gets won, bub.",
             )
         if swing >= 4:
             return _pick(
@@ -944,8 +955,8 @@ def _choose_downeast_line(event: str, context: dict[str, Any]) -> str:
                 "You got the peg wind now, but not for long, bub.",
             )
         return _pick(
-            "Wicked tidy peggin, just like drawin bait line.",
-            "Clean peg. Nothing flashy, just proper work.",
+            "Wicked tidy peggin. Pairs and runs don't miss by accident.",
+            "Clean peg. Nothing flashy, just proper cribbage work.",
         )
 
     if event == "pegging_31":
@@ -1073,6 +1084,36 @@ def _choose_downeast_line(event: str, context: dict[str, Any]) -> str:
             f"Your crib paid {crib_points}. Decent haul for one toss.",
         )
 
+    if event == "round_summary":
+        hand_player = _to_int(context.get("player_hand_points"))
+        hand_bert = _to_int(context.get("bert_hand_points"))
+        crib = _to_int(context.get("crib_points"))
+        pegging_player = _to_int(context.get("player_pegging_points"))
+        pegging_bert = _to_int(context.get("bert_pegging_points"))
+        if score_known:
+            if mood in {"hot", "boiling"}:
+                return _pick(
+                    f"Round recap: pegs {pegging_bert} to {pegging_player}, hand {hand_bert} to {hand_player}, crib {crib}. I'm still pressin, bub.",
+                    f"That's the book: peggin {pegging_bert}-{pegging_player}, hand count {hand_bert}-{hand_player}, crib {crib}. No soft next deal.",
+                    lane="hot",
+                )
+            if trailing_mood:
+                return _pick(
+                    f"Round recap: pegs {pegging_bert}-{pegging_player}, hand {hand_bert}-{hand_player}, crib {crib}. Chip away, keep count clean.",
+                    f"Hand closed: peggin {pegging_bert} to {pegging_player}, hand {hand_bert} to {hand_player}, crib {crib}. Still in it, ayuh.",
+                    lane="trailing",
+                )
+            if leading_mood:
+                return _pick(
+                    f"Round recap: pegs {pegging_bert}-{pegging_player}, hand {hand_bert}-{hand_player}, crib {crib}. Keep the rail steady.",
+                    f"Book for the hand: peggin {pegging_bert}-{pegging_player}, hand count {hand_bert}-{hand_player}, crib {crib}. Stay measured.",
+                    lane="leading",
+                )
+        return _pick(
+            f"Round summary: peggin {pegging_bert}-{pegging_player}, hand {hand_bert}-{hand_player}, crib {crib}.",
+            "Hand's in the books. Cut card, throw two, and do it cleaner next deal.",
+        )
+
     if event == "bert_won":
         if mood in {"hot", "boiling"}:
             if score_known:
@@ -1179,7 +1220,10 @@ def choose_line(
     dad_ai_level: int,
     context: dict[str, Any] | None = None,
 ) -> str:
-    if dad_ai_level not in (4, 5, 6):
+    if dad_ai_level >= 5:
+        dad_ai_level = 5
+
+    if dad_ai_level not in (4, 5):
         return ""
 
     context = context or {}
@@ -1197,13 +1241,16 @@ def choose_line(
         if not barnabas_lines:
             return ""
         line = random.choice(barnabas_lines)
+        learning_ack = _level5_learning_ack(event, context)
+        if learning_ack:
+            line = f"{line} {learning_ack}"
         if score_gap <= -8:
             line = f"{line} {random.choice(_BARNABUS_VAMPIRE_TAILS)}"
         elif score_gap >= 8:
             line = f"{line} {random.choice(_BARNABUS_GENTLEMAN_TAILS)}"
         return _purge_bert_from_barnabas_text(line)
 
-    # Keep Bert (4) grounded and level 6 as adaptive Bert+.
+    # Keep Bert grounded and keep Barnabas distinct as the final lane.
     if style == "robot":
         bank = _ROBOT_LINES
         lines = bank.get(event)
@@ -1225,14 +1272,4 @@ def choose_line(
         if overlay:
             choice = f"{choice} {overlay}"
 
-    if dad_ai_level == 6 and style == "robot":
-        return f"{choice} ADAPTIVE PROFILE ACTIVE."
-    if dad_ai_level == 6 and style == "downeast":
-        learning_ack = _level5_learning_ack(event, context)
-        if learning_ack:
-            choice = f"{choice} {learning_ack}"
-        if event in ("bert_won", "pegging_31"):
-            return f"{choice} Bert Plus saw that line two plays ago."
-        if not choice.endswith("."):
-            return choice + "."
     return choice

@@ -1,4 +1,5 @@
 import json
+
 # pyright: reportUnknownVariableType=false
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +20,7 @@ class GameState:
     starter_card: str | None = None
     player_turn: int = 0
     pegging_passes: list[bool] = field(default_factory=lambda: [False, False])
+    round_pegging_points: list[int] = field(default_factory=lambda: [0, 0])
     last_pegging_player: int | None = None
     message: str = ""
     dad_ai_level: int = 2
@@ -85,6 +87,7 @@ class GameState:
             "starter_card": str(self.starter_card) if self.starter_card else None,
             "player_turn": self.player_turn,
             "pegging_passes": list(self.pegging_passes),
+            "round_pegging_points": list(self.round_pegging_points),
             "last_pegging_player": self.last_pegging_player,
             "message": self.message,
             "dad_ai_level": self.dad_ai_level,

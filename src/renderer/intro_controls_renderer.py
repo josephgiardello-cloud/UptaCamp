@@ -421,10 +421,9 @@ def draw_intro_controls(
             3: "Native Mainer",
             4: "The Wharf",
             5: "Camp Collinwood",
-            6: "Storm Cellar",
         }
         if is_locked:
-            badge_labels[6] = "Locked"
+            badge_labels[level] = "Locked"
         badge_str = badge_labels.get(level, "Challenge")
         badge_spacing = 1 if len(badge_str) >= 14 else 2
         badge_w = tracked_width(card_badge_font, badge_str, badge_spacing)
@@ -471,8 +470,6 @@ def draw_intro_controls(
             "BARNABUS": 1,
         }
         name_spacing = spacing_map.get(name_up, 1)
-        name_width = tracked_width(card_name_font, name_up, name_spacing)
-        level_x = draw_rect.x + button_width // 2 - name_width // 2
         level_y = draw_rect.y + 36
         tracked(screen, card_name_font, name_up, (0, 0, 0), draw_rect.centerx + 2, level_y + 2, spacing=name_spacing)
         tracked(screen, card_name_font, name_up, level_color, draw_rect.centerx, level_y, spacing=name_spacing)

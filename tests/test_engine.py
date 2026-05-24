@@ -332,7 +332,7 @@ def test_level5_count_hands_updates_and_saves_barnabas(monkeypatch):
     assert called["save"] == 1
 
 
-def test_level6_count_hands_updates_and_saves_bert(monkeypatch):
+def test_legacy_level6_count_hands_updates_and_saves_barnabas(monkeypatch):
     engine = CribbageEngine()
     engine.state.dad_ai_level = 6
     engine.state.player_kept = [
@@ -358,13 +358,13 @@ def test_level6_count_hands_updates_and_saves_bert(monkeypatch):
 
     called = {"update": 0, "save": 0}
 
-    class _FakeBert:
+    class _FakeBarnabas:
         def end_of_hand_update(self, reward):
             called["update"] += 1
             assert isinstance(reward, float)
 
-    monkeypatch.setattr(ai_strategy, "get_bert_agent", lambda: _FakeBert())
-    monkeypatch.setattr(ai_strategy, "save_bert_agent", lambda: called.__setitem__("save", 1))
+    monkeypatch.setattr(ai_strategy, "get_barnabas_agent", lambda: _FakeBarnabas())
+    monkeypatch.setattr(ai_strategy, "save_barnabas_agent", lambda: called.__setitem__("save", 1))
 
     engine.count_hands(_label_to_model)
 

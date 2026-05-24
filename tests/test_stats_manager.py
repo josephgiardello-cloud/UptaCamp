@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from stats_manager import (
     get_bert_stats_comment,
-    get_player_records_list,
     get_player_profile,
+    get_player_records_list,
     record_game_result,
     record_hand_stats,
     reset_player_stats,
