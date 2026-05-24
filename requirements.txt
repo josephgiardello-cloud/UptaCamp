@@ -4,7 +4,7 @@ black==26.5.1
 cairocffi==1.7.1
 CairoSVG==2.8.2
 certifi==2026.5.20
-cffi==1.17.1
+cffi==2.0.0
 cfgv==3.5.0
 click==8.4.0
 colorama==0.4.6
