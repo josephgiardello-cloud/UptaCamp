@@ -1,7 +1,9 @@
 import argparse
+import ctypes
 import logging
 import os
 import time
+import traceback
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -233,6 +235,24 @@ def _run_once(args: Any) -> int:
     return int(_run_state_client(args) or 0)
 
 
+def _show_fatal_startup_error(exc: Exception) -> None:
+    message = (
+        "CribbageGame failed to start.\n\n"
+        f"{type(exc).__name__}: {exc}\n\n"
+        "If you launched from a .zip, extract all files first and run CribbageGame.exe from the extracted folder."
+    )
+    try:
+        with open("startup_error.log", "w", encoding="utf-8") as fh:
+            fh.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+    except Exception:
+        pass
+
+    try:
+        ctypes.windll.user32.MessageBoxW(0, message, "CribbageGame Startup Error", 0x10)
+    except Exception:
+        print(message)
+
+
 def main():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--debug-play", action="store_true")
@@ -282,11 +302,19 @@ def main():
     args, _ = parser.parse_known_args()
 
     if not bool(getattr(args, "auto_relaunch", False)):
-        return _run_once(args)
+        try:
+            return _run_once(args)
+        except Exception as exc:
+            _show_fatal_startup_error(exc)
+            return 1
 
     delay_s = max(0.0, float(getattr(args, "relaunch_delay", 0.75)))
     while True:
-        code = _run_once(args)
+        try:
+            code = _run_once(args)
+        except Exception as exc:
+            _show_fatal_startup_error(exc)
+            return 1
         print(f"[main] Game closed (exit={code}). Relaunching in {delay_s:.2f}s...")
         if delay_s > 0:
             time.sleep(delay_s)

@@ -71,8 +71,9 @@ The title screens above show the current selectable difficulty cards:
 ### Option A: Windows beta zip (fastest)
 
 1. Download the beta zip from the link at the top.
-2. Extract it.
-3. Run CribbageGame.exe.
+2. Right-click zip -> Extract All.
+3. Open the extracted `CribbageGame` folder.
+4. Run `CribbageGame.exe` from that extracted folder (do not run from inside the zip viewer).
 
 ### Option B: Run from source
 

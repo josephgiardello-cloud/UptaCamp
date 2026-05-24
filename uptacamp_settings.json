@@ -5,16 +5,16 @@
   "ui_style": "classic",
   "background_theme": "wharf",
   "dark_shadows_unlocked": false,
-  "bert_voice_enabled": true,
+  "bert_voice_enabled": false,
   "bert_voice_style": "downeast",
-  "bert_voice_backend": "local_ai",
+  "bert_voice_backend": "sapi",
   "bert_local_model_path": "bert_voice_models/en_US-joe-medium.onnx",
   "barnabas_local_model_path": "",
-  "bert_local_exe_path": ".venv/Scripts/piper.exe",
-  "bert_rvc_enabled": true,
+  "bert_local_exe_path": "piper",
+  "bert_rvc_enabled": false,
   "bert_rvc_exe_path": "rvc_infer",
   "bert_rvc_model_path": "",
   "bert_rvc_index_path": "",
-  "bert_rvc_pitch_shift": 5,
-  "player_name": "Joe"
+  "bert_rvc_pitch_shift": 0,
+  "player_name": "Player"
 }
