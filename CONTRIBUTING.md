@@ -2,10 +2,6 @@
 
 Thank you for your interest in contributing to **UptaCamp**! 🎉 This document provides guidelines and instructions for contributing to the project.
 
-## Code of Conduct
-
-Please read and adhere to our [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). We're committed to providing a welcoming and inclusive environment for all contributors.
-
 ## How to Contribute
 
 ### Reporting Bugs

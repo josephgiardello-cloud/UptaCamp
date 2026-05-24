@@ -157,7 +157,7 @@ python -m pytest -q .
 
 ## Contributing
 
-See CONTRIBUTING.md and CODE_OF_CONDUCT.md.
+See CONTRIBUTING.md.
 
 ## License
 
