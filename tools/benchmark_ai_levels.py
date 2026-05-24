@@ -38,14 +38,16 @@ def _choose_player_pegging_move(
     player_level: int,
 ) -> int | None:
     picked = ai_strategy.choose_pegging_index(
-        hand_labels=[card.label for card in engine.state.player_hand],
+        hand_labels=[cribbage_cards.card_label(card) for card in engine.state.player_hand],
         current_total=int(engine.get_pegging_total()),
         dad_ai_level=int(player_level),
         value_for_15=cribbage_cards.value_for_fifteen,
         parse_label=cribbage_cards.parse_card_label,
         score_pegging_play=cribbage_cards.score_pegging_play,
         label_card_factory=cribbage_cards.label_to_card,
-        current_pegging_labels=[card.label for card in engine.state.pegging_pile],
+        current_pegging_labels=[
+            cribbage_cards.card_label(card) for card in engine.state.pegging_pile
+        ],
         game_state=engine.state,
     )
     if picked is None:
@@ -76,7 +78,7 @@ def _choose_player_pegging_move(
 def _choose_player_discard_indices(
     engine: CribbageEngine, player_level: int, rng: random.Random
 ) -> list[int]:
-    hand_labels = [card.label for card in engine.state.player_hand]
+    hand_labels = [cribbage_cards.card_label(card) for card in engine.state.player_hand]
     if len(hand_labels) != 6:
         moves = [list(pair) for pair in combinations(range(len(engine.state.player_hand)), 2)]
         return rng.choice(moves) if moves else [0, 1]

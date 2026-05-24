@@ -1,7 +1,9 @@
 import itertools
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import overload
 
 # Card representation
-from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -106,11 +108,19 @@ def card_label(card_or_label: object) -> str:
     return str(getattr(card_or_label, "label", card_or_label))
 
 
-def pegging_total(pile: list[object]) -> int:
+def pegging_total(pile: Sequence[object]) -> int:
     return sum(value_for_fifteen(parse_card_label(card_label(item))[0]) for item in pile)
 
 
-def score_pegging_play(pile: list[object], new_card: object | None = None) -> int:
+@overload
+def score_pegging_play(pile: Sequence[object]) -> int: ...
+
+
+@overload
+def score_pegging_play(pile: Sequence[object], new_card: object) -> int: ...
+
+
+def score_pegging_play(pile: Sequence[object], new_card: object | None = None) -> int:
     working_pile = list(pile)
     if new_card is not None:
         working_pile.append(new_card)

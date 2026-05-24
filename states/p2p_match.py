@@ -346,6 +346,10 @@ class P2PMatchState(GameStateBase):
             return
         self._host_play_peg_for(label, "host", app)
 
+    def _host_go(self, app) -> None:
+        if self.phase == "pegging" and self.active_player == "host":
+            self._do_go("host", app)
+
     def _host_play_peg_for(self, label: str, player: str, app) -> None:
         """Authoritative peg a card for player ('host' or 'guest')."""
         hand = self._host_peg_hand if player == "host" else self._guest_peg_hand
@@ -494,9 +498,10 @@ class P2PMatchState(GameStateBase):
 
         # Check for winner
         winner_idx = next((i for i, s in enumerate(self.scores) if s >= _WIN_SCORE), None)
+        winner_score = self.scores[winner_idx] if winner_idx is not None else 0
         if winner_idx is not None:
             winner = host_name if winner_idx == 0 else guest_name
-            self.message = f"{winner} wins with {self.scores[winner_idx]} points! Press R to exit."
+            self.message = f"{winner} wins with {winner_score} points! Press R to exit."
             self.phase = "finished"
 
         guest_result = {
@@ -513,7 +518,7 @@ class P2PMatchState(GameStateBase):
                 f"Press N for next round."
             )
             if self.phase != "finished"
-            else f"{'You win' if winner_idx == 1 else host_name + ' wins'} with {self.scores[winner_idx]} pts!"
+            else f"{'You win' if winner_idx == 1 else host_name + ' wins'} with {winner_score} pts!"
         )
 
         app.p2p_host.send(

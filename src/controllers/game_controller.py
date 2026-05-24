@@ -112,7 +112,12 @@ class GameController:
 
     def check_for_winner(self) -> int | None:
         """Evaluate and return winner index if any."""
-        return self._get_hooks()._check_for_winner()
+        raw = self._get_hooks()._check_for_winner()
+        if raw is None:
+            return None
+        if isinstance(raw, int):
+            return int(raw)
+        return None
 
     def update(self, *, auto_player: bool = False) -> None:
         """Update game state for current frame.

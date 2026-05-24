@@ -12,10 +12,14 @@ from dotenv import load_dotenv
 
 from online_backend import OnlineBackend
 
+sentry_sdk: Any | None
+_sentry_sdk: Any | None
 try:
-    import sentry_sdk
+    import sentry_sdk as _sentry_sdk
 except Exception:  # pragma: no cover - optional dependency at runtime
-    sentry_sdk = None
+    _sentry_sdk = None
+
+sentry_sdk = _sentry_sdk
 
 LOGGER = logging.getLogger(__name__)
 

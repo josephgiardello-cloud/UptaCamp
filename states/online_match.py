@@ -72,9 +72,13 @@ class OnlineMatchState(GameStateBase):
         game_state = snapshot.get("game_state", {})
         if not isinstance(game_state, dict):
             return []
-        if player_id and player_id == snapshot.get("summary", {}).get("player_one_id"):
+        summary = snapshot.get("summary", {})
+        if not isinstance(summary, dict):
+            summary = {}
+
+        if player_id and player_id == summary.get("player_one_id"):
             return OnlineMatchState._card_labels(game_state.get("player_hand"))
-        if player_id and player_id == snapshot.get("summary", {}).get("player_two_id"):
+        if player_id and player_id == summary.get("player_two_id"):
             return OnlineMatchState._card_labels(game_state.get("ai_hand"))
         return OnlineMatchState._card_labels(game_state.get("player_hand"))
 

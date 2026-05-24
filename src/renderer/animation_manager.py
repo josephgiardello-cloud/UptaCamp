@@ -56,7 +56,13 @@ class AnimationManager:
         self._effects.trigger_shake(intensity=intensity, duration_ms=duration_ms)
 
     def shake_offset(self) -> tuple[int, int]:
-        return self._effects.shake_offset()
+        raw = self._effects.shake_offset()
+        if isinstance(raw, tuple) and len(raw) == 2:
+            try:
+                return (int(raw[0]), int(raw[1]))
+            except (TypeError, ValueError):
+                return (0, 0)
+        return (0, 0)
 
     @staticmethod
     def _coerce_delta_ms(delta_time: float) -> int:

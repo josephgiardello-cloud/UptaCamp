@@ -371,10 +371,10 @@ def _load_external_generator_data() -> None:
     rows = _load_jsonl(data_dir / "gold_lines_seed.jsonl")
     event_tails: dict[str, list[str]] = {}
     for row in rows:
-        event = row.get("event")
+        event_key = row.get("event")
         line = row.get("line")
-        if isinstance(event, str) and isinstance(line, str) and line.strip():
-            event_tails.setdefault(event, []).append(line.strip())
+        if isinstance(event_key, str) and isinstance(line, str) and line.strip():
+            event_tails.setdefault(event_key, []).append(line.strip())
 
     _EVENT_GOLD_TAILS.clear()
     for event, values in event_tails.items():

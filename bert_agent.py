@@ -514,7 +514,10 @@ class DQN:
                     state_vector, dtype=torch.float32, device=self.device
                 ).unsqueeze(0)
                 q_values = self.model(state_tensor).squeeze(0)
-                return q_values.cpu().numpy().tolist()
+                raw = q_values.cpu().numpy().tolist()
+                if isinstance(raw, list):
+                    return [float(x) for x in raw]
+                return None
         except Exception:
             return None
 

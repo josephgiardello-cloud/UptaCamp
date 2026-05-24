@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import random
 from pathlib import Path
+from typing import cast
 
 import cards
 from bert_agent import BertAgent
@@ -117,7 +118,7 @@ def train(
             pegging_hand = random.sample(deck, 4)
             current_total = random.randint(0, 26)
             current_pile = random.sample(deck, k=random.randint(0, 4))
-            pegging_state.pegging_pile = current_pile
+            pegging_state.pegging_pile = cast(list[object], current_pile)
 
             idx = agent.choose_pegging(pegging_hand, current_total, pegging_state, posture=posture)
             if idx is not None:

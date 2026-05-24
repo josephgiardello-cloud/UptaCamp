@@ -25,9 +25,13 @@ class AppContext:
     last_error: str = ""
     status_message: str = ""
     game_state: GameState = field(default_factory=GameState)
+    client: OnlineClient = field(init=False)
+    stream: MatchEventStream | None = field(default=None, init=False)
     settings: Any = None
     audio: Any = None
     voice: Any = None
+    screen: Any = None
+    assets: Any = None
 
     # Direct P2P fields (no central server required)
     p2p_host: Any = None  # p2p.P2PHost when this player is hosting
@@ -37,7 +41,6 @@ class AppContext:
 
     def __post_init__(self) -> None:
         self.client = OnlineClient(self.server_url)
-        self.stream: MatchEventStream | None = None
 
     def reset_stream(self) -> None:
         if self.stream is not None:

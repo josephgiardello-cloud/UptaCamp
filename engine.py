@@ -305,7 +305,7 @@ class CribbageEngine:
     def ai_discard(self, strategy: Any | None = None) -> list[int]:
         strategy_module = ai_strategy if strategy is None else strategy
         dad_labels = self._labels(self.state.ai_hand)
-        return strategy_module.choose_discard_indices(
+        raw = strategy_module.choose_discard_indices(
             dad_labels=dad_labels,
             dad_ai_level=self.state.dad_ai_level,
             dealer_is_dad=(self.state.dealer == 1),
@@ -313,6 +313,9 @@ class CribbageEngine:
             score_labels_hand=self._score_labels_hand,
             game_state=self.state,
         )
+        if isinstance(raw, (list, tuple)):
+            return [int(i) for i in list(raw)]
+        return []
 
     def ai_pegging_move(
         self,
@@ -386,7 +389,11 @@ class CribbageEngine:
         )
 
         result = {"player": 0, "ai": 0, "crib": 0}
-        breakdown = {"player": [], "ai": [], "crib": []}
+        breakdown: dict[str, list[tuple[str, list[str], int]]] = {
+            "player": [],
+            "ai": [],
+            "crib": [],
+        }
 
         def _score_player(
             index: int, total: int, score_breakdown: list[tuple[str, list[str], int]], key: str

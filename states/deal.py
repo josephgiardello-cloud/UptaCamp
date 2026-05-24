@@ -182,6 +182,20 @@ class DealState(GameStateBase):
         if self.round_summary_spoken or not isinstance(self.end_hand_summary, dict):
             return
 
+        def _safe_int(value: object, default: int = 0) -> int:
+            if isinstance(value, bool):
+                return int(value)
+            if isinstance(value, int):
+                return value
+            if isinstance(value, float):
+                return int(value)
+            if isinstance(value, str):
+                try:
+                    return int(value.strip())
+                except ValueError:
+                    return default
+            return default
+
         voice = getattr(app, "voice", None)
         settings = getattr(app, "settings", None)
         if voice is None or settings is None:
@@ -193,9 +207,9 @@ class DealState(GameStateBase):
         context = {
             "player_score": int(scores[0]) if len(scores) > 0 else 0,
             "bert_score": int(scores[1]) if len(scores) > 1 else 0,
-            "player_hand_points": int(self.end_hand_summary.get("player", 0)),
-            "bert_hand_points": int(self.end_hand_summary.get("ai", 0)),
-            "crib_points": int(self.end_hand_summary.get("crib", 0)),
+            "player_hand_points": _safe_int(self.end_hand_summary.get("player", 0)),
+            "bert_hand_points": _safe_int(self.end_hand_summary.get("ai", 0)),
+            "crib_points": _safe_int(self.end_hand_summary.get("crib", 0)),
             "player_pegging_points": int(pegging_points[0]) if len(pegging_points) > 0 else 0,
             "bert_pegging_points": int(pegging_points[1]) if len(pegging_points) > 1 else 0,
             "bert_is_dealer": int(getattr(engine.state, "dealer", 0)) == 1,

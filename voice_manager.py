@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import hashlib
+import importlib.util
 import os
 import re
 import shutil
@@ -13,17 +14,17 @@ from typing import Any
 
 from runtime_paths import resolve_runtime_path
 
-try:
-    import piper as piper_package
-    from piper import PiperVoice
-except ImportError:  # pragma: no cover - optional dependency in dev envs
-    PiperVoice = None
-    piper_package = None
+PiperVoice: Any | None = None
+piper_package: Any | None = None
 
+winsound: Any | None
+_winsound: Any | None
 try:
-    import winsound
+    import winsound as _winsound
 except ImportError:  # pragma: no cover - non-Windows platforms
-    winsound = None
+    _winsound = None
+
+winsound = _winsound
 
 
 class VoiceManager:
@@ -280,18 +281,30 @@ class VoiceManager:
         return self._synthesize_with_piper_exe(text, model_path, wav_path)
 
     def _resolve_piper_espeak_data_dir(self) -> Path | None:
-        if piper_package is None:
+        spec = importlib.util.find_spec("piper")
+        if spec is None:
             return None
 
-        package_dir = Path(piper_package.__file__).resolve().parent
+        if spec.submodule_search_locations:
+            package_dir = Path(list(spec.submodule_search_locations)[0]).resolve()
+        elif spec.origin:
+            package_dir = Path(spec.origin).resolve().parent
+        else:
+            return None
+
         espeak_dir = package_dir / "espeak-ng-data"
         if espeak_dir.exists():
             return espeak_dir
         return None
 
     def _load_piper_voice(self, model_path: Path) -> Any | None:
+        global PiperVoice
         if PiperVoice is None:
-            return None
+            try:
+                from piper import PiperVoice as _PiperVoice  # type: ignore[import-not-found]
+            except ImportError:
+                return None
+            PiperVoice = _PiperVoice
 
         config_path = model_path.with_suffix(f"{model_path.suffix}.json")
         espeak_dir = self._resolve_piper_espeak_data_dir()
@@ -303,11 +316,13 @@ class VoiceManager:
                 return cached
 
             try:
-                voice = PiperVoice.load(
-                    str(model_path),
-                    config_path=str(config_path) if config_path.exists() else None,
-                    espeak_data_dir=str(espeak_dir) if espeak_dir is not None else None,
-                )
+                load_kwargs: dict[str, Any] = {}
+                if config_path.exists():
+                    load_kwargs["config_path"] = str(config_path)
+                if espeak_dir is not None:
+                    load_kwargs["espeak_data_dir"] = str(espeak_dir)
+
+                voice = PiperVoice.load(str(model_path), **load_kwargs)
             except Exception:
                 return None
 
@@ -626,9 +641,7 @@ class VoiceManager:
         }
 
         exe = self.local_ai_exe_path or "piper"
-        python_runtime_found = (
-            PiperVoice is not None and self._resolve_piper_espeak_data_dir() is not None
-        )
+        python_runtime_found = self._resolve_piper_espeak_data_dir() is not None
         exe_found = shutil.which(exe) is not None or Path(exe).exists() or python_runtime_found
         report["local_ai"]["executable_found"] = exe_found
         model_path = (
