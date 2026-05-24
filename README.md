@@ -4,7 +4,7 @@ UptaCamp is a Python + Pygame cribbage game with local play, AI opponents, and o
 
 ## Beta Download (Windows)
 
-[Download Windows Beta ZIP (direct)](https://github.com/josephgiardello-cloud/UptaCamp/raw/master/CribbageGame-Windows-Test.zip)
+[Download Windows Beta Release](https://github.com/josephgiardello-cloud/UptaCamp/releases/tag/v1.1.0-beta)
 
 > [!WARNING]
 > This is a beta build for testing. Expect bugs, balancing changes, and occasional online service interruptions.
