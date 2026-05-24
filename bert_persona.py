@@ -174,7 +174,7 @@ _BARNABUS_DOWNEAST_LINES: dict[str, list[str]] = {
     "round_summary": [
         "Round closed. Peg lane, hand count, and crib all accounted.",
         "That hand is settled: throws punished, pegs harvested, crib counted.",
-        "Summary stands. Cut again if you dare.",
+        "Round summary stands. Cut again if you dare.",
     ],
 }
 
