@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pygame
 
 from runtime_paths import resource_path

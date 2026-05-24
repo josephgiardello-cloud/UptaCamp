@@ -174,7 +174,23 @@ def _run_state_client(args: Any) -> int:
     )
     logger = logging.getLogger(__name__)
 
+    max_runtime_seconds = float(getattr(args, "max_runtime_seconds", 0.0) or 0.0)
+    started_at = time.monotonic()
+
+    if max_runtime_seconds > 0:
+        logger.info("Starting smoke run (max_runtime_seconds=%.2f)", max_runtime_seconds)
+        pygame.display.init()
+        try:
+            clock = pygame.time.Clock()
+            while (time.monotonic() - started_at) < max_runtime_seconds:
+                pygame.event.pump()
+                clock.tick(60)
+        finally:
+            pygame.quit()
+        return 0
+
     pygame.init()
+
     screen = pygame.display.set_mode((1200, 800))
     clock = pygame.time.Clock()
 
@@ -221,12 +237,18 @@ def _run_state_client(args: Any) -> int:
     )
 
     while controller.running:
+        if max_runtime_seconds > 0 and (time.monotonic() - started_at) >= max_runtime_seconds:
+            logger.info("Max runtime reached (%.2fs). Exiting.", max_runtime_seconds)
+            controller.running = False
+            break
         events = list(pygame.event.get())
         controller.handle_input(events)
         controller.update(clock.get_time())
         controller.render()
         pygame.display.flip()
         clock.tick(app.fps_cap)
+
+    pygame.quit()
 
     return 0
 
@@ -258,6 +280,12 @@ def main():
     parser.add_argument("--debug-play", action="store_true")
     parser.add_argument("--online-url", default=_default_online_url())
     parser.add_argument("--online-ws-url", default=_default_online_ws_url())
+    parser.add_argument(
+        "--max-runtime-seconds",
+        type=float,
+        default=0.0,
+        help="Exit automatically after N seconds (for headless smoke tests).",
+    )
     parser.add_argument(
         "--fps-cap",
         type=int,
@@ -300,12 +328,16 @@ def main():
         help="Seconds to wait before relaunch when --auto-relaunch is enabled.",
     )
     args, _ = parser.parse_known_args()
+    smoke_mode = float(getattr(args, "max_runtime_seconds", 0.0) or 0.0) > 0
 
     if not bool(getattr(args, "auto_relaunch", False)):
         try:
             return _run_once(args)
         except Exception as exc:
-            _show_fatal_startup_error(exc)
+            if smoke_mode:
+                print(f"[main] Fatal startup error: {type(exc).__name__}: {exc}")
+            else:
+                _show_fatal_startup_error(exc)
             return 1
 
     delay_s = max(0.0, float(getattr(args, "relaunch_delay", 0.75)))
@@ -313,7 +345,10 @@ def main():
         try:
             code = _run_once(args)
         except Exception as exc:
-            _show_fatal_startup_error(exc)
+            if smoke_mode:
+                print(f"[main] Fatal startup error: {type(exc).__name__}: {exc}")
+            else:
+                _show_fatal_startup_error(exc)
             return 1
         print(f"[main] Game closed (exit={code}). Relaunching in {delay_s:.2f}s...")
         if delay_s > 0:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pygame
 
@@ -9,12 +9,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# isort: off
 from app_context import AppContext
 from asset_manager import AssetManager
 from cribbage_engine import CribbageEngine
 from settings_manager import load_settings
 from states.deal import DealState
 from states.intro import IntroState
+# isort: on
 
 
 OUT_DIR = Path("screenshots") / "beta_series_2026_05"
