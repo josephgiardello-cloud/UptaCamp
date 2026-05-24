@@ -35,7 +35,7 @@ platformdirs==4.9.6
 pluggy==1.6.0
 pre_commit==4.6.0
 protobuf==7.35.0
-pycparser==2.22
+pycparser==3.0
 pygame==2.6.1
 pygame-menu==4.5.2
 Pygments==2.20.0
