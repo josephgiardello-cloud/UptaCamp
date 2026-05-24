@@ -112,6 +112,26 @@ def draw_settings_modal(
         ),
     )
 
+    voice_text = "On" if settings.bert_voice_enabled else "Off"
+    voice_label = body_font.render(f"Narration: {voice_text}", True, (245, 236, 218))
+    screen.blit(voice_label, (modal.x + 28, modal.y + 330))
+    settings_voice_rect = pygame.Rect(modal.x + 28, modal.y + 358, 174, 44)
+    pygame.draw.rect(
+        screen,
+        (62, 101, 74) if settings.bert_voice_enabled else (121, 72, 66),
+        settings_voice_rect,
+        border_radius=22,
+    )
+    pygame.draw.rect(screen, (255, 239, 212), settings_voice_rect, width=2, border_radius=22)
+    voice_toggle_text = body_font.render("Toggle", True, (255, 255, 255))
+    screen.blit(
+        voice_toggle_text,
+        (
+            settings_voice_rect.centerx - voice_toggle_text.get_width() // 2,
+            settings_voice_rect.centery - voice_toggle_text.get_height() // 2,
+        ),
+    )
+
     footer = small_font.render("Esc closes settings", True, (210, 198, 176))
     screen.blit(footer, (modal.centerx - footer.get_width() // 2, modal.bottom - 36))
 
@@ -122,4 +142,5 @@ def draw_settings_modal(
         "settings_ai_right_rect": settings_ai_right_rect,
         "settings_style_left_rect": settings_style_left_rect,
         "settings_style_right_rect": settings_style_right_rect,
+        "settings_voice_rect": settings_voice_rect,
     }

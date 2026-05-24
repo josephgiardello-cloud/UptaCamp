@@ -39,6 +39,8 @@ try {
         --add-data "assets;assets" `
         --add-data "uptacamp_settings.json;." `
         --add-data "bert_voice_models;bert_voice_models" `
+        --collect-data piper `
+        --collect-submodules piper `
         main.py
 
     if (Test-Path ".\$ZipName") {

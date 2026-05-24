@@ -14,6 +14,13 @@ from typing import Any
 from runtime_paths import resolve_runtime_path
 
 try:
+    import piper as piper_package
+    from piper import PiperVoice
+except ImportError:  # pragma: no cover - optional dependency in dev envs
+    PiperVoice = None
+    piper_package = None
+
+try:
     import winsound
 except ImportError:  # pragma: no cover - non-Windows platforms
     winsound = None
@@ -53,6 +60,8 @@ class VoiceManager:
         self._sapi_proc: subprocess.Popen[Any] | None = None
         self._speaking_until = 0.0
         self._speech_guard = threading.Lock()
+        self._piper_lock = threading.Lock()
+        self._piper_voices: dict[tuple[str, str], Any] = {}
 
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = bool(enabled)
@@ -244,26 +253,10 @@ class VoiceManager:
                 self._speak_windows(text, 5)
             return
 
-        exe = self._resolve_runtime_executable(self.local_ai_exe_path or "piper")
-        if exe is None:
-            if self._is_windows:
-                self._speak_windows(text, 5)
-            return
-
         cache_key = self._build_cache_key(text, dad_ai_level=dad_ai_level, model_path=str(model_path))
         wav_path = self._cache_dir / f"{cache_key}.wav"
         if not wav_path.exists():
-            cmd = [str(exe), "--model", str(model_path), "--output_file", str(wav_path)]
-            try:
-                subprocess.run(
-                    cmd,
-                    input=text,
-                    text=True,
-                    capture_output=True,
-                    check=True,
-                    timeout=20,
-                )
-            except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
+            if not self._synthesize_local_ai_wav(text, model_path, wav_path):
                 if self._is_windows:
                     self._speak_windows(text, 5)
                 return
@@ -279,6 +272,81 @@ class VoiceManager:
                 winsound.PlaySound(str(playback_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
             except RuntimeError:
                 self._speak_windows(text, 5)
+
+    def _synthesize_local_ai_wav(self, text: str, model_path: Path, wav_path: Path) -> bool:
+        if self._synthesize_with_piper_python(text, model_path, wav_path):
+            return True
+        return self._synthesize_with_piper_exe(text, model_path, wav_path)
+
+    def _resolve_piper_espeak_data_dir(self) -> Path | None:
+        if piper_package is None:
+            return None
+
+        package_dir = Path(piper_package.__file__).resolve().parent
+        espeak_dir = package_dir / "espeak-ng-data"
+        if espeak_dir.exists():
+            return espeak_dir
+        return None
+
+    def _load_piper_voice(self, model_path: Path) -> Any | None:
+        if PiperVoice is None:
+            return None
+
+        config_path = model_path.with_suffix(f"{model_path.suffix}.json")
+        espeak_dir = self._resolve_piper_espeak_data_dir()
+        cache_key = (str(model_path), str(espeak_dir or ""))
+
+        with self._piper_lock:
+            cached = self._piper_voices.get(cache_key)
+            if cached is not None:
+                return cached
+
+            try:
+                voice = PiperVoice.load(
+                    str(model_path),
+                    config_path=str(config_path) if config_path.exists() else None,
+                    espeak_data_dir=str(espeak_dir) if espeak_dir is not None else None,
+                )
+            except Exception:
+                return None
+
+            self._piper_voices[cache_key] = voice
+            return voice
+
+    def _synthesize_with_piper_python(self, text: str, model_path: Path, wav_path: Path) -> bool:
+        voice = self._load_piper_voice(model_path)
+        if voice is None:
+            return False
+
+        try:
+            with wav_path.open("wb") as wav_file:
+                voice.synthesize_wav(text, wav_file)
+            return wav_path.exists() and wav_path.stat().st_size > 0
+        except Exception:
+            try:
+                wav_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return False
+
+    def _synthesize_with_piper_exe(self, text: str, model_path: Path, wav_path: Path) -> bool:
+        exe = self._resolve_runtime_executable(self.local_ai_exe_path or "piper")
+        if exe is None:
+            return False
+
+        cmd = [str(exe), "--model", str(model_path), "--output_file", str(wav_path)]
+        try:
+            subprocess.run(
+                cmd,
+                input=text,
+                text=True,
+                capture_output=True,
+                check=True,
+                timeout=20,
+            )
+            return wav_path.exists() and wav_path.stat().st_size > 0
+        except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
+            return False
 
     def _apply_barnabas_vocal_fx(self, wav_path: Path) -> Path:
         out_path = wav_path.with_name(f"{wav_path.stem}_barnabas.wav")
@@ -557,9 +625,11 @@ class VoiceManager:
         }
 
         exe = self.local_ai_exe_path or "piper"
-        exe_found = shutil.which(exe) is not None or Path(exe).exists()
+        python_runtime_found = PiperVoice is not None and self._resolve_piper_espeak_data_dir() is not None
+        exe_found = shutil.which(exe) is not None or Path(exe).exists() or python_runtime_found
         report["local_ai"]["executable_found"] = exe_found
-        model_found = bool(self.local_ai_model_path) and Path(self.local_ai_model_path).exists()
+        model_path = resolve_runtime_path(self.local_ai_model_path) if self.local_ai_model_path else None
+        model_found = model_path is not None and model_path.exists()
         report["local_ai"]["model_found"] = model_found
         report["local_ai"]["ready"] = bool(exe_found and model_found)
 
@@ -604,7 +674,7 @@ class VoiceManager:
             report["offline_ready"] = bool(report["local_ai"]["ready"])
 
         if not report["local_ai"]["executable_found"]:
-            report["notes"].append("Local AI backend not found: install Piper and set bert_local_exe_path.")
+            report["notes"].append("Local AI backend not found: install the Piper package or set bert_local_exe_path.")
         if not report["local_ai"]["model_found"]:
             report["notes"].append("Local AI model not found: set bert_local_model_path to a Piper model.")
         if report["rvc"]["enabled"] and not report["rvc"]["ready"]:

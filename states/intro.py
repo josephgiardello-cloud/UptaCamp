@@ -235,6 +235,18 @@ class IntroState(GameStateBase):
             save_settings(self.settings)
             return
 
+        voice_rect = rects.get("settings_voice_rect")
+        if voice_rect is not None and voice_rect.collidepoint(pos):
+            self.settings.bert_voice_enabled = not self.settings.bert_voice_enabled
+            voice = getattr(app, "voice", None)
+            if voice is not None and not self.settings.bert_voice_enabled:
+                try:
+                    voice.stop()
+                except Exception:
+                    pass
+            save_settings(self.settings)
+            return
+
         ai_left = rects.get("settings_ai_left_rect")
         ai_right = rects.get("settings_ai_right_rect")
         if ai_left is not None and ai_left.collidepoint(pos):

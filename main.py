@@ -284,7 +284,7 @@ def main():
         "--auto-relaunch",
         dest="auto_relaunch",
         action="store_true",
-        default=True,
+        default=False,
         help="Relaunch automatically after the game window closes.",
     )
     relaunch_group.add_argument(
