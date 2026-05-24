@@ -151,3 +151,6 @@ tmp_online.db
 *.pkl
 .bert_voice_cache/
 CribbageGame-Windows-Test.zip
+
+# Local portable tools
+.tools/gh/
