@@ -12,9 +12,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
-from dotenv import load_dotenv
-
 from online_backend import OnlineBackend
+
+load_dotenv: Any | None = None
+try:
+    load_dotenv = importlib.import_module("dotenv").load_dotenv
+except Exception:  # pragma: no cover - optional dependency at runtime
+    load_dotenv = None
 
 sentry_sdk: Any | None = None
 try:
@@ -419,7 +423,8 @@ def run_server(host: str, port: int, db_path: str) -> None:
 
 
 def main() -> None:
-    load_dotenv()
+    if callable(load_dotenv):
+        load_dotenv()
     _init_sentry()
     logging.basicConfig(
         level=logging.INFO,
