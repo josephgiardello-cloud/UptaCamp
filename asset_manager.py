@@ -2,10 +2,12 @@ from pathlib import Path
 
 import pygame
 
+from runtime_paths import resource_path
+
 
 class AssetManager:
     def __init__(self):
-        self.assets_dir = Path("assets")
+        self.assets_dir = resource_path("assets")
         self.card_images = {}
         self.backgrounds = {}
         self._load_all_assets()

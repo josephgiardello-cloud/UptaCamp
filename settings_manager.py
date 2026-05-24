@@ -4,7 +4,10 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-SETTINGS_PATH = Path(__file__).resolve().parent / "uptacamp_settings.json"
+from runtime_paths import resource_path, writable_path
+
+SETTINGS_PATH = writable_path("uptacamp_settings.json")
+BUNDLED_SETTINGS_PATH = resource_path("uptacamp_settings.json")
 
 
 @dataclass
@@ -15,12 +18,12 @@ class GameSettings:
     ui_style: str = "classic"
     background_theme: str = "auto"
     dark_shadows_unlocked: bool = False
-    bert_voice_enabled: bool = True
+    bert_voice_enabled: bool = False
     bert_voice_style: str = "downeast"
-    bert_voice_backend: str = "local_ai"
+    bert_voice_backend: str = "sapi"
     bert_local_model_path: str = "bert_voice_models/en_US-joe-medium.onnx"
     barnabas_local_model_path: str = ""
-    bert_local_exe_path: str = ".venv/Scripts/piper.exe"
+    bert_local_exe_path: str = "piper"
     bert_rvc_enabled: bool = False
     bert_rvc_exe_path: str = "rvc_infer"
     bert_rvc_model_path: str = ""
@@ -67,7 +70,13 @@ def load_settings(path: Path | None = None) -> GameSettings:
     try:
         raw = json.loads(file_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return GameSettings()
+        if path is None and BUNDLED_SETTINGS_PATH.exists():
+            try:
+                raw = json.loads(BUNDLED_SETTINGS_PATH.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return GameSettings()
+        else:
+            return GameSettings()
     except (OSError, json.JSONDecodeError):
         return GameSettings()
 

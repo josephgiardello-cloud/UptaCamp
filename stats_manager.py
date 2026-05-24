@@ -5,8 +5,10 @@ import re
 from pathlib import Path
 from typing import Any
 
-_LEGACY_STATS_PATH = Path(__file__).resolve().parent / "player_stats.json"
-_PLAYER_STATS_DIR = Path(__file__).resolve().parent / "player_profiles"
+from runtime_paths import writable_path
+
+_LEGACY_STATS_PATH = writable_path("player_stats.json")
+_PLAYER_STATS_DIR = writable_path("player_profiles")
 
 
 def _empty_bucket() -> dict[str, Any]:

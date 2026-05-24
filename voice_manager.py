@@ -11,6 +11,8 @@ import wave
 from pathlib import Path
 from typing import Any
 
+from runtime_paths import resolve_runtime_path
+
 try:
     import winsound
 except ImportError:  # pragma: no cover - non-Windows platforms
@@ -242,8 +244,8 @@ class VoiceManager:
                 self._speak_windows(text, 5)
             return
 
-        exe = self.local_ai_exe_path or "piper"
-        if shutil.which(exe) is None and not Path(exe).exists():
+        exe = self._resolve_runtime_executable(self.local_ai_exe_path or "piper")
+        if exe is None:
             if self._is_windows:
                 self._speak_windows(text, 5)
             return
@@ -251,7 +253,7 @@ class VoiceManager:
         cache_key = self._build_cache_key(text, dad_ai_level=dad_ai_level, model_path=str(model_path))
         wav_path = self._cache_dir / f"{cache_key}.wav"
         if not wav_path.exists():
-            cmd = [exe, "--model", str(model_path), "--output_file", str(wav_path)]
+            cmd = [str(exe), "--model", str(model_path), "--output_file", str(wav_path)]
             try:
                 subprocess.run(
                     cmd,
@@ -325,9 +327,10 @@ class VoiceManager:
         if not self.rvc_enabled:
             return wav_path
 
-        model_ok = bool(self.rvc_model_path) and Path(self.rvc_model_path).exists()
-        exe = self.rvc_exe_path or "rvc_infer"
-        exe_ok = shutil.which(exe) is not None or Path(exe).exists()
+        model_path = resolve_runtime_path(self.rvc_model_path) if self.rvc_model_path else None
+        model_ok = model_path is not None and model_path.exists()
+        exe = self._resolve_runtime_executable(self.rvc_exe_path or "rvc_infer")
+        exe_ok = exe is not None
         if not model_ok or not exe_ok:
             return wav_path
 
@@ -336,18 +339,20 @@ class VoiceManager:
             return out_path
 
         cmd = [
-            exe,
+            str(exe),
             "--input",
             str(wav_path),
             "--output",
             str(out_path),
             "--model",
-            str(self.rvc_model_path),
+            str(model_path),
             "--pitch",
             str(self.rvc_pitch_shift),
         ]
-        if self.rvc_index_path and Path(self.rvc_index_path).exists():
-            cmd.extend(["--index", str(self.rvc_index_path)])
+        if self.rvc_index_path:
+            index_path = resolve_runtime_path(self.rvc_index_path)
+            if index_path.exists():
+                cmd.extend(["--index", str(index_path)])
 
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=20)
@@ -365,11 +370,19 @@ class VoiceManager:
 
     def _resolve_local_ai_model_path(self, dad_ai_level: int) -> Path | None:
         if self._normalized_ai_level(dad_ai_level) == 5 and self.barnabas_local_model_path:
-            barnabas_path = Path(self.barnabas_local_model_path)
+            barnabas_path = resolve_runtime_path(self.barnabas_local_model_path)
             if barnabas_path.exists():
                 return barnabas_path
         if self.local_ai_model_path:
-            return Path(self.local_ai_model_path)
+            return resolve_runtime_path(self.local_ai_model_path)
+        return None
+
+    def _resolve_runtime_executable(self, value: str) -> Path | None:
+        resolved = resolve_runtime_path(value)
+        if resolved.exists():
+            return resolved
+        if shutil.which(value) is not None:
+            return Path(value)
         return None
 
     def _dynamic_sapi_rate(self, text: str, dad_ai_level: int) -> int:
