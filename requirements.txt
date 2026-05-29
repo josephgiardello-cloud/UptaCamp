@@ -47,7 +47,7 @@ pytokens==0.4.1
 pyttsx3==2.99
 pywin32==311
 PyYAML==6.0.3
-ruff==0.15.14
+ruff==0.15.15
 sentry-sdk==2.60.0
 setuptools==82.0.1
 tinycss2==1.5.1
