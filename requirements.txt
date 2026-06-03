@@ -29,7 +29,7 @@ pathspec==1.1.1
 pathvalidate==3.3.1
 pillow==12.2.0
 pipenv==2026.6.1
-platformdirs==4.9.6
+platformdirs==4.10.0
 pluggy==1.6.0
 pre_commit==4.6.0
 protobuf==7.35.0
