@@ -54,7 +54,7 @@ tinycss2==1.5.1
 typing_extensions==4.15.0
 -e git+https://github.com/josephgiardello-cloud/UptaCamp.git@569bede5077de18c8b9aa11db73b055339419530#egg=uptacamp
 urllib3==2.7.0
-virtualenv==21.3.3
+virtualenv==21.4.1
 watchfiles==1.2.0
 webencodings==0.5.1
 websockets==16.0
