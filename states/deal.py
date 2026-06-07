@@ -117,6 +117,32 @@ class DealState(GameStateBase):
         suit = raw_suit.lower()
         return f"{rank}_of_{suit}"
 
+    @staticmethod
+    def _skunk_note(scores: object, winner: object) -> str:
+        if not isinstance(scores, (list, tuple)) or len(scores) < 2:
+            return ""
+        if int(winner) not in (0, 1):
+            return ""
+
+        try:
+            player_score = int(scores[0])
+            bert_score = int(scores[1])
+        except (TypeError, ValueError):
+            return ""
+
+        if int(winner) == 0:
+            loser_score = bert_score
+            loser_name = "Bert"
+        else:
+            loser_score = player_score
+            loser_name = "you"
+
+        if loser_score <= 60:
+            return f"Double skunk. {loser_name} got double skunked."
+        if loser_score <= 90:
+            return f"Skunk. {loser_name} got skunked."
+        return ""
+
     def handle_event(self, event, engine, assets, app):
         if event.type != pygame.MOUSEBUTTONDOWN:
             return self
@@ -325,7 +351,7 @@ class DealState(GameStateBase):
         target = (table_center_x + side_bias, lane_y)
 
         distance = abs(target[0] - from_rect.centerx) + abs(target[1] - from_rect.centery)
-        duration = max(220, min(380, int(180 + (distance * 0.28))))
+        duration = max(280, min(480, int(260 + (distance * 0.34))))
         self.effects.add_card_flight(img, from_rect.center, target, duration_ms=duration)
 
     def _animate_discard_to_crib(self, selected_cards: list[tuple[object, int]], app) -> None:
@@ -356,8 +382,8 @@ class DealState(GameStateBase):
                 img,
                 source_rect.center,
                 target,
-                duration_ms=300,
-                start_delay_ms=order * 85,
+                duration_ms=380,
+                start_delay_ms=order * 105,
             )
 
     def _fallback_ai_pegging_index(self, engine, valid: list[int]) -> int:
@@ -504,16 +530,26 @@ class DealState(GameStateBase):
         if winner is not None and not self.game_over_voice_played:
             voice = getattr(app, "voice", None)
             settings = getattr(app, "settings", None)
+            scores = list(getattr(engine.state, "scores", [0, 0]))
+            skunk_note = self._skunk_note(scores, winner)
+
+            winner_label = "You win." if int(winner) == 0 else "Bert wins."
+            self.status_message = (
+                f"{winner_label} {skunk_note}".strip() if skunk_note else winner_label
+            )
+
             if voice is not None and settings is not None:
                 style = str(getattr(settings, "bert_voice_style", "downeast"))
                 event = "bert_won" if int(winner) == 1 else "player_won"
                 context = {
-                    "player_score": int(getattr(engine.state, "scores", [0, 0])[0]),
-                    "bert_score": int(getattr(engine.state, "scores", [0, 0])[1]),
+                    "player_score": int(scores[0]) if len(scores) > 0 else 0,
+                    "bert_score": int(scores[1]) if len(scores) > 1 else 0,
                 }
                 line = choose_line(
                     event, style=style, dad_ai_level=self.dad_ai_level, context=context
                 )
+                if skunk_note:
+                    line = f"{line} {skunk_note}".strip() if line else skunk_note
                 if line:
                     try:
                         voice.speak_bert(

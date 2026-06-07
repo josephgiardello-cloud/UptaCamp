@@ -158,6 +158,96 @@ def test_speak_bert_levels_1_to_3_force_sapi_even_when_local_ai_enabled(monkeypa
     assert local_calls == []
 
 
+def test_speak_bert_downeast_style_uses_local_ai_for_level5_when_configured(monkeypatch):
+    vm = VoiceManager(enabled=True, backend="local_ai")
+
+    sapi_calls = []
+    local_calls = []
+
+    def _fake_speak_windows(text, dad_ai_level):
+        sapi_calls.append((text, dad_ai_level))
+
+    def _fake_speak_local_ai_async(text, dad_ai_level, speech_token=None):
+        _ = speech_token
+        local_calls.append((text, dad_ai_level))
+
+    monkeypatch.setattr(vm, "_is_windows", True)
+    monkeypatch.setattr(vm, "_speak_windows", _fake_speak_windows)
+    monkeypatch.setattr(vm, "_speak_local_ai_async", _fake_speak_local_ai_async)
+    monkeypatch.setattr(vm, "_is_speaking", lambda now=None: False)
+
+    vm.speak_bert("Human style line", dad_ai_level=5, bypass_cooldown=True, voice_style="downeast")
+
+    assert sapi_calls == []
+    assert len(local_calls) == 1
+    assert local_calls[0][1] == 5
+
+
+def test_local_ai_level4_does_not_fallback_to_sapi_when_onnx_disabled(monkeypatch):
+    vm = VoiceManager(enabled=True, backend="local_ai")
+
+    sapi_calls = []
+
+    def _fake_speak_windows(text, dad_ai_level):
+        sapi_calls.append((text, dad_ai_level))
+
+    monkeypatch.setattr(vm, "_is_windows", True)
+    monkeypatch.setattr(vm, "_speak_windows", _fake_speak_windows)
+    monkeypatch.setenv("UPTACAMP_DISABLE_ONNX", "1")
+
+    vm._speak_local_ai("Local lane only", dad_ai_level=4)
+
+    assert sapi_calls == []
+
+
+def test_rejected_line_does_not_invalidate_active_local_ai_token(monkeypatch):
+    vm = VoiceManager(enabled=True, backend="local_ai")
+
+    first_calls = []
+
+    def _fake_local_async(text, dad_ai_level, speech_token=None):
+        first_calls.append((text, dad_ai_level, speech_token))
+
+    monkeypatch.setattr(vm, "_is_windows", True)
+    monkeypatch.setattr(vm, "_speak_local_ai_async", _fake_local_async)
+    monkeypatch.setattr(vm, "_is_speaking", lambda now=None: False)
+
+    vm.speak_bert("first", dad_ai_level=4, bypass_cooldown=True, voice_style="downeast")
+    assert len(first_calls) == 1
+    token = int(first_calls[0][2])
+    assert vm._is_token_current(token) is True
+
+    # A rejected attempt (already speaking, no bypass) should not roll the token forward.
+    monkeypatch.setattr(vm, "_is_speaking", lambda now=None: True)
+    vm.speak_bert("rejected", dad_ai_level=4, bypass_cooldown=False, voice_style="downeast")
+
+    assert vm._is_token_current(token) is True
+
+
+def test_synthesize_with_piper_python_writes_wav(monkeypatch, tmp_path):
+    vm = VoiceManager(enabled=True, backend="local_ai")
+
+    class _FakeVoice:
+        def synthesize_wav(self, text, wav_file):
+            _ = text
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            wav_file.writeframes(b"\x00\x00" * 2205)
+
+    monkeypatch.setattr(vm, "_load_piper_voice", lambda model_path: _FakeVoice())
+
+    model_path = tmp_path / "model.onnx"
+    model_path.write_text("stub", encoding="utf-8")
+    wav_path = tmp_path / "out.wav"
+
+    ok = vm._synthesize_with_piper_python("test line", model_path, wav_path)
+
+    assert ok is True
+    assert wav_path.exists()
+    assert wav_path.stat().st_size > 0
+
+
 def test_resolve_local_ai_model_path_prefers_barnabas_for_level5_and_legacy_level6(tmp_path):
     base_model = tmp_path / "joe.onnx"
     barnabas_model = tmp_path / "barnabas.onnx"

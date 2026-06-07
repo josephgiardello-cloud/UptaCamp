@@ -65,6 +65,7 @@ class VoiceManager:
         self._speech_guard = threading.Lock()
         self._piper_lock = threading.Lock()
         self._piper_voices: dict[tuple[str, str], Any] = {}
+        self._speech_token = 0
 
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = bool(enabled)
@@ -75,6 +76,7 @@ class VoiceManager:
             proc = self._sapi_proc
             self._sapi_proc = None
             self._speaking_until = 0.0
+            self._speech_token += 1
 
         if proc is not None:
             try:
@@ -162,11 +164,21 @@ class VoiceManager:
         force_sapi_lane = dad_ai_level in (1, 2, 3)
 
         if self.backend == "local_ai" and not force_sapi_lane:
-            self._speak_local_ai_async(spoken_text, dad_ai_level)
+            speech_token = self._begin_new_speech_token()
+            self._speak_local_ai_async(spoken_text, dad_ai_level, speech_token)
             return
 
         if self._is_windows:
             self._speak_windows(spoken_text, dad_ai_level)
+
+    def _begin_new_speech_token(self) -> int:
+        with self._speech_guard:
+            self._speech_token += 1
+            return self._speech_token
+
+    def _is_token_current(self, token: int) -> bool:
+        with self._speech_guard:
+            return token == self._speech_token
 
     def _shape_for_voice_style(self, text: str, voice_style: str) -> str:
         # Preserve vocabulary and only normalize spacing. Phonetic rewrites can
@@ -242,43 +254,63 @@ class VoiceManager:
             with_phrase_breaks,
         )
 
-    def _speak_local_ai_async(self, text: str, dad_ai_level: int) -> None:
+    def _speak_local_ai_async(
+        self,
+        text: str,
+        dad_ai_level: int,
+        speech_token: int | None = None,
+    ) -> None:
+        token = int(speech_token) if speech_token is not None else self._begin_new_speech_token()
         worker = threading.Thread(
-            target=self._speak_local_ai,
-            args=(text, dad_ai_level),
+            target=self._speak_local_ai_with_token,
+            args=(text, dad_ai_level, token),
             daemon=True,
         )
         worker.start()
 
-    def _speak_local_ai(self, text: str, dad_ai_level: int) -> None:
+    def _speak_local_ai_with_token(self, text: str, dad_ai_level: int, token: int) -> None:
+        if not self._is_token_current(token):
+            return
+        self._speak_local_ai(text, dad_ai_level, token)
+
+    def _speak_local_ai(
+        self,
+        text: str,
+        dad_ai_level: int,
+        speech_token: int | None = None,
+    ) -> None:
+        token = int(speech_token) if speech_token is not None else self._begin_new_speech_token()
+        if not self._is_token_current(token):
+            return
+        dad_ai_level = self._normalized_ai_level(dad_ai_level)
         if os.getenv("UPTACAMP_DISABLE_ONNX", "").strip().lower() in {"1", "true", "yes", "on"}:
-            if self._is_windows:
-                self._speak_windows(text, 5)
+            if self._is_windows and dad_ai_level in (1, 2, 3):
+                self._speak_windows(text, dad_ai_level)
             return
 
         python_runtime_found = self._resolve_piper_espeak_data_dir() is not None
         exe_found = self._resolve_runtime_executable(self.local_ai_exe_path or "piper") is not None
         if not (python_runtime_found or exe_found):
-            self.backend = "sapi"
-            if self._is_windows:
-                self._speak_windows(text, 5)
+            if self._is_windows and dad_ai_level in (1, 2, 3):
+                self._speak_windows(text, dad_ai_level)
             return
 
         model_path = self._resolve_local_ai_model_path(dad_ai_level)
         if model_path is None or not model_path.exists():
-            self.backend = "sapi"
-            if self._is_windows:
-                self._speak_windows(text, 5)
+            if self._is_windows and dad_ai_level in (1, 2, 3):
+                self._speak_windows(text, dad_ai_level)
             return
 
         cache_key = self._build_cache_key(
             text, dad_ai_level=dad_ai_level, model_path=str(model_path)
         )
         wav_path = self._cache_dir / f"{cache_key}.wav"
+        if not self._is_token_current(token):
+            return
         if not wav_path.exists():
             if not self._synthesize_local_ai_wav(text, model_path, wav_path):
-                if self._is_windows:
-                    self._speak_windows(text, 5)
+                if self._is_windows and dad_ai_level in (1, 2, 3):
+                    self._speak_windows(text, dad_ai_level)
                 return
 
         playback_path = wav_path
@@ -287,11 +319,15 @@ class VoiceManager:
 
         playback_path = self._maybe_apply_rvc(playback_path)
 
+        if not self._is_token_current(token):
+            return
+
         if self._is_windows and winsound is not None:
             try:
                 winsound.PlaySound(str(playback_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
             except RuntimeError:
-                self._speak_windows(text, 5)
+                if dad_ai_level in (1, 2, 3):
+                    self._speak_windows(text, dad_ai_level)
 
     def _synthesize_local_ai_wav(self, text: str, model_path: Path, wav_path: Path) -> bool:
         if self._synthesize_with_piper_python(text, model_path, wav_path):
@@ -362,7 +398,7 @@ class VoiceManager:
             return False
 
         try:
-            with wav_path.open("wb") as wav_file:
+            with wave.open(str(wav_path), "wb") as wav_file:
                 voice.synthesize_wav(text, wav_file)
             return wav_path.exists() and wav_path.stat().st_size > 0
         except Exception:
@@ -420,7 +456,7 @@ class VoiceManager:
     def _estimate_speech_seconds(self, text: str) -> float:
         words = max(1, len(text.split()))
         # Conversational speech pacing with a small startup buffer.
-        return min(8.0, 0.35 + words * 0.24)
+        return min(10.0, 0.45 + words * 0.27)
 
     def _set_speaking_window(self, text: str) -> None:
         with self._speech_guard:

@@ -133,7 +133,7 @@ class EffectsManager:
         image: pygame.Surface,
         start: tuple[float, float],
         end: tuple[float, float],
-        duration_ms: int = 280,
+        duration_ms: int = 320,
         start_delay_ms: int = 0,
     ) -> None:
         self.flights.append(

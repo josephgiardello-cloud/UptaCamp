@@ -39,7 +39,7 @@ class AnimationManager:
         image: Any,
         start: tuple[float, float],
         end: tuple[float, float],
-        duration_ms: int = 280,
+        duration_ms: int = 320,
     ) -> None:
         self._effects.add_card_flight(image, start, end, duration_ms=duration_ms)
 

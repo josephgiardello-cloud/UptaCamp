@@ -47,3 +47,23 @@ def test_update_auto_passes_go_when_player_hand_empty() -> None:
 
     assert engine.passed == [0]
     assert int(engine.state.player_turn) == 1
+
+
+def test_skunk_note_for_player_win() -> None:
+    note = DealState._skunk_note([121, 88], winner=0)
+
+    assert "Skunk" in note
+    assert "Bert" in note
+
+
+def test_double_skunk_note_for_bert_win() -> None:
+    note = DealState._skunk_note([59, 121], winner=1)
+
+    assert "Double skunk" in note
+    assert "you" in note
+
+
+def test_skunk_note_empty_when_not_skunk() -> None:
+    note = DealState._skunk_note([121, 91], winner=0)
+
+    assert note == ""
