@@ -23,6 +23,14 @@ UptaCamp is a Python + Pygame cribbage game with local play, AI opponents, and o
 - Automated tests are active under `tests/` and used as part of the quality gates.
 - Windows beta build is distributed as a zip containing the packaged executable.
 
+## Latest Beta Fixes (June 2026)
+
+- Fixed AI voice overlap/race conditions so queued lines no longer talk over each other.
+- Restored local TTS output for levels 4 and 5 by fixing Piper WAV synthesis integration.
+- Preserved configured backend behavior so local AI voice lanes do not silently downgrade to SAPI.
+- Added explicit skunk and double-skunk acknowledgements in end-of-game narration/status text.
+- Slightly slowed deal/discard animation pacing for smoother readability.
+
 ## Screenshots (Current Beta UI)
 
 ### New Beta Screenshot Series
