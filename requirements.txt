@@ -12,7 +12,7 @@ comtypes==1.4.16
 coverage==7.14.1
 cssselect2==0.9.0
 defusedxml==0.7.1
-distlib==0.4.0
+distlib==0.4.3
 filelock==3.29.0
 flatbuffers==25.12.19
 git-filter-repo==2.47.0
